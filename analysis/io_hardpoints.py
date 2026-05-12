@@ -1,26 +1,26 @@
 """
-io_hardpoints.py
-================
-Leitura e validação de hardpoints da suspensão a partir de arquivos
-estruturados (.xlsx, .csv, .json) usando polars.
+analysis/io_hardpoints.py
+=========================
+Leitura, validação e ESCRITA de hardpoints da suspensão.
 
-Estrutura esperada
-------------------
-O arquivo deve conter as seguintes colunas (case-insensitive):
-  - corner   : "FL", "FR", "RL", "RR"
-  - point    : "UCA_IN_FRONT", "UCA_IN_REAR", "UCA_OUT",
-               "LCA_IN_FRONT", "LCA_IN_REAR", "LCA_OUT",
-               "TIE_ROD_IN",   "TIE_ROD_OUT",
-               "WHEEL_CENTER", "CONTACT_PATCH"
-  - x_mm     : coordenada X (mm)
-  - y_mm     : coordenada Y (mm)
-  - z_mm     : coordenada Z (mm)
+FORMATOS SUPORTADOS:
+    .xlsx, .csv, .json
 
-Exemplo CSV:
-    corner,point,x_mm,y_mm,z_mm
-    FL,UCA_IN_FRONT,60,150,295
-    FL,UCA_IN_REAR,-70,150,295
+ESTRUTURA DO ARQUIVO (uma linha por hardpoint):
+    corner | point        | x_mm | y_mm | z_mm
+    -------+--------------+------+------+------
+    FL     | UCA_IN_FRONT |  60  |  150 |  295
+    FL     | UCA_IN_REAR  | -70  |  150 |  295
     ...
+
+PONTOS ESPERADOS POR CORNER (10 pontos):
+    UCA_IN_FRONT, UCA_IN_REAR, UCA_OUT
+    LCA_IN_FRONT, LCA_IN_REAR, LCA_OUT
+    TIE_ROD_IN,   TIE_ROD_OUT
+    WHEEL_CENTER, CONTACT_PATCH
+
+CORNERS VÁLIDOS:
+    FL (front-left), FR (front-right), RL (rear-left), RR (rear-right)
 """
 
 from __future__ import annotations
@@ -36,9 +36,9 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-# ---------------------------------------------------------------------------
-# Colunas e pontos esperados
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Constantes do schema
+# =============================================================================
 
 REQUIRED_COLUMNS: list[str] = ["corner", "point", "x_mm", "y_mm", "z_mm"]
 
@@ -52,31 +52,24 @@ REQUIRED_POINTS_PER_CORNER: list[str] = [
 VALID_CORNERS: list[str] = ["FL", "FR", "RL", "RR"]
 
 
-# ---------------------------------------------------------------------------
-# Erros customizados
-# ---------------------------------------------------------------------------
-
 class HardpointValidationError(ValueError):
-    """Erro de validação dos hardpoints lidos do arquivo."""
+    """Erro de validação do arquivo de hardpoints."""
     pass
 
 
-# ---------------------------------------------------------------------------
-# Leitura de arquivos
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Leitura
+# =============================================================================
 
 def read_hardpoints(filepath: str | Path) -> "pl.DataFrame":
     """
-    Lê um arquivo de hardpoints e retorna um DataFrame polars validado.
+    Lê um arquivo de hardpoints (.xlsx, .csv, .json) e retorna DataFrame polars.
 
-    Suporta extensões: .xlsx, .xls, .csv, .json
-
-    Validações
-    ----------
-    - Colunas obrigatórias presentes
-    - Todos os corners válidos
-    - Todos os pontos obrigatórios presentes por corner
-    - Coordenadas numéricas e finitas
+    Aplica validações:
+        - colunas obrigatórias presentes
+        - corners válidos
+        - todos os 10 pontos por corner
+        - coordenadas numéricas finitas
     """
     import polars as pl
 
@@ -94,9 +87,8 @@ def read_hardpoints(filepath: str | Path) -> "pl.DataFrame":
     else:
         raise ValueError(f"Extensão não suportada: {ext}")
 
-    # Normaliza nomes de colunas para minúsculas
+    # Normaliza nomes de colunas e valores categóricos
     df = df.rename({col: col.lower().strip() for col in df.columns})
-    # Normaliza valores das colunas categóricas para maiúsculas
     df = df.with_columns([
         pl.col("corner").str.strip_chars().str.to_uppercase(),
         pl.col("point").str.strip_chars().str.to_uppercase(),
@@ -107,15 +99,14 @@ def read_hardpoints(filepath: str | Path) -> "pl.DataFrame":
 
 
 def _validate_dataframe(df: "pl.DataFrame") -> None:
-    """Validação completa do DataFrame de hardpoints."""
+    """Validação completa do schema do DataFrame."""
     import polars as pl
 
     # 1. Colunas obrigatórias
-    missing_cols = set(REQUIRED_COLUMNS) - set(df.columns)
-    if missing_cols:
+    missing = set(REQUIRED_COLUMNS) - set(df.columns)
+    if missing:
         raise HardpointValidationError(
-            f"Colunas faltando: {sorted(missing_cols)}. "
-            f"Esperadas: {REQUIRED_COLUMNS}"
+            f"Colunas faltando: {sorted(missing)}. Esperadas: {REQUIRED_COLUMNS}"
         )
 
     # 2. Corners válidos
@@ -126,7 +117,7 @@ def _validate_dataframe(df: "pl.DataFrame") -> None:
             f"Corners inválidos: {invalid}. Válidos: {VALID_CORNERS}"
         )
 
-    # 3. Pontos válidos
+    # 3. Nomes de pontos válidos
     found_points = set(df["point"].unique().to_list())
     invalid_points = found_points - set(REQUIRED_POINTS_PER_CORNER)
     if invalid_points:
@@ -134,7 +125,7 @@ def _validate_dataframe(df: "pl.DataFrame") -> None:
             f"Pontos desconhecidos: {sorted(invalid_points)}"
         )
 
-    # 4. Cada corner presente tem todos os pontos
+    # 4. Cada corner tem todos os pontos
     for corner in found_corners:
         corner_points = set(
             df.filter(pl.col("corner") == corner)["point"].unique().to_list()
@@ -149,25 +140,23 @@ def _validate_dataframe(df: "pl.DataFrame") -> None:
     for col in ("x_mm", "y_mm", "z_mm"):
         if not df[col].dtype.is_numeric():
             raise HardpointValidationError(
-                f"Coluna '{col}' deve ser numérica (dtype atual: {df[col].dtype})"
+                f"Coluna '{col}' deve ser numérica (dtype: {df[col].dtype})"
             )
         if df[col].is_null().any():
-            raise HardpointValidationError(f"Coluna '{col}' contém valores nulos")
+            raise HardpointValidationError(f"Coluna '{col}' contém nulos")
         if df[col].is_infinite().any():
             raise HardpointValidationError(f"Coluna '{col}' contém infinitos")
 
 
-# ---------------------------------------------------------------------------
-# Construção do veículo a partir do DataFrame
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Construção de objetos a partir do DataFrame
+# =============================================================================
 
 def build_corner_from_dataframe(
     df: "pl.DataFrame",
     corner_id: str,
 ) -> tuple[SuspensionCorner, TieRod]:
-    """
-    Constrói um SuspensionCorner + TieRod a partir do DataFrame para um corner.
-    """
+    """Constrói SuspensionCorner + TieRod a partir do DataFrame para UM corner."""
     import polars as pl
 
     if corner_id not in VALID_CORNERS:
@@ -211,27 +200,19 @@ def build_corner_from_dataframe(
         contact_patch=get_point("CONTACT_PATCH"),
         corner_id=corner_id,
     )
-
     return corner, tie_rod
 
 
-def build_vehicle_from_dataframe(df: "pl.DataFrame") -> tuple[Vehicle, dict[str, TieRod]]:
-    """
-    Constrói o veículo completo (4 corners) e retorna também os tie-rods.
-
-    Retorna
-    -------
-    (vehicle, {"FL": TieRod, "FR": TieRod, "RL": TieRod, "RR": TieRod})
-    """
-    import polars as pl
-
+def build_vehicle_from_dataframe(
+    df: "pl.DataFrame",
+) -> tuple[Vehicle, dict[str, TieRod]]:
+    """Constrói o Vehicle completo + dict de tie-rods por corner."""
     fl_corner, fl_tr = build_corner_from_dataframe(df, "FL")
     fr_corner, fr_tr = build_corner_from_dataframe(df, "FR")
     rl_corner, rl_tr = build_corner_from_dataframe(df, "RL")
     rr_corner, rr_tr = build_corner_from_dataframe(df, "RR")
 
-    # Wheelbase e tracks deduzidos das coordenadas
-    wheelbase  = abs(fl_corner.wheel_center.x - rl_corner.wheel_center.x)
+    wheelbase   = abs(fl_corner.wheel_center.x - rl_corner.wheel_center.x)
     track_front = abs(fl_corner.wheel_center.y - fr_corner.wheel_center.y)
     track_rear  = abs(rl_corner.wheel_center.y - rr_corner.wheel_center.y)
 
@@ -244,23 +225,74 @@ def build_vehicle_from_dataframe(df: "pl.DataFrame") -> tuple[Vehicle, dict[str,
         track_front_mm=track_front,
         track_rear_mm=track_rear,
     )
-
     return vehicle, {"FL": fl_tr, "FR": fr_tr, "RL": rl_tr, "RR": rr_tr}
 
 
-# ---------------------------------------------------------------------------
-# Geração de template (para o usuário começar)
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Escrita / Export
+# =============================================================================
 
-def generate_template_dataframe() -> "pl.DataFrame":
+def dataframe_from_corner(
+    corner: SuspensionCorner,
+    tie_rod: TieRod,
+) -> "pl.DataFrame":
     """
-    Gera um DataFrame template (com coordenadas FSAE realistas)
-    que o usuário pode salvar como .xlsx ou .csv e editar.
+    Converte UM corner + tie_rod em DataFrame no formato padrão.
+    Útil para exportar geometrias otimizadas.
     """
     import polars as pl
 
-    # Geometria base (corner FL) — reusa coordenadas demo
-    fl_data = {
+    rows = [
+        ("UCA_IN_FRONT",  corner.upper_arm.inboard_front),
+        ("UCA_IN_REAR",   corner.upper_arm.inboard_rear),
+        ("UCA_OUT",       corner.upper_arm.outboard),
+        ("LCA_IN_FRONT",  corner.lower_arm.inboard_front),
+        ("LCA_IN_REAR",   corner.lower_arm.inboard_rear),
+        ("LCA_OUT",       corner.lower_arm.outboard),
+        ("TIE_ROD_IN",    tie_rod.inboard),
+        ("TIE_ROD_OUT",   tie_rod.outboard),
+        ("WHEEL_CENTER",  corner.wheel_center),
+        ("CONTACT_PATCH", corner.contact_patch),
+    ]
+    return pl.DataFrame([
+        {
+            "corner": corner.corner_id,
+            "point":  point_name,
+            "x_mm":   round(p.x, 4),
+            "y_mm":   round(p.y, 4),
+            "z_mm":   round(p.z, 4),
+        }
+        for point_name, p in rows
+    ])
+
+
+def save_dataframe(df: "pl.DataFrame", filepath: str | Path) -> None:
+    """Salva um DataFrame em .xlsx, .csv ou .json."""
+    path = Path(filepath)
+    ext = path.suffix.lower()
+    if ext == ".xlsx":
+        df.write_excel(path)
+    elif ext == ".csv":
+        df.write_csv(path)
+    elif ext == ".json":
+        df.write_json(path)
+    else:
+        raise ValueError(f"Extensão não suportada: {ext}")
+
+
+# =============================================================================
+# Template demo (geometria FSAE realista)
+# =============================================================================
+
+def generate_template_dataframe() -> "pl.DataFrame":
+    """
+    Gera DataFrame template com geometria FSAE realista, espelhada para
+    os 4 corners. Use como ponto de partida.
+    """
+    import polars as pl
+
+    # Geometria base do corner FL (lado esquerdo, dianteiro)
+    fl_data: dict[str, tuple[float, float, float]] = {
         "UCA_IN_FRONT":  ( 60.0, 150.0, 295.0),
         "UCA_IN_REAR":   (-70.0, 150.0, 295.0),
         "UCA_OUT":       ( -5.0, 590.0, 280.0),
@@ -272,17 +304,17 @@ def generate_template_dataframe() -> "pl.DataFrame":
         "WHEEL_CENTER":  (  5.0, 610.0, 220.0),
         "CONTACT_PATCH": (  5.0, 610.0,   0.0),
     }
-    rl_offset_x = -1550.0  # wheelbase ≈ 1550 mm
+    rear_offset_x = -1550.0   # wheelbase ≈ 1550 mm
 
     rows: list[dict[str, object]] = []
     for corner_id in VALID_CORNERS:
-        y_sign = 1.0 if corner_id.endswith("L") else -1.0
-        x_offset = rl_offset_x if corner_id.startswith("R") else 0.0
+        y_sign  = 1.0 if corner_id.endswith("L") else -1.0
+        x_shift = rear_offset_x if corner_id.startswith("R") else 0.0
         for pt_name, (x, y, z) in fl_data.items():
             rows.append({
                 "corner": corner_id,
                 "point":  pt_name,
-                "x_mm":   float(x + x_offset),
+                "x_mm":   float(x + x_shift),
                 "y_mm":   float(y * y_sign),
                 "z_mm":   float(z),
             })
@@ -291,14 +323,5 @@ def generate_template_dataframe() -> "pl.DataFrame":
 
 
 def save_template(filepath: str | Path) -> None:
-    """Salva um arquivo template em .xlsx ou .csv."""
-    df = generate_template_dataframe()
-    path = Path(filepath)
-    if path.suffix.lower() in (".xlsx",):
-        df.write_excel(path)
-    elif path.suffix.lower() == ".csv":
-        df.write_csv(path)
-    elif path.suffix.lower() == ".json":
-        df.write_json(path)
-    else:
-        raise ValueError(f"Extensão não suportada para template: {path.suffix}")
+    """Salva um arquivo template em .xlsx, .csv ou .json."""
+    save_dataframe(generate_template_dataframe(), filepath)

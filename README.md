@@ -738,5 +738,5 @@ Em ordem de prioridade:
 
 ---
 
-**Autor:** Engenharia em pair-programming com Claude (Anthropic)
+**Autor:** Vinicius Andrade trento
 **Última atualização:** Maio 2026
