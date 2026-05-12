@@ -1,91 +1,118 @@
 """
-primitives.py
-=============
-Tipos geométricos fundamentais para o motor de suspensão FSAE.
-Todos os eixos seguem a convenção SAE:
-  X → frente do veículo
-  Y → esquerda do veículo
-  Z → para cima
+geometry/primitives.py
+======================
+Tipos geométricos básicos do motor de suspensão.
+
+CONVENÇÃO DE EIXOS (SAE J670):
+    X : aponta para a FRENTE do veículo
+    Y : aponta para a ESQUERDA do veículo
+    Z : aponta para CIMA
+
+UNIDADES:
+    - Comprimentos em milímetros (mm)
+    - Ângulos em graus (°)
+
+Este módulo contém três classes principais:
+    - Point3D      : ponto no espaço 3D (X, Y, Z)
+    - Point2D      : ponto em 2D, usado para análises na vista frontal (Y-Z)
+    - Vector3D     : vetor livre no espaço 3D, com operações de álgebra linear
+E duas funções utilitárias:
+    - circle_circle_intersection : interseção de dois círculos no plano
+    - line_intersection_2d       : interseção de duas retas no plano
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import Union
+from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
 
 
-# ---------------------------------------------------------------------------
-# Point3D
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Point3D — Ponto no espaço 3D
+# =============================================================================
 
 @dataclass
 class Point3D:
-    """Ponto no espaço 3D com coordenadas cartesianas (mm)."""
+    """
+    Ponto cartesiano 3D (X, Y, Z), em milímetros.
 
+    Exemplo:
+        >>> p = Point3D(100.0, 50.0, 200.0)
+        >>> p.x, p.y, p.z
+        (100.0, 50.0, 200.0)
+    """
     x: float
     y: float
     z: float
 
-    # ------------------------------------------------------------------
-    # Conversões / helpers numpy
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Conversão para/de NumPy (necessário para álgebra linear)
+    # -------------------------------------------------------------------------
 
     def to_array(self) -> NDArray[np.float64]:
-        """Retorna coordenadas como vetor numpy (3,)."""
+        """Converte o ponto para um numpy array [x, y, z]."""
         return np.array([self.x, self.y, self.z], dtype=np.float64)
 
     @classmethod
     def from_array(cls, arr: NDArray[np.float64]) -> "Point3D":
-        """Cria Point3D (Tensor) a partir de array numpy."""
+        """Cria Point3D a partir de um array numpy [x, y, z]."""
         return cls(float(arr[0]), float(arr[1]), float(arr[2]))
 
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Operadores aritméticos
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------------
 
     def __sub__(self, other: "Point3D") -> "Vector3D":
+        """P1 - P2 retorna o vetor de P2 para P1."""
         return Vector3D(self.x - other.x, self.y - other.y, self.z - other.z)
 
-    def __add__(self, other: "Vector3D") -> "Point3D":
-        return Point3D(self.x + other.x, self.y + other.y, self.z + other.z)
+    def __add__(self, vec: "Vector3D") -> "Point3D":
+        """P + V translada o ponto pelo vetor."""
+        return Point3D(self.x + vec.x, self.y + vec.y, self.z + vec.z)
 
     def __repr__(self) -> str:
-        return f"Point3D(x={self.x:.3f}, y={self.y:.3f}, z={self.z:.3f})"
+        return f"Point3D(x={self.x:7.2f}, y={self.y:7.2f}, z={self.z:7.2f})"
 
-    # ------------------------------------------------------------------
-    # Utilitários
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Métodos geométricos
+    # -------------------------------------------------------------------------
 
     def distance_to(self, other: "Point3D") -> float:
         """Distância euclidiana entre dois pontos (mm)."""
         return float(np.linalg.norm(self.to_array() - other.to_array()))
 
     def midpoint(self, other: "Point3D") -> "Point3D":
+        """Ponto médio entre dois pontos."""
         return Point3D.from_array((self.to_array() + other.to_array()) / 2.0)
 
     def project_yz(self) -> "Point2D":
-        """Projeta o ponto no plano YZ (vista frontal)."""
+        """Projeção no plano frontal Y-Z (descarta X)."""
         return Point2D(self.y, self.z)
 
     def project_xz(self) -> "Point2D":
-        """Projeta o ponto no plano XZ (vista lateral)."""
+        """Projeção no plano lateral X-Z (descarta Y)."""
         return Point2D(self.x, self.z)
 
 
-# ---------------------------------------------------------------------------
-# Point2D  (usado nos cálculos 2D da vista frontal)
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Point2D — Ponto no plano (usado na vista frontal)
+# =============================================================================
 
 @dataclass
 class Point2D:
-    """Ponto no plano 2D (coordenadas em mm)."""
+    """
+    Ponto cartesiano 2D, em milímetros.
 
-    u: float   # eixo horizontal (Y na vista frontal, X na vista lateral)
-    v: float   # eixo vertical   (Z em ambas as vistas)
+    Eixos genéricos (u, v) para evitar acoplar a um plano específico:
+        - Na vista frontal (Y-Z): u = Y, v = Z
+        - Na vista lateral (X-Z): u = X, v = Z
+    """
+    u: float   # coordenada horizontal do plano
+    v: float   # coordenada vertical do plano
 
     def to_array(self) -> NDArray[np.float64]:
         return np.array([self.u, self.v], dtype=np.float64)
@@ -98,20 +125,27 @@ class Point2D:
         return float(np.linalg.norm(self.to_array() - other.to_array()))
 
     def __repr__(self) -> str:
-        return f"Point2D(u={self.u:.3f}, v={self.v:.3f})"
+        return f"Point2D(u={self.u:7.2f}, v={self.v:7.2f})"
 
 
-# ---------------------------------------------------------------------------
-# Vector3D
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Vector3D — Vetor livre no espaço 3D
+# =============================================================================
 
 @dataclass
 class Vector3D:
-    """Vetor livre no espaço 3D."""
-
+    """
+    Vetor livre no espaço 3D. Suporta as operações usuais de álgebra linear:
+    soma, multiplicação por escalar, produto escalar (dot), produto vetorial
+    (cross), normalização e cálculo de ângulo.
+    """
     x: float
     y: float
     z: float
+
+    # -------------------------------------------------------------------------
+    # Construtores e conversões
+    # -------------------------------------------------------------------------
 
     def to_array(self) -> NDArray[np.float64]:
         return np.array([self.x, self.y, self.z], dtype=np.float64)
@@ -122,79 +156,94 @@ class Vector3D:
 
     @classmethod
     def from_points(cls, origin: Point3D, tip: Point3D) -> "Vector3D":
-        """Vetor de `origin` para `tip`."""
+        """Vetor que aponta de `origin` para `tip`."""
         return tip - origin
 
-    # ------------------------------------------------------------------
-    # Álgebra
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Operações de álgebra
+    # -------------------------------------------------------------------------
 
     def magnitude(self) -> float:
+        """Norma euclidiana (comprimento) do vetor."""
         return float(np.linalg.norm(self.to_array()))
 
     def normalize(self) -> "Vector3D":
+        """Retorna um vetor unitário com a mesma direção."""
         mag = self.magnitude()
         if mag < 1e-12:
-            raise ValueError("Não é possível normalizar vetor nulo.")
+            raise ValueError("Não é possível normalizar um vetor nulo.")
         return Vector3D.from_array(self.to_array() / mag)
 
     def dot(self, other: "Vector3D") -> float:
+        """Produto escalar."""
         return float(np.dot(self.to_array(), other.to_array()))
 
     def cross(self, other: "Vector3D") -> "Vector3D":
+        """Produto vetorial (segue a regra da mão direita)."""
         return Vector3D.from_array(np.cross(self.to_array(), other.to_array()))
 
     def angle_to_deg(self, other: "Vector3D") -> float:
-        """Ângulo entre dois vetores em graus [0, 180]."""
-        cos_a = np.clip(
-            self.dot(other) / (self.magnitude() * other.magnitude()), -1.0, 1.0
-        )
-        return float(math.degrees(math.acos(cos_a)))
+        """
+        Ângulo entre dois vetores, em graus, no intervalo [0°, 180°].
+
+        Calculado via: cos(θ) = (v1 · v2) / (|v1| × |v2|)
+        """
+        cos_theta = self.dot(other) / (self.magnitude() * other.magnitude())
+        cos_theta = float(np.clip(cos_theta, -1.0, 1.0))   # proteção numérica
+        return math.degrees(math.acos(cos_theta))
+
+    # -------------------------------------------------------------------------
+    # Operadores
+    # -------------------------------------------------------------------------
 
     def __add__(self, other: "Vector3D") -> "Vector3D":
         return Vector3D.from_array(self.to_array() + other.to_array())
+
+    def __sub__(self, other: "Vector3D") -> "Vector3D":
+        return Vector3D.from_array(self.to_array() - other.to_array())
 
     def __mul__(self, scalar: float) -> "Vector3D":
         return Vector3D.from_array(self.to_array() * scalar)
 
     def __repr__(self) -> str:
-        return f"Vector3D(x={self.x:.4f}, y={self.y:.4f}, z={self.z:.4f})"
+        return f"Vector3D(x={self.x:+.4f}, y={self.y:+.4f}, z={self.z:+.4f})"
 
 
-# ---------------------------------------------------------------------------
-# Utilitários de interseção (usados pelo solucionador 2D)
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Interseções no plano 2D
+# =============================================================================
 
 def circle_circle_intersection(
     c1: Point2D, r1: float,
     c2: Point2D, r2: float,
-    prefer_positive_v: bool = True
+    prefer_positive_v: bool = True,
 ) -> Point2D:
     """
-    Calcula o(s) ponto(s) de interseção entre dois círculos no plano 2D.
+    Interseção entre dois círculos no plano 2D.
 
-    Parâmetros
-    ----------
-    c1, r1 : centro e raio do primeiro círculo
-    c2, r2 : centro e raio do segundo círculo
-    prefer_positive_v : se True, retorna o ponto com maior coordenada v
-                        (útil para resolver a posição da manga de eixo)
+    Dois círculos podem ter 0, 1 ou 2 pontos de interseção. Quando há dois,
+    escolhemos o de maior coordenada `v` (se `prefer_positive_v=True`) ou o
+    de menor (se False). Isso é necessário no mecanismo de 4 barras para
+    selecionar a solução fisicamente correta (manga "para cima").
 
-    Retorna
-    -------
-    Point2D com a solução escolhida.
+    Algoritmo (clássico):
+        d = distância entre os centros
+        a = (r1² - r2² + d²) / (2·d)        → projeção do ponto médio da corda
+        h = √(r1² - a²)                       → metade da corda
+        mid = c1 + a·(c2-c1)/d                → ponto médio da corda
+        perp = vetor perpendicular à linha c1-c2, unitário
+        soluções = mid ± h·perp
 
-    Levanta
-    -------
-    ValueError se os círculos não se intersectam ou são concêntricos.
+    Levanta ValueError se os círculos não se intersectam ou são concêntricos.
     """
     p1 = c1.to_array()
     p2 = c2.to_array()
 
     d = float(np.linalg.norm(p2 - p1))
 
+    # --- Casos degenerados ---
     if d < 1e-12:
-        raise ValueError("Os centros dos círculos são coincidentes.")
+        raise ValueError("Centros dos círculos coincidentes.")
     if d > r1 + r2 + 1e-9:
         raise ValueError(
             f"Círculos não se intersectam: d={d:.2f}, r1+r2={r1+r2:.2f}"
@@ -202,20 +251,17 @@ def circle_circle_intersection(
     if d < abs(r1 - r2) - 1e-9:
         raise ValueError("Um círculo está contido no outro.")
 
-    # Distância do centro 1 ao ponto médio da corda de interseção
+    # --- Cálculo padrão ---
     a = (r1**2 - r2**2 + d**2) / (2.0 * d)
-    h_sq = r1**2 - a**2
-    h = math.sqrt(max(h_sq, 0.0))
+    h = math.sqrt(max(r1**2 - a**2, 0.0))   # max() protege de erro numérico
 
-    # Ponto médio da corda
     mid = p1 + a * (p2 - p1) / d
-
-    # Vetor perpendicular à linha que une os centros
-    perp = np.array([-(p2[1] - p1[1]), p2[0] - p1[0]]) / d
+    perp = np.array([-(p2[1] - p1[1]), p2[0] - p1[0]]) / d   # perpendicular unitário
 
     sol_a = Point2D.from_array(mid + h * perp)
     sol_b = Point2D.from_array(mid - h * perp)
 
+    # Escolha da solução
     if prefer_positive_v:
         return sol_a if sol_a.v >= sol_b.v else sol_b
     else:
@@ -224,29 +270,29 @@ def circle_circle_intersection(
 
 def line_intersection_2d(
     p1: Point2D, p2: Point2D,
-    p3: Point2D, p4: Point2D
+    p3: Point2D, p4: Point2D,
 ) -> Point2D:
     """
-    Interseção entre duas retas (definidas por dois pontos cada) no plano 2D.
+    Interseção entre duas retas no plano 2D, cada uma definida por dois pontos.
 
-    Retorna
-    -------
-    Point2D de interseção.
-
-    Levanta
-    -------
-    ValueError se as retas são paralelas.
+    Usa a fórmula determinantal da interseção de retas.
+    Levanta ValueError se as retas forem paralelas ou coincidentes.
     """
     x1, y1 = p1.u, p1.v
     x2, y2 = p2.u, p2.v
     x3, y3 = p3.u, p3.v
     x4, y4 = p4.u, p4.v
 
+    # Denominador comum (cross product das direções)
     denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
     if abs(denom) < 1e-12:
         raise ValueError("As retas são paralelas ou coincidentes.")
 
+    # Parâmetro t na reta 1
     t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
-    ix = x1 + t * (x2 - x1)
-    iy = y1 + t * (y2 - y1)
-    return Point2D(ix, iy)
+
+    # Ponto de interseção = P1 + t · (P2 - P1)
+    return Point2D(
+        u=x1 + t * (x2 - x1),
+        v=y1 + t * (y2 - y1),
+    )
