@@ -131,7 +131,7 @@ if df is not None:
 
     with col1:
         st.subheader("Hardpoints carregados")
-        st.dataframe(df, use_container_width=True, height=300)
+        st.dataframe(df, width='content', height=300)
 
     # ---------------------------------------------------------------------
     # Constrói o corner selecionado e executa sweep
@@ -184,13 +184,13 @@ if df is not None:
 
     if sweep_type == "Heave":
         with plot_cols[0]:
-            st.plotly_chart(plot_camber_vs_heave(sweep), use_container_width=True)
+            st.plotly_chart(plot_camber_vs_heave(sweep), width='content')
         with plot_cols[1]:
-            st.plotly_chart(plot_bump_steer(sweep), use_container_width=True)
-        st.plotly_chart(plot_rc_migration(sweep), use_container_width=True)
+            st.plotly_chart(plot_bump_steer(sweep), width='content')
+        st.plotly_chart(plot_rc_migration(sweep), width='content')
 
     elif sweep_type == "Steer":
-        st.plotly_chart(plot_caster_kpi_vs_steer(sweep), use_container_width=True)
+        st.plotly_chart(plot_caster_kpi_vs_steer(sweep), width='content')
 
     else:  # Roll
         import plotly.graph_objects as go
@@ -205,13 +205,13 @@ if df is not None:
             yaxis_title="Camber (°)",
             template="plotly_white",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='content')
 
     # Tabela completa do sweep
     with st.expander("📋 Dados completos do sweep"):
         import polars as pl
         sweep_df = pl.DataFrame({name: sweep[name] for name in sweep.dtype.names})
-        st.dataframe(sweep_df, use_container_width=True)
+        st.dataframe(sweep_df, width='content')
 
 else:
     st.info(
