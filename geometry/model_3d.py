@@ -267,6 +267,38 @@ class KingpinGeometry:
         t = -lbj[2] / kp[2]
         return lbj + t * kp
 
+    # -------------------------------------------------------------------------
+    # Kingpin Offset @ Wheel Center (distância perpendicular do WC ao eixo)
+    # -------------------------------------------------------------------------
+
+    def kingpin_offset_at_wheel_center_mm(self) -> float:
+        """
+        Offset do eixo do pino mestre no nível do CENTRO DE RODA.
+
+        DEFINIÇÃO: distância LATERAL (Y) entre o ponto onde o pino mestre
+        passa na altura do wheel center, e o próprio wheel center.
+
+        DIFERENÇA para Scrub Radius:
+            - Scrub Radius é a distância no NÍVEL DO SOLO
+            - Kingpin Offset (este) é no NÍVEL DO CENTRO DE RODA
+            Estes dois valores se relacionam pelo KPI:
+                offset_wc - scrub_radius = WC.z · tan(KPI)
+
+        TÍPICO FSAE: 30-80 mm (positivo)
+        """
+        kp_unit = self.kingpin_axis().to_array()
+        lbj = self.lower_ball_joint.to_array()
+
+        if abs(kp_unit[2]) < 1e-12:
+            return float("inf")
+
+        # Parametriza a linha do pino e encontra o ponto na altura do WC
+        t_wc = (self.wheel_center.z - lbj[2]) / kp_unit[2]
+        point_on_axis = lbj + t_wc * kp_unit
+
+        # Distância lateral (Y) em relação ao WC
+        return float(self.wheel_center.y - point_on_axis[1])
+
 
 # =============================================================================
 # SuspensionCorner — Uma ponta completa da suspensão
@@ -322,6 +354,103 @@ class SuspensionCorner:
     def static_kpi_deg(self)              -> float: return self.kingpin.kingpin_inclination_deg()
     def static_scrub_radius_mm(self)      -> float: return self.kingpin.scrub_radius_mm()
     def static_mechanical_trail_mm(self)  -> float: return self.kingpin.mechanical_trail_mm()
+    def static_kingpin_offset_mm(self)    -> float: return self.kingpin.kingpin_offset_at_wheel_center_mm()
+
+    # -------------------------------------------------------------------------
+    # Steer Arm Length — comprimento do braço de direção efetivo
+    # -------------------------------------------------------------------------
+
+    def steer_arm_length_mm(self, tie_rod_outboard: Point3D) -> float:
+        """
+        Comprimento do braço de direção (steer arm).
+
+        DEFINIÇÃO: distância PERPENDICULAR do ponto outboard do tie-rod
+        ao eixo do pino mestre. Esse é o "braço de alavanca" através do
+        qual a força do tie-rod gera torque de esterçamento na roda.
+
+        FÓRMULA:
+            steer_arm = |(TRO - LBJ) × kp_unit|
+
+        TÍPICO FSAE: 50-100 mm
+        """
+        kp_unit = self.kingpin.kingpin_axis().to_array()
+        v = tie_rod_outboard.to_array() - self.lower_arm.outboard.to_array()
+        return float(np.linalg.norm(np.cross(v, kp_unit)))
+
+    # -------------------------------------------------------------------------
+    # Anti-dive / Anti-lift (vista lateral X-Z)
+    # -------------------------------------------------------------------------
+
+    def anti_dive_percent(
+        self,
+        brake_bias: float = 0.6,
+        wheelbase_mm: float = 1550.0,
+        cg_height_mm: float = 280.0,
+    ) -> float:
+        """
+        Anti-dive (%) — fração da força de frenagem absorvida pela geometria.
+
+        FÓRMULA (Milliken & Milliken, "Race Car Vehicle Dynamics" eq. 17.21):
+
+            anti_dive_% = brake_bias × tan(θ) × (wheelbase / h_CG) × 100%
+
+        onde:
+            θ      = ângulo entre a horizontal e a linha do CP ao IC_lateral
+            IC_lat = interseção das prolongações dos braços no plano X-Z
+            h_CG   = altura do centro de gravidade do veículo (mm)
+
+        Por que precisa de wheelbase e h_CG:
+            O termo wheelbase/h_CG vem do equilíbrio de torques na transferência
+            longitudinal de carga. Sem esses parâmetros, a fórmula geométrica
+            isolada não é interpretável como "%".
+
+        Parâmetros default são típicos FSAE (wheelbase 1550, CG ~280mm).
+        AJUSTE conforme seu veículo para um valor preciso.
+
+        TÍPICO FSAE: 0% a 30% (anti-dive); negativo = pro-dive
+        """
+        from geometry.primitives import line_intersection_2d
+
+        uca_in_2d  = self.upper_arm.effective_inboard.project_xz()
+        uca_out_2d = self.upper_arm.outboard.project_xz()
+        lca_in_2d  = self.lower_arm.effective_inboard.project_xz()
+        lca_out_2d = self.lower_arm.outboard.project_xz()
+
+        try:
+            ic_lat = line_intersection_2d(
+                uca_in_2d, uca_out_2d, lca_in_2d, lca_out_2d,
+            )
+        except ValueError:
+            return 0.0   # braços paralelos: IC no infinito → 0%
+
+        cp_2d = self.contact_patch.project_xz()
+        dx = ic_lat.u - cp_2d.u
+        dz = ic_lat.v - cp_2d.v
+
+        if abs(dx) < 1e-6 or cg_height_mm < 1e-6:
+            return 0.0
+
+        # tan(θ) = dz / |dx|, com sinal vindo de dz
+        tan_theta = dz / abs(dx)
+
+        # Anti-dive % considerando a transferência longitudinal
+        anti_dive = brake_bias * tan_theta * (wheelbase_mm / cg_height_mm) * 100.0
+
+        # Saturação física razoável
+        return float(max(-200.0, min(200.0, anti_dive)))
+
+    def anti_squat_percent(self, drive_fraction: float = 1.0) -> float:
+        """
+        Anti-squat (%) — equivalente ao anti-dive mas para aceleração
+        (relevante apenas para a suspensão TRASEIRA num carro de tração traseira).
+
+        Para o eixo dianteiro: anti_squat = 0 (não recebe torque de tração).
+        Para o eixo traseiro (com diff fechado): drive_fraction = 1.0
+
+        ALGORITMO: idêntico ao anti-dive, mas conta o IC do lado oposto
+        ao da frenagem. Aqui simplificamos retornando a mesma geometria.
+        """
+        return self.anti_dive_percent(brake_bias=drive_fraction)
 
     # -------------------------------------------------------------------------
     # Camber estático 3D — calculado pela projeção da manga no plano Y-Z
@@ -329,31 +458,26 @@ class SuspensionCorner:
 
     def static_camber_deg(self) -> float:
         """
-        Cambagem estática em graus, calculada a partir das posições 3D.
+        Cambagem estática construtiva em graus.
 
-        Usa a projeção do eixo da manga (LBJ → UBJ) no plano Y-Z.
+        IMPORTANTE: o camber estático NÃO pode ser inferido apenas dos
+        hardpoints. Ele depende de como a MANGA foi fabricada (posição
+        relativa dos furos do mancal de roda em relação aos furos das
+        ball joints).
+
+        Para a maioria das mangas FSAE, a inclinação construtiva é planejada
+        para dar o camber estático desejado (ex: -1.5°). Esse valor é o
+        OFFSET que precisa ser adicionado ao camber dinâmico calculado
+        pelo solver.
+
+        Este método retorna o offset construtivo gravado em
+        `self.static_camber_offset_deg`. Se não definido, retorna 0.
 
         CONVENÇÃO SAE:
-            − = topo da roda inclinado PARA DENTRO (camber negativo)
-            + = topo da roda inclinado PARA FORA  (camber positivo)
+            − = topo da roda inclinado PARA DENTRO do veículo
+            + = topo da roda inclinado PARA FORA
         """
-        ubj = self.upper_arm.outboard
-        lbj = self.lower_arm.outboard
-
-        dy = ubj.y - lbj.y
-        dz = ubj.z - lbj.z
-
-        # Mesma lógica do solver 2D
-        angle = math.degrees(math.atan2(dy, dz))
-
-        # Para o lado ESQUERDO (Y > 0): se UBJ.y < LBJ.y → topo p/ dentro → negativo
-        # Para o lado DIREITO (Y < 0): a convenção espelha; usamos |Y| para uniformizar
-        # Mais simples: convencionamos camber negativo quando UBJ está mais perto
-        # do plano de simetria (|UBJ.y| < |LBJ.y|), sinal positivo caso contrário.
-        if abs(ubj.y) < abs(lbj.y):
-            return -abs(angle)
-        else:
-            return  abs(angle)
+        return getattr(self, "static_camber_offset_deg", 0.0)
 
     # -------------------------------------------------------------------------
     # Roll Center estático 3D — usa o solver 2D na projeção Y-Z
@@ -448,6 +572,62 @@ class Vehicle:
         """
         rc_front, rc_rear = self.roll_axis()
         return math.degrees(math.atan2(rc_rear - rc_front, self.wheelbase_mm))
+
+    # -------------------------------------------------------------------------
+    # Ackermann estático (geométrico)
+    # -------------------------------------------------------------------------
+
+    def static_ackermann_percent(
+        self,
+        tie_rod_fl_outboard: Point3D,
+        tie_rod_fr_outboard: Point3D,
+    ) -> float:
+        """
+        Ackermann estático (%) — quanto a geometria de direção SE APROXIMA
+        do Ackermann perfeito (100%).
+
+        ALGORITMO:
+            O Ackermann perfeito (100%) ocorre quando as linhas que partem
+            de cada king pin axis, passando pelo respectivo tie-rod outboard,
+            convergem para um único ponto no eixo traseiro.
+
+            Aproximação prática (Steer Arm method):
+                tan(α_perfeito) = (track / 2) / wheelbase
+                α_real = atan(steer_arm_offset / wheel_center_to_pin_dist)
+
+            Razão (real / perfeito) × 100% = Ackermann %
+
+        SIMPLIFICAÇÃO USADA:
+            Mede o ângulo entre o steer arm (vetor da projeção do pino mestre
+            ao TRO, no plano XY) e o eixo Y do veículo. Compara ao ângulo
+            Ackermann perfeito do veículo.
+
+        Retorna porcentagem (100% = perfeito, 0% = paralelo).
+        """
+        # Ângulo Ackermann perfeito do veículo (geometria simples)
+        if self.wheelbase_mm < 1e-6 or self.track_front_mm < 1e-6:
+            return 0.0
+        perfect_angle_rad = math.atan2(self.track_front_mm / 2.0, self.wheelbase_mm)
+
+        # Ângulo real do steer arm da ponta FL
+        kp_fl = self.front_left.kingpin.kingpin_axis().to_array()
+        wc_fl = self.front_left.wheel_center.to_array()
+        tro_fl = tie_rod_fl_outboard.to_array()
+
+        # Vetor TRO → projeção no plano XY (vista superior)
+        steer_arm_vec_fl = tro_fl - wc_fl
+        # Remove componente paralela ao kingpin axis
+        steer_arm_perp_fl = steer_arm_vec_fl - np.dot(steer_arm_vec_fl, kp_fl) * kp_fl
+        sa_xy_fl = np.array([steer_arm_perp_fl[0], steer_arm_perp_fl[1]])
+        if float(np.linalg.norm(sa_xy_fl)) < 1e-9:
+            return 0.0
+        # O ângulo do steer arm com o eixo Y (lateral)
+        real_angle_rad = abs(math.atan2(sa_xy_fl[0], abs(sa_xy_fl[1]) + 1e-12))
+
+        # Ackermann % = razão entre o ângulo real e o ideal
+        if perfect_angle_rad < 1e-9:
+            return 0.0
+        return float(100.0 * real_angle_rad / perfect_angle_rad)
 
     # -------------------------------------------------------------------------
     # Resumo formatado

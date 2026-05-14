@@ -252,7 +252,7 @@ class KinematicSolver3D:
         contact_patch = Point3D.from_array(cp_arr)
 
         # ─── 6. Calcular ângulos derivados ───────────────────────────────────
-        camber = self._compute_camber(uca_out, lca_out)
+        camber = self._compute_camber(uca_out, lca_out, wheel_center, contact_patch)
         caster = self._compute_caster(uca_out, lca_out)
         kpi    = self._compute_kpi(uca_out, lca_out)
 
@@ -433,22 +433,43 @@ class KinematicSolver3D:
     # =========================================================================
 
     @staticmethod
-    def _compute_camber(uca_out: Point3D, lca_out: Point3D) -> float:
+    def _compute_camber(uca_out: Point3D, lca_out: Point3D,
+                         wheel_center: Point3D, contact_patch: Point3D) -> float:
         """
-        Camber: inclinação da manga no plano Y-Z, em graus.
-        Negativo = topo para dentro (convenção SAE para uso em corrida).
+        Camber dinâmico: inclinação do plano da roda em relação à vertical,
+        na vista frontal (plano Y-Z).
+
+        DEFINIÇÃO:
+            Usa o vetor CP→WC projetado em Y-Z. Para roda vertical (camber=0),
+            esse vetor é (0, 0, +R). Se a manga rotaciona em torno de X,
+            o vetor ganha componente em Y.
+
+        CONVENÇÃO SAE:
+            − = topo da roda inclinado PARA DENTRO do veículo
+            + = topo da roda inclinado PARA FORA
         """
-        ubj = uca_out.to_array()
-        lbj = lca_out.to_array()
+        wc = wheel_center.to_array()
+        cp = contact_patch.to_array()
 
-        dy = ubj[1] - lbj[1]
-        dz = ubj[2] - lbj[2]
+        dy = wc[1] - cp[1]
+        dz = wc[2] - cp[2]
 
-        # Mesma lógica do solver_2d._compute_camber, mas em 3D usamos sinal
-        # baseado na proximidade ao plano de simetria para funcionar em
-        # ambos os lados do veículo.
-        angle = abs(math.degrees(math.atan2(dy, dz)))
-        return -angle if abs(ubj[1]) < abs(lbj[1]) else angle
+        if abs(dz) < 1e-9:
+            return 0.0
+
+        # Ângulo entre (CP→WC) e o eixo Z vertical
+        angle = math.degrees(math.atan2(dy, dz))
+
+        # Sinal: para esquerda (WC.y > 0), camber negativo = WC mais para dentro
+        # que CP = dy < 0 → angle < 0 → camber = +angle (mantém negativo)
+        # Wait: dy < 0 dá angle < 0; queremos camber = -|angle| (negativo)
+        # → camber = angle quando lado esquerdo
+        # Para direita (WC.y < 0), camber negativo = WC mais para dentro = dy > 0
+        # → camber = -angle quando lado direito
+        if wc[1] > 0:   # esquerdo
+            return angle
+        else:           # direito
+            return -angle
 
     @staticmethod
     def _compute_caster(uca_out: Point3D, lca_out: Point3D) -> float:
