@@ -457,7 +457,7 @@ def roll_center_at_1g_lat(
 def anti_dive_percent(
     corner: SuspensionCorner,
     *,
-    brake_bias_pct: float = 60.0,
+    brake_bias_pct: float = 50.0,
     cg_height_mm:   float = 280.0,
     wheelbase_mm_value: Optional[float] = None,
 ) -> float:
@@ -512,6 +512,10 @@ def anti_dive_percent(
 
     # Wheelbase: precisa ser informado externamente (ou usa padrão)
     wb = wheelbase_mm_value if wheelbase_mm_value else 1550.0
+
+    # Proteção contra cg_height inválido (evita ZeroDivision e valores negativos)
+    if cg_height_mm <= 1e-6:
+        return 0.0
 
     anti_dive = math.tan(theta) * wb / cg_height_mm * (brake_bias_pct / 100.0) * 100.0
     return float(anti_dive)

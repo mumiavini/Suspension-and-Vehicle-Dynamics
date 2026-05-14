@@ -108,6 +108,12 @@ class SweepRunner:
         """
         Varredura de heave puro (bump/rebound), com roll=0 e rack=0.
         """
+        if step_mm <= 0:
+            raise ValueError(f"step_mm deve ser positivo, recebido: {step_mm}")
+        if heave_max_mm < heave_min_mm:
+            raise ValueError(
+                f"heave_max ({heave_max_mm}) deve ser >= heave_min ({heave_min_mm})"
+            )
         values = np.arange(heave_min_mm, heave_max_mm + step_mm * 0.5, step_mm)
         configurations = [(float(h), 0.0, 0.0) for h in values]
         return self._run_sweep(configurations)
@@ -121,6 +127,12 @@ class SweepRunner:
         """
         Varredura de rolagem do chassi, com heave=0 e rack=0.
         """
+        if step_deg <= 0:
+            raise ValueError(f"step_deg deve ser positivo, recebido: {step_deg}")
+        if roll_max_deg < roll_min_deg:
+            raise ValueError(
+                f"roll_max ({roll_max_deg}) deve ser >= roll_min ({roll_min_deg})"
+            )
         values = np.arange(roll_min_deg, roll_max_deg + step_deg * 0.5, step_deg)
         configurations = [(0.0, float(r), 0.0) for r in values]
         return self._run_sweep(configurations)
@@ -134,6 +146,12 @@ class SweepRunner:
         """
         Varredura de esterçamento (deslocamento do rack), com heave=0 e roll=0.
         """
+        if step_mm <= 0:
+            raise ValueError(f"step_mm deve ser positivo, recebido: {step_mm}")
+        if rack_max_mm < rack_min_mm:
+            raise ValueError(
+                f"rack_max ({rack_max_mm}) deve ser >= rack_min ({rack_min_mm})"
+            )
         values = np.arange(rack_min_mm, rack_max_mm + step_mm * 0.5, step_mm)
         configurations = [(0.0, 0.0, float(r)) for r in values]
         return self._run_sweep(configurations)
@@ -228,17 +246,25 @@ class SweepRunner:
         Estima o Roll Center na vista frontal Y-Z usando o método 2D padrão
         (Centro Instantâneo → linha até contact patch → plano de simetria).
 
-        Usa os inboards efetivos do corner original, deslocados pela mesma
-        transformação (heave + roll) que o solver aplicou.
+        IMPORTANTE: o "plano de simetria" do veículo gira com o chassi durante
+        o roll. Para calcular corretamente o RC em condição de roll, precisamos:
+
+            1. Achar o IC no referencial do MUNDO
+            2. Achar onde a linha IC→CP cruza o plano de simetria do CHASSI
+               (que é o plano vertical no Y=0 do referencial do chassi rolado)
+            3. O resultado é a posição do RC no mundo (em Y e Z)
+
+        Para roll=0, o plano do chassi é o plano Y=0 do mundo (comportamento
+        anterior). Para roll≠0, o plano está inclinado.
         """
+        import math
         from geometry.primitives import Point2D, line_intersection_2d
 
         corner = self.solver.corner
         uca_in_eff = corner.upper_arm.effective_inboard
         lca_in_eff = corner.lower_arm.effective_inboard
 
-        # Aplica o movimento do chassi nos inboards efetivos (cópia da lógica
-        # do solver para consistência)
+        # Aplica o movimento do chassi nos inboards efetivos
         uca_in_arr = self.solver._move_chassis_point(
             uca_in_eff, state.heave_mm, state.roll_deg
         )
@@ -258,15 +284,41 @@ class SweepRunner:
         except ValueError:
             return (0.0, 0.0)   # braços paralelos: RC no nível do solo
 
-        # Linha IC → contact patch, intersectada com Y=0 (plano de simetria)
         cp = Point2D(state.contact_patch.y, state.contact_patch.z)
-        du = cp.u - ic.u
-        if abs(du) < 1e-12:
-            return (0.0, ic.v)
 
-        t = -ic.u / du
-        v_rc = ic.v + t * (cp.v - ic.v)
-        return (0.0, float(v_rc))
+        # Vetor da linha IC→CP no plano YZ
+        du = cp.u - ic.u
+        dv = cp.v - ic.v
+
+        if abs(du) < 1e-12 and abs(dv) < 1e-12:
+            return (float(ic.u), float(ic.v))
+
+        # ─── Plano de simetria do CHASSI no plano YZ ─────────────────────────
+        # Em roll=0: plano vertical Y=0 (linha Y=0, dz qualquer)
+        # Em roll>0 (chassi rola para a direita = topo do chassi para −Y):
+        #   o plano é uma linha que passa pela origem do chassi e tem direção
+        #   rotacionada por -roll em torno de X.
+        roll_rad = math.radians(state.roll_deg)
+        # Vetor da "vertical do chassi" no plano YZ (rotação de Z por -roll)
+        # Origem do chassi assumida em (Y=0, Z=0)
+        cy = -math.sin(roll_rad)   # componente Y
+        cz =  math.cos(roll_rad)   # componente Z
+
+        # Interseção da reta paramétrica IC + t*(CP-IC) com a reta paramétrica
+        # do plano do chassi: (0,0) + s*(cy, cz)
+        # Sistema:
+        #   ic.u + t*du = s*cy
+        #   ic.v + t*dv = s*cz
+        # → t*du - s*cy = -ic.u
+        #   t*dv - s*cz = -ic.v
+        det = du * (-cz) - dv * (-cy)   # det = -du*cz + dv*cy
+        if abs(det) < 1e-12:
+            return (0.0, float(ic.v))
+
+        t = ((-ic.u) * (-cz) - (-ic.v) * (-cy)) / det
+        rc_y = ic.u + t * du
+        rc_z = ic.v + t * dv
+        return (float(rc_y), float(rc_z))
 
 
 # =============================================================================

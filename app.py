@@ -162,7 +162,7 @@ with st.sidebar:
         st.success(f"✅ '{uploaded.name}' — {n_rows} pontos · corners: {', '.join(corners)}")
 
         # Botão explícito que aplica o arquivo (recalcula tudo)
-        if st.button("🔄 **Aplicar arquivo**", type="primary", width='content',
+        if st.button("🔄 **Aplicar arquivo**", type="primary", use_container_width=True,
                       help="Carrega esse arquivo no app e recalcula todos os KPIs e gráficos"):
             st.session_state["hardpoints_df"]     = pending_df
             st.session_state["hardpoints_source"] = uploaded.name
@@ -172,7 +172,7 @@ with st.sidebar:
     st.markdown("**Ou use:**")
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("📋 Demo", width='content',
+        if st.button("📋 Demo", use_container_width=True,
                       help="Carrega geometria FSAE realista de exemplo"):
             st.session_state["hardpoints_df"]     = generate_template_dataframe()
             st.session_state["hardpoints_source"] = "Template demo"
@@ -182,14 +182,14 @@ with st.sidebar:
         template_df = generate_template_dataframe()
         st.download_button("⬇️ Template", data=template_df.write_csv().encode(),
                             file_name="hardpoints_template.csv", mime="text/csv",
-                            width='content',
+                            use_container_width=True,
                             help="Baixa o template em CSV para edição manual")
 
     # ─── ESTADO ATUAL ────────────────────────────────────────────────────────
     st.markdown("---")
     if "hardpoints_df" in st.session_state:
         st.info(f"📊 Em uso: **{st.session_state.get('hardpoints_source', '?')}**")
-        if st.button("🗑️ Limpar", width='content',
+        if st.button("🗑️ Limpar", use_container_width=True,
                       help="Remove o arquivo atual da sessão"):
             for key in ["hardpoints_df", "hardpoints_source", "last_optimization",
                         "manual_hardpoints", "manual_synced_source"]:
@@ -287,7 +287,7 @@ with tab_inputs:
         with bcol1:
             if st.button("🔁 Recarregar do arquivo",
                           help=f"Descarta edições manuais e recarrega do arquivo atual ({current_source})",
-                          width='content'):
+                          use_container_width=True):
                 df_loaded = _load_hardpoints_from_state()
                 if df_loaded is not None:
                     st.session_state["manual_hardpoints"] = _load_manual_from_df(df_loaded)
@@ -304,7 +304,7 @@ with tab_inputs:
         edit_corner = st.selectbox("Corner editado", VALID_CORNERS, key="edit_corner")
     with ctrl2:
         if st.button("📋 Carregar template neste corner",
-                      width='content'):
+                      use_container_width=True):
             tmpl = generate_template_dataframe()
             sub = tmpl.filter(pl.col("corner") == edit_corner)
             pts = {row["point"]: (float(row["x_mm"]),
@@ -315,7 +315,7 @@ with tab_inputs:
             st.rerun()
     with ctrl3:
         if st.button("🪞 Espelhar Esquerdo → Direito (Y → −Y)",
-                      width='content',
+                      use_container_width=True,
                       help="FL → FR e RL → RR invertendo Y"):
             for left, right in [("FL", "FR"), ("RL", "RR")]:
                 left_pts = st.session_state["manual_hardpoints"][left]
@@ -343,7 +343,7 @@ with tab_inputs:
 
         edited = st.data_editor(
             edit_data, num_rows="fixed", hide_index=True,
-            width='content', disabled=["point"],
+            use_container_width=True, disabled=["point"],
             column_config={
                 "point": st.column_config.TextColumn("Ponto", width="medium"),
                 "x_mm": st.column_config.NumberColumn("X (mm)", format="%.2f"),
@@ -361,7 +361,7 @@ with tab_inputs:
         action_col1, action_col2 = st.columns(2)
         with action_col1:
             if st.button("✅ Aplicar como hardpoints carregados",
-                          type="primary", width='content'):
+                          type="primary", use_container_width=True):
                 rows = []
                 for cid in VALID_CORNERS:
                     for pn, (x, y, z) in st.session_state["manual_hardpoints"][cid].items():
@@ -373,6 +373,10 @@ with tab_inputs:
                     _validate_dataframe(df_built)
                     st.session_state["hardpoints_df"] = df_built
                     st.session_state["hardpoints_source"] = "Inputs manuais"
+                    # CRÍTICO: atualizar synced_source também, senão o próximo
+                    # rerun vai descartar os dados manuais por achar que a fonte
+                    # mudou.
+                    st.session_state["manual_synced_source"] = "Inputs manuais"
                     st.success("✅ Aplicado! Vá em '📊 Análise'.")
                 except HardpointValidationError as exc:
                     st.error(f"❌ {exc}")
@@ -388,7 +392,7 @@ with tab_inputs:
                 "⬇️ Baixar tudo (CSV)",
                 data=df_out.write_csv().encode(),
                 file_name="hardpoints_manual.csv",
-                mime="text/csv", width='content',
+                mime="text/csv", use_container_width=True,
             )
 
     # COLUNA DIREITA: 3 vistas 2D
@@ -476,11 +480,11 @@ with tab_inputs:
             fig.update_yaxes(scaleanchor="x", scaleratio=1)
             return fig
 
-        st.plotly_chart(make_2d_view("YZ"), width='content',
+        st.plotly_chart(make_2d_view("YZ"), use_container_width=True,
                          key=f"yz_{edit_corner}")
-        st.plotly_chart(make_2d_view("XZ"), width='content',
+        st.plotly_chart(make_2d_view("XZ"), use_container_width=True,
                          key=f"xz_{edit_corner}")
-        st.plotly_chart(make_2d_view("XY"), width='content',
+        st.plotly_chart(make_2d_view("XY"), use_container_width=True,
                          key=f"xy_{edit_corner}")
 
 
@@ -641,23 +645,23 @@ with tab_analysis:
         if sweep_type == "Heave":
             pc1, pc2 = st.columns(2)
             with pc1:
-                st.plotly_chart(plot_camber_vs_heave(sweep), width='content')
+                st.plotly_chart(plot_camber_vs_heave(sweep), use_container_width=True)
             with pc2:
-                st.plotly_chart(plot_bump_steer(sweep), width='content')
-            st.plotly_chart(plot_rc_migration(sweep), width='content')
+                st.plotly_chart(plot_bump_steer(sweep), use_container_width=True)
+            st.plotly_chart(plot_rc_migration(sweep), use_container_width=True)
         elif sweep_type == "Steer":
-            st.plotly_chart(plot_caster_kpi_vs_steer(sweep), width='content')
+            st.plotly_chart(plot_caster_kpi_vs_steer(sweep), use_container_width=True)
         else:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=sweep["roll_deg"], y=sweep["camber_deg"],
                                        mode="lines+markers", name="Camber"))
             fig.update_layout(title="Camber vs Roll", xaxis_title="Roll (°)",
                                yaxis_title="Camber (°)", template="plotly_white")
-            st.plotly_chart(fig, width='content')
+            st.plotly_chart(fig, use_container_width=True)
 
         with st.expander("📋 Dados do sweep"):
             sweep_df = pl.DataFrame({n: sweep[n] for n in sweep.dtype.names})
-            st.dataframe(sweep_df, width='content')
+            st.dataframe(sweep_df, use_container_width=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -805,11 +809,11 @@ with tab_synthesis:
                  "OK Otimizado": "✅" if o["ok"] else "❌"}
                 for s, o in zip(seed_rows, opt_rows)
             ])
-            st.dataframe(comparison, width='content', hide_index=True)
+            st.dataframe(comparison, use_container_width=True, hide_index=True)
 
             st.markdown("### 🎯 Hardpoints otimizados")
             opt_df = dataframe_from_corner(result.optimal_corner, result.optimal_tie_rod)
-            st.dataframe(opt_df, width='content', hide_index=True)
+            st.dataframe(opt_df, use_container_width=True, hide_index=True)
 
             st.download_button(
                 "⬇️ Baixar CSV otimizado",
@@ -893,7 +897,7 @@ with tab_compare:
         {"Parâmetro": n, "A": f"{a:+.3f}", "B": f"{b:+.3f}",
          "Δ (B−A)": f"{b-a:+.3f}"} for n, a, b in metrics
     ])
-    st.dataframe(static_cmp, width='content', hide_index=True)
+    st.dataframe(static_cmp, use_container_width=True, hide_index=True)
 
     st.markdown("### Heave Sweep — Sobreposição")
     hsc1, hsc2, hsc3 = st.columns(3)
@@ -930,9 +934,9 @@ with tab_compare:
 
     pc1, pc2 = st.columns(2)
     with pc1: st.plotly_chart(overlay("camber_deg", "Camber vs Heave", "Camber (°)"),
-                                width='content')
+                                use_container_width=True)
     with pc2: st.plotly_chart(overlay("toe_deg", "Δ Toe vs Heave", "Δ Toe (°)"),
-                                width='content')
+                                use_container_width=True)
 
     fig_rc = go.Figure()
     fig_rc.add_trace(go.Scatter(x=sweep_a["rc_y_mm"], y=sweep_a["rc_z_mm"],
@@ -945,4 +949,4 @@ with tab_compare:
                           xaxis_title="RC Y", yaxis_title="RC Z",
                           template="plotly_white")
     fig_rc.update_yaxes(scaleanchor="x", scaleratio=1)
-    st.plotly_chart(fig_rc, width='content')
+    st.plotly_chart(fig_rc, use_container_width=True)
