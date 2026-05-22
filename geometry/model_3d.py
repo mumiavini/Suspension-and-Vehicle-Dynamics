@@ -383,7 +383,7 @@ class SuspensionCorner:
 
     def anti_dive_percent(
         self,
-        brake_bias: float = 0.5,
+        brake_bias: float = 0.6,
         wheelbase_mm: float = 1550.0,
         cg_height_mm: float = 280.0,
     ) -> float:
