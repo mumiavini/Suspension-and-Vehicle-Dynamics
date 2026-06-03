@@ -16,6 +16,7 @@ COMO RODAR:
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +28,7 @@ import plotly.graph_objects as go
 from analysis.io_hardpoints import (
     read_hardpoints,
     build_corner_from_dataframe,
+    build_vehicle_from_dataframe,
     generate_template_dataframe,
     dataframe_from_corner,
     HardpointValidationError,
@@ -51,6 +53,13 @@ from analysis.optimizer import (
     DesignTargets,
     HardpointBounds,
     validate_against_targets,
+)
+from analysis.kpis import (
+    static_sum_toe_deg,
+    ackermann_geometry,
+    steer_ratio_and_cfactor,
+    steer_ratio_from_pinion,
+    roll_center_at_1g_lat,
 )
 
 
@@ -100,7 +109,6 @@ def _build_corner_safe(df, corner_id):
 
 
 def _build_vehicle_safe(df):
-    from analysis.io_hardpoints import build_vehicle_from_dataframe
     try:
         return build_vehicle_from_dataframe(df)
     except HardpointValidationError as exc:
@@ -224,8 +232,8 @@ with st.sidebar:
 # ABAS
 # =============================================================================
 
-tab_inputs, tab_analysis, tab_synthesis, tab_compare = st.tabs([
-    "✏️ Inputs", "📊 Análise", "🎯 Síntese / Otimização", "🔄 Comparação",
+tab_inputs, tab_analysis, tab_3d, tab_synthesis, tab_compare = st.tabs([
+    "✏️ Inputs", "📊 Análise", "🌐 Vista 3D", "🎯 Síntese / Otimização", "🔄 Comparação",
 ])
 
 
@@ -493,179 +501,684 @@ with tab_inputs:
 # ─────────────────────────────────────────────────────────────────────────────
 
 with tab_analysis:
-    st.header("Análise cinemática completa")
+    st.header("Análise — Ficha de setup completa")
+    st.markdown(
+        "Tabela com **todos os parâmetros do veículo**, lado a lado para "
+        "dianteiro e traseiro. Valores são calculados automaticamente dos "
+        "hardpoints quando possível; o que precisar de input adicional aparece "
+        "abaixo."
+    )
 
     df = _load_hardpoints_from_state()
     if df is None:
         st.info("👈 Carregue ou edite hardpoints primeiro.")
     else:
         vehicle, all_tie_rods = _build_vehicle_safe(df)
-
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            corner_choice = st.selectbox("Corner", VALID_CORNERS,
-                                          key="analysis_corner")
-
-        built = _build_corner_safe(df, corner_choice)
-        if built is None:
+        if vehicle is None or all_tie_rods is None:
+            st.error("Não foi possível construir o veículo completo a partir do arquivo.")
             st.stop()
-        corner, tie_rod = built
+
+        # ─── INPUTS DO USUÁRIO (parâmetros físicos não-calculáveis) ──────────
+        with st.expander("🔧 **Inputs adicionais** — configurações que não vêm dos hardpoints", expanded=False):
+            st.markdown(
+                "Esses valores são necessários para calcular wheel rate, roll rate, "
+                "frequência natural, motion ratio e damping. Deixe em branco (0) "
+                "para que esses KPIs apareçam como `—` na tabela."
+            )
+
+            tab_tire, tab_susp, tab_mass, tab_damper, tab_other = st.tabs([
+                "🛞 Pneus & Rodas",
+                "🔩 Suspensão & Mola",
+                "⚖️ Massas",
+                "🌊 Amortecedor",
+                "📝 Outros",
+            ])
+
+            with tab_tire:
+                c1, c2 = st.columns(2)
+                with c1:
+                    tire_size  = st.text_input("Tire size, compound, make",
+                                                 value="", placeholder="ex: 18.0×7.5-10 Hoosier R25B",
+                                                 key="in_tire")
+                    wheel_diam = st.number_input("Wheel diameter (inch)",
+                                                   min_value=0.0, value=10.0, step=0.5,
+                                                   key="in_wheel_diam")
+                with c2:
+                    wheel_mat  = st.text_input("Wheel material / construction",
+                                                 value="", placeholder="ex: alumínio forjado 2-piece",
+                                                 key="in_wheel_mat")
+                    wheel_wid  = st.number_input("Wheel width (inch)",
+                                                   min_value=0.0, value=7.0, step=0.5,
+                                                   key="in_wheel_wid")
+
+            with tab_susp:
+                c1, c2 = st.columns(2)
+                with c1:
+                    susp_type  = st.text_input("Suspension type",
+                                                 value="Double wishbone push/pull-rod",
+                                                 key="in_susp_type")
+                    susp_travel_f = st.number_input("Design travel — FRONT (mm)",
+                                                      min_value=0.0, value=0.0, step=1.0,
+                                                      key="in_travel_f",
+                                                      help="Curso útil de heave dianteiro (bump+rebound)")
+                    spring_rate_f = st.number_input("Spring rate — FRONT (N/mm)",
+                                                      min_value=0.0, value=0.0, step=1.0,
+                                                      key="in_spring_f",
+                                                      help="Rigidez da mola dianteira (no eixo da mola, não da roda)")
+                    mr_front = st.number_input("Motion Ratio — FRONT",
+                                                 min_value=0.0, value=0.0, step=0.05, format="%.3f",
+                                                 key="in_mr_f",
+                                                 help="MR = Δ(mola) / Δ(roda). Típico FSAE: 0.7–1.1")
+                with c2:
+                    susp_adj    = st.text_input("Static camber adjustment method",
+                                                  value="2 mm plates between upright and upper arm fixation",
+                                                  key="in_susp_adj")
+                    susp_travel_r = st.number_input("Design travel — REAR (mm)",
+                                                      min_value=0.0, value=0.0, step=1.0,
+                                                      key="in_travel_r")
+                    spring_rate_r = st.number_input("Spring rate — REAR (N/mm)",
+                                                      min_value=0.0, value=0.0, step=1.0,
+                                                      key="in_spring_r")
+                    mr_rear = st.number_input("Motion Ratio — REAR",
+                                                 min_value=0.0, value=0.0, step=0.05, format="%.3f",
+                                                 key="in_mr_r")
+                arb_adj = st.text_input("Suspension adjustment methods (outros)",
+                                          value="",
+                                          placeholder="ex: ARB com 3 posições, pré-carga variável",
+                                          key="in_susp_methods")
+
+            with tab_mass:
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    total_mass = st.number_input("Massa total c/ piloto (kg)",
+                                                   min_value=0.0, value=0.0, step=5.0,
+                                                   key="in_mass_total",
+                                                   help="Carro + piloto + combustível")
+                with c2:
+                    weight_dist_f = st.number_input("Distribuição de peso — FRONT (%)",
+                                                     min_value=0.0, max_value=100.0,
+                                                     value=45.0, step=0.5,
+                                                     key="in_weight_dist_f",
+                                                     help="% do peso no eixo dianteiro")
+                with c3:
+                    unsprung_per_corner = st.number_input("Massa não-suspensa por corner (kg)",
+                                                            min_value=0.0, value=0.0, step=0.5,
+                                                            key="in_unsprung",
+                                                            help="Roda + pneu + manga + freio + ~50% braços")
+
+            with tab_damper:
+                c1, c2 = st.columns(2)
+                with c1:
+                    jounce_pct_f = st.number_input("Jounce damping — FRONT (% crítico)",
+                                                     min_value=0.0, max_value=200.0,
+                                                     value=0.0, step=5.0,
+                                                     key="in_jounce_f")
+                    rebound_pct_f = st.number_input("Rebound damping — FRONT (% crítico)",
+                                                      min_value=0.0, max_value=200.0,
+                                                      value=0.0, step=5.0,
+                                                      key="in_rebound_f")
+                with c2:
+                    jounce_pct_r = st.number_input("Jounce damping — REAR (% crítico)",
+                                                     min_value=0.0, max_value=200.0,
+                                                     value=0.0, step=5.0,
+                                                     key="in_jounce_r")
+                    rebound_pct_r = st.number_input("Rebound damping — REAR (% crítico)",
+                                                      min_value=0.0, max_value=200.0,
+                                                      value=0.0, step=5.0,
+                                                      key="in_rebound_r")
+
+            with tab_other:
+                roll_stiff = st.number_input("Roll stiffness (°/g) — usado para RC@1g",
+                                               min_value=0.1, value=1.5, step=0.1,
+                                               key="in_roll_stiff")
+                ackermann_adj = st.selectbox(
+                    "Ackermann ajustável?",
+                    ["No", "Yes (multiple positions)", "Yes (continuous)"],
+                    key="in_ack_adj",
+                )
+
+        # ─── INFRASTRUTURA: calcula sweeps F e R de uma vez ───────────────────
         vs = st.session_state["vehicle_setup"]
 
-        with col2:
-            sweep_type = st.radio("Sweep", ["Heave", "Roll", "Steer"],
-                                    horizontal=True, key="analysis_sweep_type")
+        @st.cache_data(show_spinner=False)
+        def _compute_axle_data_cached(df_hash, axle_side, brake_bias, c_factor, sw_lock):
+            """Computa todos os KPIs e sweeps para um eixo. Cache via hash do df."""
+            # Esse wrapper existe só pra usar st.cache_data; o df_hash garante
+            # invalidação quando os hardpoints mudam.
+            return None
 
-        sc1, sc2, sc3 = st.columns(3)
-        if sweep_type == "Heave":
-            with sc1: h_min  = st.number_input("Min (mm)",  value=-25.0, key="hmin")
-            with sc2: h_max  = st.number_input("Max (mm)",  value= 25.0, key="hmax")
-            with sc3: h_step = st.number_input("Step (mm)", value= 1.0,  key="hstep")
-            sweep_params = (h_min, h_max, h_step)
-        elif sweep_type == "Roll":
-            with sc1: r_min  = st.number_input("Min (°)",  value=-3.0, key="rmin")
-            with sc2: r_max  = st.number_input("Max (°)",  value= 3.0, key="rmax")
-            with sc3: r_step = st.number_input("Step (°)", value= 0.2, key="rstep")
-            sweep_params = (r_min, r_max, r_step)
-        else:
-            with sc1: s_min  = st.number_input("Min (mm)",  value=-30.0, key="smin")
-            with sc2: s_max  = st.number_input("Max (mm)",  value= 30.0, key="smax")
-            with sc3: s_step = st.number_input("Step (mm)", value= 1.0,  key="sstep")
-            sweep_params = (s_min, s_max, s_step)
+        # Quando df muda, force re-compute manualmente (cache invalidation)
+        df_signature = df.write_csv()  # representação textual única do df
 
-        # ── KPIs ESTÁTICOS ───────────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown("### 📐 KPIs Estáticos")
+        def compute_axle(left_corner, left_tr, right_corner, right_tr,
+                          is_front: bool):
+            """Calcula todos os KPIs de um eixo (média esquerda+direita onde faz sentido)."""
+            res: dict[str, object] = {}
 
-        st.markdown("**Pino Mestre & Geometria de Roda**")
-        kkp = st.columns(6)
-        kkp[0].metric("Caster (°)",       _format_kpi(corner.static_caster_deg(),     "", "+.3f"))
-        kkp[1].metric("KPI (°)",          _format_kpi(corner.static_kpi_deg(),        "", "+.3f"))
-        kkp[2].metric("Kin Trail (mm)",   _format_kpi(corner.static_mechanical_trail_mm(), "", "+.2f"))
-        kkp[3].metric("Scrub Rad (mm)",   _format_kpi(corner.static_scrub_radius_mm(),     "", "+.2f"))
-        kkp[4].metric("Kingpin Offset (mm)",
-                       _format_kpi(corner.static_kingpin_offset_mm(), "", "+.2f"),
-                       help="Distância do eixo do pino ao WC, no nível do WC")
-        kkp[5].metric("Steer Arm (mm)",
-                       _format_kpi(corner.steer_arm_length_mm(tie_rod.outboard), "", "+.2f"),
-                       help="Distância perpendicular do TRO ao eixo do pino mestre")
+            # ── Cinemática estática (mesma F e R) ──
+            res["caster_l"] = left_corner.static_caster_deg()
+            res["caster_r"] = right_corner.static_caster_deg()
+            res["kpi_l"]    = left_corner.static_kpi_deg()
+            res["kpi_r"]    = right_corner.static_kpi_deg()
+            res["camber_l"] = left_corner.static_camber_deg()
+            res["camber_r"] = right_corner.static_camber_deg()
+            res["scrub_l"]  = left_corner.static_scrub_radius_mm()
+            res["scrub_r"]  = right_corner.static_scrub_radius_mm()
+            res["trail_l"]  = left_corner.static_mechanical_trail_mm()
+            res["trail_r"]  = right_corner.static_mechanical_trail_mm()
+            res["rc_static"]= 0.5 * (left_corner.roll_center_height_mm()
+                                      + right_corner.roll_center_height_mm())
+            res["sum_toe"]  = static_sum_toe_deg(left_corner, left_tr,
+                                                  right_corner, right_tr)
 
-        st.markdown("**Camber & Roll Center**")
-        krc = st.columns(4)
-        krc[0].metric("Static Camber (°)",     _format_kpi(corner.static_camber_deg(), "", "+.3f"))
-        krc[1].metric("RC Height (mm)",        _format_kpi(corner.roll_center_height_mm(), "", "+.2f"))
-        if vehicle is not None:
-            rc_f, rc_r = vehicle.roll_axis()
-            krc[2].metric("RC Front avg (mm)", _format_kpi(rc_f, "", "+.2f"))
-            krc[3].metric("Roll Axis incl (°)", _format_kpi(vehicle.roll_axis_inclination_deg(), "", "+.4f"))
-        else:
-            krc[2].metric("RC Front avg (mm)", "N/A")
-            krc[3].metric("Roll Axis incl (°)", "N/A")
+            # ── Sweep de heave (esquerdo basta; geometria é simétrica) ──
+            solver_l = KinematicSolver3D(left_corner, left_tr)
+            runner_l = SweepRunner(solver=solver_l)
+            heave_sweep = runner_l.heave_sweep(-25.0, 25.0, 2.5)
+            res["ride_camber_dpm"] = camber_gain_per_mm(heave_sweep) * 1000.0
+            res["camber_gain"]     = camber_gain_per_mm(heave_sweep)
+            res["bump_steer"]      = bump_steer_per_mm(heave_sweep)
+            res["rc_dy"], res["rc_dz"] = rc_migration_range(heave_sweep)
 
-        st.markdown("**Anti-features (vista lateral)**")
-        kanti = st.columns(2)
-        is_front = corner_choice in ("FL", "FR")
-        if is_front:
-            anti_dive = corner.anti_dive_percent(brake_bias=vs["brake_bias"])
-            kanti[0].metric("Anti-dive (%)",  _format_kpi(anti_dive, "", "+.2f"),
-                             help=f"Brake bias front = {vs['brake_bias']:.2f}")
-            kanti[1].metric("Anti-squat (%)", "N/A (eixo dianteiro)")
-        else:
-            anti_squat = corner.anti_squat_percent(drive_fraction=1.0)
-            kanti[0].metric("Anti-dive (%)", "N/A (eixo traseiro)")
-            kanti[1].metric("Anti-squat (%)", _format_kpi(anti_squat, "", "+.2f"),
-                             help="Tração 100% no eixo traseiro")
-
-        st.markdown("**Direção (veículo completo)**")
-        kstr = st.columns(4)
-        if vehicle is not None and all_tie_rods is not None:
-            ack = vehicle.static_ackermann_percent(
-                all_tie_rods["FL"].outboard, all_tie_rods["FR"].outboard,
-            )
-            kstr[0].metric("Static Ackermann (%)", _format_kpi(ack, "", "+.2f"))
-        else:
-            kstr[0].metric("Static Ackermann (%)", "N/A")
-
-        # Steer Ratio aproximado
-        steer_ratio_str = "N/A"
-        if vs["c_factor_mm"] > 0:
-            sa = corner.steer_arm_length_mm(tie_rod.outboard)
-            if sa > 1e-6:
-                max_rack = vs["steering_wheel_lock_deg"] * vs["c_factor_mm"] / 360.0
-                max_road_wheel = np.degrees(max_rack / sa)
-                if max_road_wheel > 1e-3:
-                    sr = vs["steering_wheel_lock_deg"] / (2 * max_road_wheel)
-                    steer_ratio_str = f"{sr:.2f}:1"
-        kstr[1].metric("Steer Ratio (≈)",       steer_ratio_str,
-                        help="lock_volante / (2·max_road_angle)")
-        kstr[2].metric("c-factor (mm/rev)",     f"{vs['c_factor_mm']:.1f}")
-        kstr[3].metric("Tie-rod length (mm)",   f"{tie_rod.length:.1f}")
-
-        # ── SWEEP DINÂMICO ───────────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown(f"### 📈 {sweep_type} Sweep")
-
-        with st.spinner(f"Executando {sweep_type.lower()} sweep..."):
-            sweep = _run_sweep_cached(corner, tie_rod, sweep_type, sweep_params)
-
-        if sweep_type == "Heave":
-            kd = st.columns(5)
-            cg = camber_gain_per_mm(sweep)
-            kd[0].metric("Ride Camber (°/m)",
-                          _format_kpi(cg * 1000.0, "", "+.2f"),
-                          help="Camber Gain × 1000 (mm→m)")
-            kd[1].metric("Camber Gain (°/mm)", _format_kpi(cg, "", "+.5f"))
-            kd[2].metric("Bump Steer (°/mm)",  _format_kpi(bump_steer_per_mm(sweep), "", "+.5f"))
-            dy, dz = rc_migration_range(sweep)
-            kd[3].metric("RC ΔY (mm)", f"{dy:.2f}")
-            kd[4].metric("RC ΔZ (mm)", f"{dz:.2f}")
-
-        elif sweep_type == "Roll":
-            kd = st.columns(3)
-            roll_data = sweep["roll_deg"]; camber_data = sweep["camber_deg"]
-            if len(roll_data) > 1 and (roll_data.max() - roll_data.min()) > 1e-6:
-                roll_camber = float(np.polyfit(roll_data, camber_data, 1)[0])
+            # ── Roll sweep para roll camber ──
+            solver_l.reset_seed()
+            roll_sweep = runner_l.roll_sweep(-2.0, 2.0, 0.25)
+            if len(roll_sweep) > 1:
+                rolls   = roll_sweep["roll_deg"]
+                cambers = roll_sweep["camber_deg"]
+                if (rolls.max() - rolls.min()) > 1e-6:
+                    res["roll_camber"] = float(np.polyfit(rolls, cambers, 1)[0])
+                else:
+                    res["roll_camber"] = float("nan")
             else:
-                roll_camber = float("nan")
-            kd[0].metric("Roll Camber (°/°)", _format_kpi(roll_camber, "", "+.4f"))
-            kd[1].metric("Camber min (°)",    _format_kpi(camber_data.min(), "", "+.3f"))
-            kd[2].metric("Camber max (°)",    _format_kpi(camber_data.max(), "", "+.3f"))
+                res["roll_camber"] = float("nan")
 
-        else:
-            kd = st.columns(3)
-            kd[0].metric("Toe range (°)",
-                          f"{sweep['toe_deg'].min():+.2f} a {sweep['toe_deg'].max():+.2f}")
-            kd[1].metric("Caster range (°)",
-                          f"{sweep['caster_deg'].min():+.3f} a {sweep['caster_deg'].max():+.3f}")
-            kd[2].metric("KPI range (°)",
-                          f"{sweep['kpi_deg'].min():+.3f} a {sweep['kpi_deg'].max():+.3f}")
+            # ── RC @ 1g lateral ──
+            try:
+                rc1g = roll_center_at_1g_lat(
+                    left_corner, left_tr, right_corner, right_tr,
+                    roll_stiffness_deg_per_g=roll_stiff,
+                )
+                res["rc_1g_y"] = rc1g["rc_y_mm"]
+                res["rc_1g_z"] = rc1g["rc_z_mm"]
+            except Exception:
+                res["rc_1g_y"] = float("nan")
+                res["rc_1g_z"] = float("nan")
 
-        # Plots
-        st.markdown("#### Gráficos")
-        if sweep_type == "Heave":
-            pc1, pc2 = st.columns(2)
-            with pc1:
-                st.plotly_chart(plot_camber_vs_heave(sweep), use_container_width=True)
-            with pc2:
-                st.plotly_chart(plot_bump_steer(sweep), use_container_width=True)
-            st.plotly_chart(plot_rc_migration(sweep), use_container_width=True)
-        elif sweep_type == "Steer":
-            st.plotly_chart(plot_caster_kpi_vs_steer(sweep), use_container_width=True)
-        else:
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=sweep["roll_deg"], y=sweep["camber_deg"],
-                                       mode="lines+markers", name="Camber"))
-            fig.update_layout(title="Camber vs Roll", xaxis_title="Roll (°)",
-                               yaxis_title="Camber (°)", template="plotly_white")
-            st.plotly_chart(fig, use_container_width=True)
+            # ── Anti-features ──
+            if is_front:
+                res["anti_dive"]  = left_corner.anti_dive_percent(brake_bias=vs["brake_bias"])
+                res["anti_squat"] = float("nan")
+            else:
+                res["anti_dive"]  = float("nan")
+                res["anti_squat"] = left_corner.anti_squat_percent(drive_fraction=1.0)
 
-        with st.expander("📋 Dados do sweep"):
-            sweep_df = pl.DataFrame({n: sweep[n] for n in sweep.dtype.names})
-            st.dataframe(sweep_df, use_container_width=True)
+            # ── Ackermann (só faz sentido na dianteira) ──
+            if is_front:
+                ack_info = ackermann_geometry(left_corner, left_tr,
+                                               right_corner, right_tr,
+                                               vehicle.rear_left)
+                res["ackermann"] = ack_info["ackermann_percent"]
+                res["steer_arm_l"] = ack_info["steer_arm_length_left"]
+                res["steer_arm_r"] = ack_info["steer_arm_length_right"]
+
+                # Steer ratio
+                sr_info = steer_ratio_and_cfactor(left_corner, left_tr)
+                if vs["c_factor_mm"] > 0:
+                    res["steer_ratio"] = steer_ratio_from_pinion(
+                        sr_info["rack_per_wheel_deg_mm_per_deg"], vs["c_factor_mm"])
+                else:
+                    res["steer_ratio"] = float("nan")
+                res["c_factor"] = vs["c_factor_mm"]
+            else:
+                res["ackermann"]   = float("nan")
+                res["steer_arm_l"] = float("nan")
+                res["steer_arm_r"] = float("nan")
+                res["steer_ratio"] = float("nan")
+                res["c_factor"]    = float("nan")
+
+            return res
+
+        with st.spinner("Calculando KPIs dos dois eixos..."):
+            front_data = compute_axle(vehicle.front_left, all_tie_rods["FL"],
+                                       vehicle.front_right, all_tie_rods["FR"],
+                                       is_front=True)
+            rear_data  = compute_axle(vehicle.rear_left, all_tie_rods["RL"],
+                                       vehicle.rear_right, all_tie_rods["RR"],
+                                       is_front=False)
+
+        # ─── Cálculos derivados que dependem de INPUTS do usuário ────────────
+        def _wheel_rate(spring_rate: float, mr: float) -> float:
+            """Wheel rate (N/mm) = spring_rate × MR²."""
+            if spring_rate <= 0 or mr <= 0:
+                return float("nan")
+            return spring_rate * mr * mr
+
+        def _roll_rate(wheel_rate: float, track_mm: float) -> float:
+            """Roll rate por roda (Nm/°) = wheel_rate × track² / 2 × π/180 / 1000.
+
+            Fórmula: K_roll = (1/2) × K_wheel × T² × (π/180) [Nm/°]
+            onde K_wheel está em N/mm e T em mm. O fator 1000 converte mm² para m².
+            """
+            if math.isnan(wheel_rate) or track_mm <= 0:
+                return float("nan")
+            # wheel_rate N/mm = wheel_rate × 1000 N/m
+            # roll rate em Nm/rad = (1/2) × K × T² (T em m)
+            # converte para Nm/°: × π/180
+            T_m = track_mm / 1000.0
+            return 0.5 * (wheel_rate * 1000.0) * T_m * T_m * math.pi / 180.0
+
+        def _natural_freq(wheel_rate: float, sprung_per_corner: float) -> float:
+            """Frequência natural (Hz) = (1/2π) × √(K/M).
+
+            K em N/m, M em kg → ω em rad/s → / 2π = Hz.
+            """
+            if math.isnan(wheel_rate) or sprung_per_corner <= 0:
+                return float("nan")
+            K = wheel_rate * 1000.0   # N/m
+            return (1.0 / (2.0 * math.pi)) * math.sqrt(K / sprung_per_corner)
+
+        # Calcula massas por corner
+        sprung_total = float("nan")
+        sprung_front_per_corner = float("nan")
+        sprung_rear_per_corner  = float("nan")
+        if total_mass > 0 and unsprung_per_corner > 0:
+            unsprung_total = 4.0 * unsprung_per_corner
+            sprung_total   = total_mass - unsprung_total
+            if sprung_total > 0:
+                wd = weight_dist_f / 100.0
+                sprung_front_per_corner = sprung_total * wd / 2.0
+                sprung_rear_per_corner  = sprung_total * (1.0 - wd) / 2.0
+
+        # Aplica nos dados de cada eixo
+        front_data["wheel_rate"] = _wheel_rate(spring_rate_f, mr_front)
+        rear_data["wheel_rate"]  = _wheel_rate(spring_rate_r, mr_rear)
+        front_data["roll_rate"]  = _roll_rate(front_data["wheel_rate"],
+                                                vehicle.track_front_mm)
+        rear_data["roll_rate"]   = _roll_rate(rear_data["wheel_rate"],
+                                                vehicle.track_rear_mm)
+        front_data["nat_freq"]   = _natural_freq(front_data["wheel_rate"],
+                                                   sprung_front_per_corner)
+        rear_data["nat_freq"]    = _natural_freq(rear_data["wheel_rate"],
+                                                   sprung_rear_per_corner)
+        front_data["motion_ratio"] = mr_front if mr_front > 0 else float("nan")
+        rear_data["motion_ratio"]  = mr_rear  if mr_rear  > 0 else float("nan")
+        front_data["jounce_pct"]   = jounce_pct_f if jounce_pct_f > 0 else float("nan")
+        front_data["rebound_pct"]  = rebound_pct_f if rebound_pct_f > 0 else float("nan")
+        rear_data["jounce_pct"]    = jounce_pct_r if jounce_pct_r > 0 else float("nan")
+        rear_data["rebound_pct"]   = rebound_pct_r if rebound_pct_r > 0 else float("nan")
+        front_data["travel"]       = susp_travel_f if susp_travel_f > 0 else float("nan")
+        rear_data["travel"]        = susp_travel_r if susp_travel_r > 0 else float("nan")
+
+        # ─── Helper de formatação ────────────────────────────────────────────
+        def fmt(v, fmt_str="+.3f") -> str:
+            """Formata um número; retorna '—' se NaN ou input ausente."""
+            if v is None:
+                return "—"
+            try:
+                if math.isnan(float(v)):
+                    return "—"
+                return format(float(v), fmt_str)
+            except (TypeError, ValueError):
+                return str(v)
+
+        def fmt_pair(v_l, v_r, fmt_str="+.3f") -> str:
+            """Formata 'L / R' para parâmetros que diferem por roda."""
+            return f"{fmt(v_l, fmt_str)} / {fmt(v_r, fmt_str)}"
+
+        # ─── TABELA PRINCIPAL ────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("### 📋 Ficha de Setup Completa")
+
+        # Construção da tabela linha-por-linha
+        # Cada linha: [Parâmetro, Unidade, Front, Rear, Origem]
+        # Origem: 📐 calculado / ⌨️ input / 🧮 derivado
+
+        rows: list[dict[str, str]] = []
+
+        def add(param, unit, f_val, r_val, origin):
+            rows.append({
+                "Parâmetro": param,
+                "Unidade":   unit,
+                "Front":     str(f_val),
+                "Rear":      str(r_val),
+                "Origem":    origin,
+            })
+
+        # Inputs de pneu/roda (mesmo para os dois eixos)
+        add("Tire size, compound, make",          "",
+            tire_size or "—",  tire_size or "—",  "⌨️ input")
+        add("Wheel (diameter × width)",           "inch",
+            f"{wheel_diam:.1f} × {wheel_wid:.1f}" if wheel_diam else "—",
+            f"{wheel_diam:.1f} × {wheel_wid:.1f}" if wheel_diam else "—",
+            "⌨️ input")
+        add("Wheel material / construction",      "",
+            wheel_mat or "—", wheel_mat or "—", "⌨️ input")
+        add("Suspension type",                    "",
+            susp_type or "—", susp_type or "—", "⌨️ input")
+        add("Suspension design travel",           "mm",
+            fmt(front_data["travel"], ".1f"),
+            fmt(rear_data["travel"],  ".1f"),
+            "⌨️ input")
+
+        # Derivados (precisam de inputs)
+        add("Wheel rate (chassis → wheel center)", "N/mm",
+            fmt(front_data["wheel_rate"], ".2f"),
+            fmt(rear_data["wheel_rate"],  ".2f"),
+            "🧮 derivado de mola + MR")
+        add("Roll rate (chassis → wheel center)",  "Nm/deg",
+            fmt(front_data["roll_rate"], ".1f"),
+            fmt(rear_data["roll_rate"],  ".1f"),
+            "🧮 derivado de wheel rate + track")
+        add("Sprung mass natural frequency",       "Hz",
+            fmt(front_data["nat_freq"], ".2f"),
+            fmt(rear_data["nat_freq"],  ".2f"),
+            "🧮 derivado de wheel rate + massa")
+        add("Jounce damping",                       "% critical",
+            fmt(front_data["jounce_pct"],  ".0f"),
+            fmt(rear_data["jounce_pct"],   ".0f"),
+            "⌨️ input")
+        add("Rebound damping",                      "% critical",
+            fmt(front_data["rebound_pct"], ".0f"),
+            fmt(rear_data["rebound_pct"],  ".0f"),
+            "⌨️ input")
+        add("Motion ratio",                         "x:1",
+            fmt(front_data["motion_ratio"], ".3f"),
+            fmt(rear_data["motion_ratio"],  ".3f"),
+            "⌨️ input")
+
+        # Calculados (geometria)
+        add("Ride Camber (rate of change)",        "deg/m",
+            fmt(front_data["ride_camber_dpm"], "+.2f"),
+            fmt(rear_data["ride_camber_dpm"],  "+.2f"),
+            "📐 calculado")
+        add("Roll Camber",                          "deg/deg",
+            fmt(front_data["roll_camber"], "+.4f"),
+            fmt(rear_data["roll_camber"],  "+.4f"),
+            "📐 calculado")
+        add("Static Sum Toe (− out, + in)",         "deg",
+            fmt(front_data["sum_toe"], "+.4f"),
+            fmt(rear_data["sum_toe"],  "+.4f"),
+            "📐 calculado")
+        add("Static camber (L / R)",                "deg",
+            fmt_pair(front_data["camber_l"], front_data["camber_r"], "+.3f"),
+            fmt_pair(rear_data["camber_l"],  rear_data["camber_r"],  "+.3f"),
+            "📐 calculado")
+        add("Static camber adjustment method",      "",
+            susp_adj or "—", susp_adj or "—", "⌨️ input")
+        add("Anti dive / Anti squat",               "%",
+            fmt(front_data["anti_dive"],  "+.2f"),
+            fmt(rear_data["anti_squat"], "+.2f"),
+            "📐 calculado (precisa CG, brake bias)")
+        add("Roll center height above ground, static", "mm",
+            fmt(front_data["rc_static"], "+.2f"),
+            fmt(rear_data["rc_static"],  "+.2f"),
+            "📐 calculado")
+        add("Roll center @ 1g lateral acc — height",   "mm",
+            fmt(front_data["rc_1g_z"], "+.2f"),
+            fmt(rear_data["rc_1g_z"],  "+.2f"),
+            f"📐 calculado (roll stiffness {roll_stiff}°/g)")
+        add("Roll center @ 1g lateral acc — lateral",  "mm",
+            fmt(front_data["rc_1g_y"], "+.2f"),
+            fmt(rear_data["rc_1g_y"],  "+.2f"),
+            f"📐 calculado (roll stiffness {roll_stiff}°/g)")
+        add("Caster (L / R)",                         "deg",
+            fmt_pair(front_data["caster_l"], front_data["caster_r"], "+.3f"),
+            "N/A (sem caster traseiro relevante)",
+            "📐 calculado")
+        add("Kingpin trail (L / R)",                  "mm",
+            fmt_pair(front_data["trail_l"], front_data["trail_r"], "+.2f"),
+            fmt_pair(rear_data["trail_l"],  rear_data["trail_r"],  "+.2f"),
+            "📐 calculado")
+        add("Scrub radius (L / R)",                   "mm",
+            fmt_pair(front_data["scrub_l"], front_data["scrub_r"], "+.2f"),
+            fmt_pair(rear_data["scrub_l"],  rear_data["scrub_r"],  "+.2f"),
+            "📐 calculado")
+        add("Kingpin Inclination (L / R)",             "deg",
+            fmt_pair(front_data["kpi_l"], front_data["kpi_r"], "+.3f"),
+            fmt_pair(rear_data["kpi_l"],  rear_data["kpi_r"],  "+.3f"),
+            "📐 calculado")
+        add("Static Ackermann",                        "%",
+            fmt(front_data["ackermann"], "+.2f"),
+            "N/A",
+            "📐 calculado")
+        add("Ackermann ajustável?",                    "",
+            ackermann_adj, "—",
+            "⌨️ input")
+        add("Suspension adjustment methods",           "",
+            arb_adj or "—", arb_adj or "—",
+            "⌨️ input")
+        add("Steer Ratio",                             "x:1",
+            fmt(front_data["steer_ratio"], ".2f"),
+            "N/A",
+            f"🧮 derivado de c-factor={vs['c_factor_mm']:.0f} mm/rev")
+        add("C-factor",                                "mm/rev",
+            fmt(front_data["c_factor"], ".1f"),
+            "N/A",
+            "⌨️ input (sidebar)")
+        add("Steer Arm Length (L / R)",                "mm",
+            fmt_pair(front_data["steer_arm_l"], front_data["steer_arm_r"], ".2f"),
+            "N/A",
+            "📐 calculado")
+
+        # Massas / distribuição
+        if total_mass > 0:
+            add("Massa total c/ piloto",               "kg",
+                f"{total_mass:.1f}", f"{total_mass:.1f}", "⌨️ input")
+            if not math.isnan(sprung_total):
+                add("Massa suspensa total",            "kg",
+                    f"{sprung_total:.1f}", f"{sprung_total:.1f}", "🧮 derivado")
+                add("Massa suspensa por corner",       "kg",
+                    fmt(sprung_front_per_corner, ".1f"),
+                    fmt(sprung_rear_per_corner,  ".1f"),
+                    "🧮 derivado")
+            add("Massa não-suspensa por corner",       "kg",
+                f"{unsprung_per_corner:.1f}", f"{unsprung_per_corner:.1f}",
+                "⌨️ input")
+            add("Distribuição de peso",                "%",
+                f"{weight_dist_f:.1f}", f"{100-weight_dist_f:.1f}",
+                "⌨️ input")
+
+        # Renderiza tabela
+        table_df = pl.DataFrame(rows)
+        st.dataframe(table_df, use_container_width=True, hide_index=True, height=900)
+
+        # Legenda
+        st.caption(
+            "**Legenda:** "
+            "📐 calculado dos hardpoints · "
+            "⌨️ input do usuário · "
+            "🧮 derivado (precisa de inputs nos expanders acima)"
+        )
+
+        # Download da tabela
+        csv_table = table_df.write_csv().encode()
+        st.download_button(
+            "⬇️ Baixar ficha de setup (CSV)",
+            data=csv_table,
+            file_name="setup_sheet.csv",
+            mime="text/csv",
+        )
+
+        # ─── SWEEPS COM GRÁFICOS (mantido, opcional) ─────────────────────────
+        st.markdown("---")
+        st.markdown("### 📈 Sweeps detalhados (opcional)")
+
+        with st.expander("Mostrar gráficos de sweep para um corner específico", expanded=False):
+            col_a, col_b = st.columns([1, 3])
+            with col_a:
+                corner_choice = st.selectbox("Corner", VALID_CORNERS, key="analysis_corner")
+                sweep_type = st.radio("Sweep", ["Heave", "Roll", "Steer"],
+                                       horizontal=False, key="analysis_sweep_type")
+
+            with col_b:
+                sc1, sc2, sc3 = st.columns(3)
+                if sweep_type == "Heave":
+                    with sc1: h_min  = st.number_input("Min (mm)",  value=-25.0, key="hmin")
+                    with sc2: h_max  = st.number_input("Max (mm)",  value= 25.0, key="hmax")
+                    with sc3: h_step = st.number_input("Step (mm)", value= 1.0,  key="hstep")
+                    sweep_params = (h_min, h_max, h_step)
+                elif sweep_type == "Roll":
+                    with sc1: r_min  = st.number_input("Min (°)",  value=-3.0, key="rmin")
+                    with sc2: r_max  = st.number_input("Max (°)",  value= 3.0, key="rmax")
+                    with sc3: r_step = st.number_input("Step (°)", value= 0.2, key="rstep")
+                    sweep_params = (r_min, r_max, r_step)
+                else:
+                    with sc1: s_min  = st.number_input("Min (mm)",  value=-30.0, key="smin")
+                    with sc2: s_max  = st.number_input("Max (mm)",  value= 30.0, key="smax")
+                    with sc3: s_step = st.number_input("Step (mm)", value= 1.0,  key="sstep")
+                    sweep_params = (s_min, s_max, s_step)
+
+            built = _build_corner_safe(df, corner_choice)
+            if built is not None:
+                corner, tie_rod = built
+                with st.spinner(f"{sweep_type} sweep..."):
+                    sweep = _run_sweep_cached(corner, tie_rod, sweep_type, sweep_params)
+
+                if sweep_type == "Heave":
+                    pc1, pc2 = st.columns(2)
+                    with pc1:
+                        st.plotly_chart(plot_camber_vs_heave(sweep), use_container_width=True)
+                    with pc2:
+                        st.plotly_chart(plot_bump_steer(sweep), use_container_width=True)
+                    st.plotly_chart(plot_rc_migration(sweep), use_container_width=True)
+                elif sweep_type == "Steer":
+                    st.plotly_chart(plot_caster_kpi_vs_steer(sweep), use_container_width=True)
+                else:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=sweep["roll_deg"], y=sweep["camber_deg"],
+                                               mode="lines+markers"))
+                    fig.update_layout(title="Camber vs Roll", xaxis_title="Roll (°)",
+                                       yaxis_title="Camber (°)", template="plotly_white")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with st.expander("📋 Dados do sweep"):
+                    sweep_df = pl.DataFrame({n: sweep[n] for n in sweep.dtype.names})
+                    st.dataframe(sweep_df, use_container_width=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ABA 3 — SÍNTESE
+# ABA 3 — VISTA 3D
+# ─────────────────────────────────────────────────────────────────────────────
+
+with tab_3d:
+    st.header("Visualização 3D dos hardpoints")
+    st.markdown(
+        "Veja a suspensão em **3D interativo**: rotacione, dê zoom, e veja como "
+        "os hardpoints se relacionam no espaço. Use o modo animado para ver o "
+        "movimento durante heave, roll ou steer."
+    )
+
+    df = _load_hardpoints_from_state()
+    if df is None:
+        st.info("👈 Carregue hardpoints na barra lateral primeiro.")
+    else:
+        from analysis.viz3d import (plot_corner_3d, plot_vehicle_3d,
+                                     plot_corner_animated)
+
+        # ── Controles principais ─────────────────────────────────────────────
+        view_mode = st.radio(
+            "Modo de visualização",
+            ["🏎️ Veículo completo", "🔍 Corner individual",
+             "🎬 Animação de sweep"],
+            horizontal=True,
+            key="view3d_mode",
+        )
+
+        st.markdown("---")
+
+        # ─── MODO 1: VEÍCULO COMPLETO ────────────────────────────────────────
+        if view_mode == "🏎️ Veículo completo":
+            try:
+                vehicle, tie_rods = build_vehicle_from_dataframe(df)
+
+                show_tires = st.checkbox("Mostrar pneus", value=True,
+                                         key="veh_show_tires")
+                show_chassis = st.checkbox("Mostrar wireframe do chassi", value=True,
+                                            key="veh_show_chassis")
+
+                with st.spinner("Renderizando..."):
+                    fig = plot_vehicle_3d(
+                        vehicle, tie_rods,
+                        show_tires=show_tires,
+                        show_chassis_box=show_chassis,
+                        title="Suspensão FSAE — Vista 3D completa",
+                    )
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.caption(
+                    "💡 **Dica:** clique e arraste para rotacionar, scroll para "
+                    "dar zoom, duplo-clique para resetar a câmera."
+                )
+            except HardpointValidationError as exc:
+                st.error(f"❌ {exc}")
+
+        # ─── MODO 2: CORNER INDIVIDUAL ───────────────────────────────────────
+        elif view_mode == "🔍 Corner individual":
+            col_a, col_b = st.columns([1, 3])
+            with col_a:
+                corner_choice = st.selectbox("Corner", VALID_CORNERS,
+                                              key="view3d_corner")
+                show_tire = st.checkbox("Mostrar pneu", value=True,
+                                         key="corner_show_tire")
+
+            built = _build_corner_safe(df, corner_choice)
+            if built is not None:
+                corner, tie_rod = built
+                with st.spinner("Renderizando..."):
+                    fig = plot_corner_3d(corner, tie_rod, show_tire=show_tire)
+                st.plotly_chart(fig, use_container_width=True)
+
+                # KPIs ao lado da visualização para contexto
+                with st.expander("📊 KPIs deste corner"):
+                    k = st.columns(3)
+                    k[0].metric("Caster (°)",    f"{corner.static_caster_deg():+.3f}")
+                    k[1].metric("KPI (°)",       f"{corner.static_kpi_deg():+.3f}")
+                    k[2].metric("Scrub (mm)",    f"{corner.static_scrub_radius_mm():+.2f}")
+
+        # ─── MODO 3: ANIMAÇÃO DE SWEEP ───────────────────────────────────────
+        else:  # 🎬 Animação de sweep
+            ctrl1, ctrl2, ctrl3 = st.columns([1, 1, 2])
+            with ctrl1:
+                corner_choice = st.selectbox("Corner", VALID_CORNERS,
+                                              key="anim_corner")
+            with ctrl2:
+                sweep_axis = st.radio("Eixo do sweep",
+                                      ["heave", "roll", "steer"],
+                                      key="anim_axis")
+            with ctrl3:
+                if sweep_axis == "heave":
+                    rng = st.slider("Faixa heave (mm)", -50.0, 50.0,
+                                     (-20.0, 20.0), step=2.5, key="anim_h_range")
+                elif sweep_axis == "roll":
+                    rng = st.slider("Faixa roll (°)", -5.0, 5.0,
+                                     (-3.0, 3.0), step=0.5, key="anim_r_range")
+                else:
+                    rng = st.slider("Faixa rack (mm)", -50.0, 50.0,
+                                     (-25.0, 25.0), step=2.5, key="anim_s_range")
+                n_frames = st.slider("Número de frames", 5, 30, 15,
+                                      key="anim_n_frames")
+
+            built = _build_corner_safe(df, corner_choice)
+            if built is not None:
+                corner, tie_rod = built
+                with st.spinner(f"Calculando {n_frames} frames..."):
+                    fig = plot_corner_animated(
+                        corner, tie_rod,
+                        sweep_axis=sweep_axis,
+                        sweep_min=rng[0], sweep_max=rng[1],
+                        n_frames=n_frames,
+                        show_tire=True,
+                    )
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption(
+                    "💡 **Dica:** arraste o slider para ver a geometria em cada "
+                    "posição, ou clique em ▶ Play para animar automaticamente."
+                )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ABA 4 — SÍNTESE
 # ─────────────────────────────────────────────────────────────────────────────
 
 with tab_synthesis:

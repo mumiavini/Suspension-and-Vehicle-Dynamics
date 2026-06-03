@@ -941,6 +941,8 @@ Se ao clicar em "🔄 Aplicar arquivo" o editor manual descarta suas edições:
 
 ## 📞 Sobre
 
+Software desenvolvido como projeto educacional para times de Fórmula SAE. Não é produto comercial.
+
 A estrutura modular permite extensão:
 - Pushrod/pullrod → estenda `SuspensionCorner` e solver 3D
 - Visualização 3D → use `plotly.graph_objects.Scatter3d`
@@ -948,5 +950,4 @@ A estrutura modular permite extensão:
 - Wheel rate / frequência natural → módulo novo + inputs de mola
 - Integração SolidWorks → use a API COM (Windows)
 
-**Autor** Vinicius Andrade Trento
 **Versão:** 2026

@@ -457,7 +457,7 @@ def roll_center_at_1g_lat(
 def anti_dive_percent(
     corner: SuspensionCorner,
     *,
-    brake_bias_pct: float = 50.0,
+    brake_bias_pct: float = 60.0,
     cg_height_mm:   float = 280.0,
     wheelbase_mm_value: Optional[float] = None,
 ) -> float:
