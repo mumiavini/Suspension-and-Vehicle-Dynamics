@@ -18,7 +18,7 @@ Interface via **Streamlit** (recomendado) ou **scripts Python** (para automaçã
 3. [Por que peso/motor/mola NÃO são necessários para a maioria dos KPIs](#3-por-que-pesomotormola-não-são-necessários-para-a-maioria-dos-kpis)
 4. [Conceitos físicos](#4-conceitos-físicos)
 5. [Convenções e unidades](#5-convenções-e-unidades)
-6. [Instalação](#6-instalação)
+6. [Instalação](#6-instalação)20 NOMES PRO MEU SOFTWARE DE SIMULAÇÃO DE SUSPENSÃOA
 7. [Primeiros passos (5 min)](#7-primeiros-passos-5-min)
 8. [Tour das abas do app](#8-tour-das-abas-do-app)
 9. [Tutorial completo: do CAD ao otimizado](#9-tutorial-completo-do-cad-ao-otimizado)
