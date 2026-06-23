@@ -1,9 +1,9 @@
 """
 ui/tab_analysis.py
 ==================
-📊 Aba Análise — ficha de setup completa do veículo: KPIs estáticos e
-dinâmicos lado a lado para dianteiro/traseiro, inputs físicos adicionais
-e sweeps detalhados opcionais.
+📊 Analysis tab — complete vehicle setup sheet: static and dynamic KPIs
+side by side for front/rear, additional physical inputs and optional
+detailed sweeps.
 """
 
 from __future__ import annotations
@@ -51,11 +51,11 @@ from ui.shared import (
 def _compute_axle_cached(df_csv: str, axle: str, brake_bias: float,
                          c_factor_mm: float, roll_stiff: float) -> dict:
     """
-    Todos os KPIs e sweeps de um eixo ("front"/"rear"), cacheados.
+    All KPIs and sweeps for one axle ("front"/"rear"), cached.
 
-    Sem o cache, os 2 heave sweeps + 2 roll sweeps rodavam a CADA interação
-    com QUALQUER widget do app (o Streamlit re-executa o script inteiro).
-    A chave é o CSV dos hardpoints + os inputs que afetam o resultado.
+    Without the cache, the 2 heave sweeps + 2 roll sweeps would run on EVERY
+    interaction with ANY widget in the app (Streamlit re-runs the whole script).
+    The key is the hardpoints CSV + the inputs that affect the result.
     """
     df = pl.read_csv(io.StringIO(df_csv))
     vehicle, tie_rods = build_vehicle_from_dataframe(df)
@@ -69,7 +69,7 @@ def _compute_axle_cached(df_csv: str, axle: str, brake_bias: float,
 
     res: dict[str, object] = {}
 
-    # ── Cinemática estática ──
+    # ── Static kinematics ──
     res["caster_l"] = left_corner.static_caster_deg()
     res["caster_r"] = right_corner.static_caster_deg()
     res["kpi_l"]    = left_corner.static_kpi_deg()
@@ -85,7 +85,7 @@ def _compute_axle_cached(df_csv: str, axle: str, brake_bias: float,
     res["sum_toe"]  = static_sum_toe_deg(left_corner, left_tr,
                                           right_corner, right_tr)
 
-    # ── Sweep de heave (esquerdo basta; geometria é simétrica) ──
+    # ── Heave sweep (left is enough; geometry is symmetric) ──
     solver_l = KinematicSolver3D(left_corner, left_tr)
     runner_l = SweepRunner(solver=solver_l)
     heave_sweep = runner_l.heave_sweep(-25.0, 25.0, 2.5)
@@ -94,7 +94,7 @@ def _compute_axle_cached(df_csv: str, axle: str, brake_bias: float,
     res["bump_steer"]      = bump_steer_per_mm(heave_sweep)
     res["rc_dy"], res["rc_dz"] = rc_migration_range(heave_sweep)
 
-    # ── Roll sweep para roll camber ──
+    # ── Roll sweep for roll camber ──
     solver_l.reset_seed()
     roll_sweep = runner_l.roll_sweep(-2.0, 2.0, 0.25)
     if len(roll_sweep) > 1:
@@ -127,7 +127,7 @@ def _compute_axle_cached(df_csv: str, axle: str, brake_bias: float,
         res["anti_dive"]  = float("nan")
         res["anti_squat"] = left_corner.anti_squat_percent(drive_fraction=1.0)
 
-    # ── Ackermann (só faz sentido na dianteira) ──
+    # ── Ackermann (only meaningful at the front) ──
     if is_front:
         ack_info = ackermann_geometry(left_corner, left_tr,
                                        right_corner, right_tr,
@@ -154,55 +154,55 @@ def _compute_axle_cached(df_csv: str, axle: str, brake_bias: float,
 
 
 def render() -> None:
-    st.header("Análise — Ficha de setup completa")
+    st.header("Analysis — Complete setup sheet")
     st.markdown(
-        "Tabela com **todos os parâmetros do veículo**, lado a lado para "
-        "dianteiro e traseiro. Valores são calculados automaticamente dos "
-        "hardpoints quando possível; o que precisar de input adicional aparece "
-        "abaixo."
+        "Table with **all the vehicle parameters**, side by side for "
+        "front and rear. Values are computed automatically from the "
+        "hardpoints when possible; whatever needs additional input appears "
+        "below."
     )
 
     df = load_hardpoints_from_state()
     if df is None:
         render_empty_state(
-            "A análise calcula **todos os KPIs do veículo** (camber, caster, "
-            "roll center, bump steer…) a partir dos hardpoints carregados.",
+            "The analysis computes **all the vehicle KPIs** (camber, caster, "
+            "roll center, bump steer…) from the loaded hardpoints.",
             key="empty_analysis",
         )
     else:
         vehicle, all_tie_rods = build_vehicle_safe(df)
         if vehicle is None or all_tie_rods is None:
-            st.error("Não foi possível construir o veículo completo a partir do arquivo.")
+            st.error("Could not build the complete vehicle from the file.")
             st.stop()
 
-        # ─── INPUTS DO USUÁRIO (parâmetros físicos não-calculáveis) ──────────
-        with st.expander("🔧 **Inputs adicionais** — configurações que não vêm dos hardpoints", expanded=False):
+        # ─── USER INPUTS (physical parameters that cannot be computed) ───────
+        with st.expander("🔧 **Additional inputs** — settings that do not come from the hardpoints", expanded=False):
             st.markdown(
-                "Esses valores são necessários para calcular wheel rate, roll rate, "
-                "frequência natural, motion ratio e damping. Deixe em branco (0) "
-                "para que esses KPIs apareçam como `—` na tabela."
+                "These values are needed to compute wheel rate, roll rate, "
+                "natural frequency, motion ratio and damping. Leave blank (0) "
+                "for those KPIs to appear as `—` in the table."
             )
 
             tab_tire, tab_susp, tab_mass, tab_damper, tab_other = st.tabs([
-                "🛞 Pneus & Rodas",
-                "🔩 Suspensão & Mola",
-                "⚖️ Massas",
-                "🌊 Amortecedor",
-                "📝 Outros",
+                "🛞 Tires & Wheels",
+                "🔩 Suspension & Spring",
+                "⚖️ Masses",
+                "🌊 Damper",
+                "📝 Other",
             ])
 
             with tab_tire:
                 c1, c2 = st.columns(2)
                 with c1:
                     tire_size  = st.text_input("Tire size, compound, make",
-                                                 value="", placeholder="ex: 18.0×7.5-10 Hoosier R25B",
+                                                 value="", placeholder="e.g. 18.0×7.5-10 Hoosier R25B",
                                                  key="in_tire")
                     wheel_diam = st.number_input("Wheel diameter (inch)",
                                                    min_value=0.0, value=10.0, step=0.5,
                                                    key="in_wheel_diam")
                 with c2:
                     wheel_mat  = st.text_input("Wheel material / construction",
-                                                 value="", placeholder="ex: alumínio forjado 2-piece",
+                                                 value="", placeholder="e.g. forged aluminum 2-piece",
                                                  key="in_wheel_mat")
                     wheel_wid  = st.number_input("Wheel width (inch)",
                                                    min_value=0.0, value=7.0, step=0.5,
@@ -217,15 +217,15 @@ def render() -> None:
                     susp_travel_f = st.number_input("Design travel — FRONT (mm)",
                                                       min_value=0.0, value=0.0, step=1.0,
                                                       key="in_travel_f",
-                                                      help="Curso útil de heave dianteiro (bump+rebound)")
+                                                      help="Usable front heave travel (bump+rebound)")
                     spring_rate_f = st.number_input("Spring rate — FRONT (N/mm)",
                                                       min_value=0.0, value=0.0, step=1.0,
                                                       key="in_spring_f",
-                                                      help="Rigidez da mola dianteira (no eixo da mola, não da roda)")
+                                                      help="Front spring stiffness (at the spring axis, not the wheel)")
                     mr_front = st.number_input("Motion Ratio — FRONT",
                                                  min_value=0.0, value=0.0, step=0.05, format="%.3f",
                                                  key="in_mr_f",
-                                                 help="MR = Δ(mola) / Δ(roda). Típico FSAE: 0.7–1.1")
+                                                 help="MR = Δ(spring) / Δ(wheel). Typical FSAE: 0.7–1.1")
                 with c2:
                     susp_adj    = st.text_input("Static camber adjustment method",
                                                   value="2 mm plates between upright and upper arm fixation",
@@ -239,68 +239,68 @@ def render() -> None:
                     mr_rear = st.number_input("Motion Ratio — REAR",
                                                  min_value=0.0, value=0.0, step=0.05, format="%.3f",
                                                  key="in_mr_r")
-                arb_adj = st.text_input("Suspension adjustment methods (outros)",
+                arb_adj = st.text_input("Suspension adjustment methods (other)",
                                           value="",
-                                          placeholder="ex: ARB com 3 posições, pré-carga variável",
+                                          placeholder="e.g. ARB with 3 positions, variable preload",
                                           key="in_susp_methods")
 
             with tab_mass:
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    total_mass = st.number_input("Massa total c/ piloto (kg)",
+                    total_mass = st.number_input("Total mass w/ driver (kg)",
                                                    min_value=0.0, value=0.0, step=5.0,
                                                    key="in_mass_total",
-                                                   help="Carro + piloto + combustível")
+                                                   help="Car + driver + fuel")
                 with c2:
-                    weight_dist_f = st.number_input("Distribuição de peso — FRONT (%)",
+                    weight_dist_f = st.number_input("Weight distribution — FRONT (%)",
                                                      min_value=0.0, max_value=100.0,
                                                      value=45.0, step=0.5,
                                                      key="in_weight_dist_f",
-                                                     help="% do peso no eixo dianteiro")
+                                                     help="% of the weight on the front axle")
                 with c3:
-                    unsprung_per_corner = st.number_input("Massa não-suspensa por corner (kg)",
+                    unsprung_per_corner = st.number_input("Unsprung mass per corner (kg)",
                                                             min_value=0.0, value=0.0, step=0.5,
                                                             key="in_unsprung",
-                                                            help="Roda + pneu + manga + freio + ~50% braços")
+                                                            help="Wheel + tire + upright + brake + ~50% of the arms")
 
             with tab_damper:
                 c1, c2 = st.columns(2)
                 with c1:
-                    jounce_pct_f = st.number_input("Jounce damping — FRONT (% crítico)",
+                    jounce_pct_f = st.number_input("Jounce damping — FRONT (% critical)",
                                                      min_value=0.0, max_value=200.0,
                                                      value=0.0, step=5.0,
                                                      key="in_jounce_f")
-                    rebound_pct_f = st.number_input("Rebound damping — FRONT (% crítico)",
+                    rebound_pct_f = st.number_input("Rebound damping — FRONT (% critical)",
                                                       min_value=0.0, max_value=200.0,
                                                       value=0.0, step=5.0,
                                                       key="in_rebound_f")
                 with c2:
-                    jounce_pct_r = st.number_input("Jounce damping — REAR (% crítico)",
+                    jounce_pct_r = st.number_input("Jounce damping — REAR (% critical)",
                                                      min_value=0.0, max_value=200.0,
                                                      value=0.0, step=5.0,
                                                      key="in_jounce_r")
-                    rebound_pct_r = st.number_input("Rebound damping — REAR (% crítico)",
+                    rebound_pct_r = st.number_input("Rebound damping — REAR (% critical)",
                                                       min_value=0.0, max_value=200.0,
                                                       value=0.0, step=5.0,
                                                       key="in_rebound_r")
 
             with tab_other:
-                roll_stiff = st.number_input("Roll stiffness (°/g) — usado para RC@1g",
+                roll_stiff = st.number_input("Roll stiffness (°/g) — used for RC@1g",
                                                min_value=0.1, value=1.5, step=0.1,
                                                key="in_roll_stiff")
                 ackermann_adj = st.selectbox(
-                    "Ackermann ajustável?",
+                    "Adjustable Ackermann?",
                     ["No", "Yes (multiple positions)", "Yes (continuous)"],
                     key="in_ack_adj",
                 )
 
-        # ─── INFRASTRUTURA: calcula sweeps F e R de uma vez (cacheado) ────────
+        # ─── INFRASTRUCTURE: compute F and R sweeps at once (cached) ──────────
         vs = st.session_state["vehicle_setup"]
 
-        # Representação textual única do df = chave de invalidação do cache
+        # Single textual representation of the df = cache invalidation key
         df_signature = df.write_csv()
 
-        with st.spinner("Calculando KPIs dos dois eixos..."):
+        with st.spinner("Computing KPIs for both axles..."):
             front_data = _compute_axle_cached(df_signature, "front",
                                               vs["brake_bias"],
                                               vs["c_factor_mm"], roll_stiff)
@@ -308,7 +308,7 @@ def render() -> None:
                                               vs["brake_bias"],
                                               vs["c_factor_mm"], roll_stiff)
 
-        # ─── Cálculos derivados que dependem de INPUTS do usuário ────────────
+        # ─── Derived calculations that depend on USER inputs ─────────────────
         def _wheel_rate(spring_rate: float, mr: float) -> float:
             """Wheel rate (N/mm) = spring_rate × MR²."""
             if spring_rate <= 0 or mr <= 0:
@@ -316,30 +316,30 @@ def render() -> None:
             return spring_rate * mr * mr
 
         def _roll_rate(wheel_rate: float, track_mm: float) -> float:
-            """Roll rate por roda (Nm/°) = wheel_rate × track² / 2 × π/180 / 1000.
+            """Roll rate per wheel (Nm/°) = wheel_rate × track² / 2 × π/180 / 1000.
 
-            Fórmula: K_roll = (1/2) × K_wheel × T² × (π/180) [Nm/°]
-            onde K_wheel está em N/mm e T em mm. O fator 1000 converte mm² para m².
+            Formula: K_roll = (1/2) × K_wheel × T² × (π/180) [Nm/°]
+            where K_wheel is in N/mm and T in mm. The factor 1000 converts mm² to m².
             """
             if math.isnan(wheel_rate) or track_mm <= 0:
                 return float("nan")
             # wheel_rate N/mm = wheel_rate × 1000 N/m
-            # roll rate em Nm/rad = (1/2) × K × T² (T em m)
-            # converte para Nm/°: × π/180
+            # roll rate in Nm/rad = (1/2) × K × T² (T in m)
+            # convert to Nm/°: × π/180
             T_m = track_mm / 1000.0
             return 0.5 * (wheel_rate * 1000.0) * T_m * T_m * math.pi / 180.0
 
         def _natural_freq(wheel_rate: float, sprung_per_corner: float) -> float:
-            """Frequência natural (Hz) = (1/2π) × √(K/M).
+            """Natural frequency (Hz) = (1/2π) × √(K/M).
 
-            K em N/m, M em kg → ω em rad/s → / 2π = Hz.
+            K in N/m, M in kg → ω in rad/s → / 2π = Hz.
             """
             if math.isnan(wheel_rate) or sprung_per_corner <= 0:
                 return float("nan")
             K = wheel_rate * 1000.0   # N/m
             return (1.0 / (2.0 * math.pi)) * math.sqrt(K / sprung_per_corner)
 
-        # Calcula massas por corner
+        # Compute masses per corner
         sprung_total = float("nan")
         sprung_front_per_corner = float("nan")
         sprung_rear_per_corner  = float("nan")
@@ -351,7 +351,7 @@ def render() -> None:
                 sprung_front_per_corner = sprung_total * wd / 2.0
                 sprung_rear_per_corner  = sprung_total * (1.0 - wd) / 2.0
 
-        # Aplica nos dados de cada eixo
+        # Apply to each axle's data
         front_data["wheel_rate"] = _wheel_rate(spring_rate_f, mr_front)
         rear_data["wheel_rate"]  = _wheel_rate(spring_rate_r, mr_rear)
         front_data["roll_rate"]  = _roll_rate(front_data["wheel_rate"],
@@ -371,9 +371,9 @@ def render() -> None:
         front_data["travel"]       = susp_travel_f if susp_travel_f > 0 else float("nan")
         rear_data["travel"]        = susp_travel_r if susp_travel_r > 0 else float("nan")
 
-        # ─── Helper de formatação ────────────────────────────────────────────
+        # ─── Formatting helper ───────────────────────────────────────────────
         def fmt(v, fmt_str="+.3f") -> str:
-            """Formata um número; retorna '—' se NaN ou input ausente."""
+            """Format a number; returns '—' if NaN or missing input."""
             if v is None:
                 return "—"
             try:
@@ -384,14 +384,14 @@ def render() -> None:
                 return str(v)
 
         def fmt_pair(v_l, v_r, fmt_str="+.3f") -> str:
-            """Formata 'L / R' para parâmetros que diferem por roda."""
+            """Format 'L / R' for parameters that differ per wheel."""
             return f"{fmt(v_l, fmt_str)} / {fmt(v_r, fmt_str)}"
 
-        # ─── RESUMO RÁPIDO (cards com os KPIs mais consultados) ──────────────
+        # ─── QUICK SUMMARY (cards with the most consulted KPIs) ──────────────
         st.markdown("---")
-        st.markdown("### ⚡ Resumo rápido")
+        st.markdown("### ⚡ Quick summary")
 
-        st.caption("**Dianteira**")
+        st.caption("**Front**")
         fm = st.columns(5)
         fm[0].metric("Camber L/R (°)",
                      fmt_pair(front_data["camber_l"], front_data["camber_r"], "+.2f"),
@@ -399,14 +399,14 @@ def render() -> None:
         fm[1].metric("Caster L/R (°)",
                      fmt_pair(front_data["caster_l"], front_data["caster_r"], "+.2f"),
                      border=True)
-        fm[2].metric("RC estático (mm)",
+        fm[2].metric("Static RC (mm)",
                      fmt(front_data["rc_static"], "+.1f"), border=True)
         fm[3].metric("Σ Toe (°)",
                      fmt(front_data["sum_toe"], "+.3f"), border=True)
         fm[4].metric("Ackermann (%)",
                      fmt(front_data["ackermann"], "+.1f"), border=True)
 
-        st.caption("**Traseira**")
+        st.caption("**Rear**")
         rm = st.columns(5)
         rm[0].metric("Camber L/R (°)",
                      fmt_pair(rear_data["camber_l"], rear_data["camber_r"], "+.2f"),
@@ -414,36 +414,36 @@ def render() -> None:
         rm[1].metric("KPI L/R (°)",
                      fmt_pair(rear_data["kpi_l"], rear_data["kpi_r"], "+.2f"),
                      border=True)
-        rm[2].metric("RC estático (mm)",
+        rm[2].metric("Static RC (mm)",
                      fmt(rear_data["rc_static"], "+.1f"), border=True)
         rm[3].metric("Σ Toe (°)",
                      fmt(rear_data["sum_toe"], "+.3f"), border=True)
         rm[4].metric("Anti-squat (%)",
                      fmt(rear_data["anti_squat"], "+.1f"), border=True)
 
-        # ─── TABELA PRINCIPAL ────────────────────────────────────────────────
+        # ─── MAIN TABLE ──────────────────────────────────────────────────────
         st.markdown("---")
-        st.markdown("### 📋 Ficha de Setup Completa")
+        st.markdown("### 📋 Complete Setup Sheet")
 
-        # Construção da tabela linha-por-linha
-        # Cada linha: [Categoria, Parâmetro, Unidade, Front, Rear, Origem]
-        # Origem: 📐 calculado / ⌨️ input / 🧮 derivado
+        # Build the table row by row
+        # Each row: [Category, Parameter, Unit, Front, Rear, Source]
+        # Source: 📐 calculated / ⌨️ input / 🧮 derived
 
         rows: list[dict[str, str]] = []
-        category = "Geral"  # reatribuída antes de cada grupo de add()
+        category = "General"  # reassigned before each add() group
 
         def add(param, unit, f_val, r_val, origin):
             rows.append({
-                "Categoria": category,
-                "Parâmetro": param,
-                "Unidade":   unit,
+                "Category":  category,
+                "Parameter": param,
+                "Unit":      unit,
                 "Front":     str(f_val),
                 "Rear":      str(r_val),
-                "Origem":    origin,
+                "Source":    origin,
             })
 
-        # Inputs de pneu/roda (mesmo para os dois eixos)
-        category = "🛞 Pneus & Rodas"
+        # Tire/wheel inputs (same for both axles)
+        category = "🛞 Tires & Wheels"
         add("Tire size, compound, make",          "",
             tire_size or "—",  tire_size or "—",  "⌨️ input")
         add("Wheel (diameter × width)",           "inch",
@@ -452,7 +452,7 @@ def render() -> None:
             "⌨️ input")
         add("Wheel material / construction",      "",
             wheel_mat or "—", wheel_mat or "—", "⌨️ input")
-        category = "🔩 Suspensão & Rates"
+        category = "🔩 Suspension & Rates"
         add("Suspension type",                    "",
             susp_type or "—", susp_type or "—", "⌨️ input")
         add("Suspension design travel",           "mm",
@@ -460,19 +460,19 @@ def render() -> None:
             fmt(rear_data["travel"],  ".1f"),
             "⌨️ input")
 
-        # Derivados (precisam de inputs)
+        # Derived (need inputs)
         add("Wheel rate (chassis → wheel center)", "N/mm",
             fmt(front_data["wheel_rate"], ".2f"),
             fmt(rear_data["wheel_rate"],  ".2f"),
-            "🧮 derivado de mola + MR")
+            "🧮 derived from spring + MR")
         add("Roll rate (chassis → wheel center)",  "Nm/deg",
             fmt(front_data["roll_rate"], ".1f"),
             fmt(rear_data["roll_rate"],  ".1f"),
-            "🧮 derivado de wheel rate + track")
+            "🧮 derived from wheel rate + track")
         add("Sprung mass natural frequency",       "Hz",
             fmt(front_data["nat_freq"], ".2f"),
             fmt(rear_data["nat_freq"],  ".2f"),
-            "🧮 derivado de wheel rate + massa")
+            "🧮 derived from wheel rate + mass")
         add("Jounce damping",                       "% critical",
             fmt(front_data["jounce_pct"],  ".0f"),
             fmt(rear_data["jounce_pct"],   ".0f"),
@@ -486,78 +486,78 @@ def render() -> None:
             fmt(rear_data["motion_ratio"],  ".3f"),
             "⌨️ input")
 
-        # Calculados (geometria)
-        category = "🎢 Cinemática"
+        # Calculated (geometry)
+        category = "🎢 Kinematics"
         add("Ride Camber (rate of change)",        "deg/m",
             fmt(front_data["ride_camber_dpm"], "+.2f"),
             fmt(rear_data["ride_camber_dpm"],  "+.2f"),
-            "📐 calculado")
+            "📐 calculated")
         add("Roll Camber",                          "deg/deg",
             fmt(front_data["roll_camber"], "+.4f"),
             fmt(rear_data["roll_camber"],  "+.4f"),
-            "📐 calculado")
-        category = "📐 Alinhamento estático"
+            "📐 calculated")
+        category = "📐 Static alignment"
         add("Static Sum Toe (− out, + in)",         "deg",
             fmt(front_data["sum_toe"], "+.4f"),
             fmt(rear_data["sum_toe"],  "+.4f"),
-            "📐 calculado")
+            "📐 calculated")
         add("Static camber (L / R)",                "deg",
             fmt_pair(front_data["camber_l"], front_data["camber_r"], "+.3f"),
             fmt_pair(rear_data["camber_l"],  rear_data["camber_r"],  "+.3f"),
-            "📐 calculado")
+            "📐 calculated")
         add("Static camber adjustment method",      "",
             susp_adj or "—", susp_adj or "—", "⌨️ input")
-        category = "🎢 Cinemática"
+        category = "🎢 Kinematics"
         add("Anti dive / Anti squat",               "%",
             fmt(front_data["anti_dive"],  "+.2f"),
             fmt(rear_data["anti_squat"], "+.2f"),
-            "📐 calculado (precisa CG, brake bias)")
+            "📐 calculated (needs CG, brake bias)")
         add("Roll center height above ground, static", "mm",
             fmt(front_data["rc_static"], "+.2f"),
             fmt(rear_data["rc_static"],  "+.2f"),
-            "📐 calculado")
+            "📐 calculated")
         add("Roll center @ 1g lateral acc — height",   "mm",
             fmt(front_data["rc_1g_z"], "+.2f"),
             fmt(rear_data["rc_1g_z"],  "+.2f"),
-            f"📐 calculado (roll stiffness {roll_stiff}°/g)")
+            f"📐 calculated (roll stiffness {roll_stiff}°/g)")
         add("Roll center @ 1g lateral acc — lateral",  "mm",
             fmt(front_data["rc_1g_y"], "+.2f"),
             fmt(rear_data["rc_1g_y"],  "+.2f"),
-            f"📐 calculado (roll stiffness {roll_stiff}°/g)")
-        category = "📐 Alinhamento estático"
+            f"📐 calculated (roll stiffness {roll_stiff}°/g)")
+        category = "📐 Static alignment"
         add("Caster (L / R)",                         "deg",
             fmt_pair(front_data["caster_l"], front_data["caster_r"], "+.3f"),
-            "N/A (sem caster traseiro relevante)",
-            "📐 calculado")
+            "N/A (no relevant rear caster)",
+            "📐 calculated")
         add("Kingpin trail (L / R)",                  "mm",
             fmt_pair(front_data["trail_l"], front_data["trail_r"], "+.2f"),
             fmt_pair(rear_data["trail_l"],  rear_data["trail_r"],  "+.2f"),
-            "📐 calculado")
+            "📐 calculated")
         add("Scrub radius (L / R)",                   "mm",
             fmt_pair(front_data["scrub_l"], front_data["scrub_r"], "+.2f"),
             fmt_pair(rear_data["scrub_l"],  rear_data["scrub_r"],  "+.2f"),
-            "📐 calculado")
+            "📐 calculated")
         add("Kingpin Inclination (L / R)",             "deg",
             fmt_pair(front_data["kpi_l"], front_data["kpi_r"], "+.3f"),
             fmt_pair(rear_data["kpi_l"],  rear_data["kpi_r"],  "+.3f"),
-            "📐 calculado")
-        category = "🕹️ Direção"
+            "📐 calculated")
+        category = "🕹️ Steering"
         add("Static Ackermann",                        "%",
             fmt(front_data["ackermann"], "+.2f"),
             "N/A",
-            "📐 calculado")
-        add("Ackermann ajustável?",                    "",
+            "📐 calculated")
+        add("Adjustable Ackermann?",                   "",
             ackermann_adj, "—",
             "⌨️ input")
-        category = "🔩 Suspensão & Rates"
+        category = "🔩 Suspension & Rates"
         add("Suspension adjustment methods",           "",
             arb_adj or "—", arb_adj or "—",
             "⌨️ input")
-        category = "🕹️ Direção"
+        category = "🕹️ Steering"
         add("Steer Ratio",                             "x:1",
             fmt(front_data["steer_ratio"], ".2f"),
             "N/A",
-            f"🧮 derivado de c-factor={vs['c_factor_mm']:.0f} mm/rev")
+            f"🧮 derived from c-factor={vs['c_factor_mm']:.0f} mm/rev")
         add("C-factor",                                "mm/rev",
             fmt(front_data["c_factor"], ".1f"),
             "N/A",
@@ -565,33 +565,33 @@ def render() -> None:
         add("Steer Arm Length (L / R)",                "mm",
             fmt_pair(front_data["steer_arm_l"], front_data["steer_arm_r"], ".2f"),
             "N/A",
-            "📐 calculado")
+            "📐 calculated")
 
-        # Massas / distribuição
-        category = "⚖️ Massas"
+        # Masses / distribution
+        category = "⚖️ Masses"
         if total_mass > 0:
-            add("Massa total c/ piloto",               "kg",
+            add("Total mass w/ driver",                "kg",
                 f"{total_mass:.1f}", f"{total_mass:.1f}", "⌨️ input")
             if not math.isnan(sprung_total):
-                add("Massa suspensa total",            "kg",
-                    f"{sprung_total:.1f}", f"{sprung_total:.1f}", "🧮 derivado")
-                add("Massa suspensa por corner",       "kg",
+                add("Total sprung mass",               "kg",
+                    f"{sprung_total:.1f}", f"{sprung_total:.1f}", "🧮 derived")
+                add("Sprung mass per corner",          "kg",
                     fmt(sprung_front_per_corner, ".1f"),
                     fmt(sprung_rear_per_corner,  ".1f"),
-                    "🧮 derivado")
-            add("Massa não-suspensa por corner",       "kg",
+                    "🧮 derived")
+            add("Unsprung mass per corner",            "kg",
                 f"{unsprung_per_corner:.1f}", f"{unsprung_per_corner:.1f}",
                 "⌨️ input")
-            add("Distribuição de peso",                "%",
+            add("Weight distribution",                 "%",
                 f"{weight_dist_f:.1f}", f"{100-weight_dist_f:.1f}",
                 "⌨️ input")
 
-        # Filtro por categoria + renderização
-        categories = list(dict.fromkeys(r["Categoria"] for r in rows))
-        cat_sel = st.pills("Filtrar por categoria", ["Todas"] + categories,
-                           default="Todas", key="sheet_category")
-        if cat_sel and cat_sel != "Todas":
-            rows_view = [r for r in rows if r["Categoria"] == cat_sel]
+        # Category filter + rendering
+        categories = list(dict.fromkeys(r["Category"] for r in rows))
+        cat_sel = st.pills("Filter by category", ["All"] + categories,
+                           default="All", key="sheet_category")
+        if cat_sel and cat_sel != "All":
+            rows_view = [r for r in rows if r["Category"] == cat_sel]
         else:
             rows_view = rows
 
@@ -599,28 +599,28 @@ def render() -> None:
         st.dataframe(table_df, width="stretch", hide_index=True,
                      height=min(80 + 35 * len(rows_view), 900))
 
-        # Legenda
+        # Legend
         st.caption(
-            "**Legenda:** "
-            "📐 calculado dos hardpoints · "
-            "⌨️ input do usuário · "
-            "🧮 derivado (precisa de inputs nos expanders acima)"
+            "**Legend:** "
+            "📐 calculated from the hardpoints · "
+            "⌨️ user input · "
+            "🧮 derived (needs inputs in the expanders above)"
         )
 
-        # Download da tabela (sempre completa, independente do filtro)
+        # Download the table (always complete, regardless of the filter)
         csv_table = pl.DataFrame(rows).write_csv().encode()
         st.download_button(
-            "⬇️ Baixar ficha de setup (CSV)",
+            "⬇️ Download setup sheet (CSV)",
             data=csv_table,
             file_name="setup_sheet.csv",
             mime="text/csv",
         )
 
-        # ─── SWEEPS COM GRÁFICOS (mantido, opcional) ─────────────────────────
+        # ─── SWEEPS WITH CHARTS (kept, optional) ─────────────────────────────
         st.markdown("---")
-        st.markdown("### 📈 Sweeps detalhados (opcional)")
+        st.markdown("### 📈 Detailed sweeps (optional)")
 
-        with st.expander("Mostrar gráficos de sweep para um corner específico", expanded=False):
+        with st.expander("Show sweep charts for a specific corner", expanded=False):
             col_a, col_b = st.columns([1, 3])
             with col_a:
                 corner_choice = st.selectbox("Corner", VALID_CORNERS, key="analysis_corner")
@@ -668,6 +668,6 @@ def render() -> None:
                                        yaxis_title="Camber (°)", template="plotly_white")
                     st.plotly_chart(fig, width="stretch")
 
-                with st.expander("📋 Dados do sweep"):
+                with st.expander("📋 Sweep data"):
                     sweep_df = pl.DataFrame({n: sweep[n] for n in sweep.dtype.names})
                     st.dataframe(sweep_df, width="stretch")

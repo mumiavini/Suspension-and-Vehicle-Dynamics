@@ -1,8 +1,8 @@
 """
 ui/sidebar.py
 =============
-Sidebar do app: carregamento de hardpoints (upload / demo / template),
-limpeza da sessão, setup do veículo e seletor de tema.
+App sidebar: hardpoint loading (upload / demo / template), session clearing,
+vehicle setup and the theme selector.
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ from ui.theme import THEMES
 
 def _save_uploaded_to_tmp(uploaded_file) -> Path:
     """
-    Salva um arquivo upload do Streamlit em diretório temporário e retorna o path.
+    Save a Streamlit upload to a temporary directory and return the path.
 
-    Usa `tempfile.gettempdir()` para portabilidade entre SOs:
+    Uses `tempfile.gettempdir()` for cross-OS portability:
         - Linux/macOS : /tmp
         - Windows     : C:\\Users\\<user>\\AppData\\Local\\Temp
     """
@@ -40,23 +40,23 @@ def _save_uploaded_to_tmp(uploaded_file) -> Path:
 
 def render_sidebar() -> None:
     with st.sidebar:
-        # ─── STATUS DA SESSÃO (sempre visível no topo) ───────────────────────
+        # ─── SESSION STATUS (always visible at the top) ──────────────────────
         if "hardpoints_df" in st.session_state:
-            st.success(f"Em uso: **{st.session_state.get('hardpoints_source', '?')}**",
+            st.success(f"In use: **{st.session_state.get('hardpoints_source', '?')}**",
                        icon="📊")
         else:
-            st.warning("Nenhum hardpoint carregado", icon="⚠️")
+            st.warning("No hardpoints loaded", icon="⚠️")
 
-        st.markdown("### 1️⃣ Carregar dados")
+        st.markdown("### 1️⃣ Load data")
 
-        # ─── ETAPA 1: UPLOAD (apenas armazena, NÃO aplica ainda) ─────────────
+        # ─── STEP 1: UPLOAD (only stores, does NOT apply yet) ────────────────
         uploaded = st.file_uploader(
-            "Arquivo de hardpoints",
+            "Hardpoints file",
             type=["xlsx", "csv", "json"],
-            help="Colunas: corner, point, x_mm, y_mm, z_mm",
+            help="Columns: corner, point, x_mm, y_mm, z_mm",
         )
 
-        # Faz parse do arquivo só pra preview/validação, mas não aplica ainda
+        # Parse the file just for preview/validation, but do not apply yet
         pending_df: Optional[pl.DataFrame] = None
         pending_error: Optional[str] = None
 
@@ -65,32 +65,32 @@ def render_sidebar() -> None:
                 tmp = _save_uploaded_to_tmp(uploaded)
                 pending_df = read_hardpoints(tmp)
             except HardpointValidationError as exc:
-                pending_error = f"Validação: {exc}"
+                pending_error = f"Validation: {exc}"
             except Exception as exc:
                 pending_error = str(exc)
 
-        # ─── ETAPA 2: PREVIEW + BOTÃO APLICAR ────────────────────────────────
+        # ─── STEP 2: PREVIEW + APPLY BUTTON ──────────────────────────────────
         if pending_error is not None:
             st.error(f"❌ {pending_error}")
         elif pending_df is not None:
-            # Mostra um mini-preview do que foi carregado
+            # Show a mini-preview of what was loaded
             n_rows  = pending_df.height
             corners = sorted(pending_df["corner"].unique().to_list())
-            st.success(f"✅ '{uploaded.name}' — {n_rows} pontos · corners: {', '.join(corners)}")
+            st.success(f"✅ '{uploaded.name}' — {n_rows} points · corners: {', '.join(corners)}")
 
-            # Botão explícito que aplica o arquivo (recalcula tudo)
-            if st.button("🔄 **Aplicar arquivo**", type="primary", width="stretch",
-                          help="Carrega esse arquivo no app e recalcula todos os KPIs e gráficos"):
+            # Explicit button that applies the file (recomputes everything)
+            if st.button("🔄 **Apply file**", type="primary", width="stretch",
+                          help="Loads this file into the app and recomputes all KPIs and charts"):
                 st.session_state["hardpoints_df"]     = pending_df
                 st.session_state["hardpoints_source"] = uploaded.name
-                st.rerun()   # força re-render imediato com o novo arquivo
+                st.rerun()   # force an immediate re-render with the new file
 
-        # ─── DEMO + TEMPLATE (atalhos) ───────────────────────────────────────
-        st.caption("Ou use um atalho:")
+        # ─── DEMO + TEMPLATE (shortcuts) ─────────────────────────────────────
+        st.caption("Or use a shortcut:")
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("📋 Demo", width="stretch",
-                          help="Carrega geometria FSAE realista de exemplo"):
+                          help="Loads a realistic example FSAE geometry"):
                 load_demo_into_session()
                 st.rerun()
 
@@ -99,21 +99,21 @@ def render_sidebar() -> None:
             st.download_button("⬇️ Template", data=template_df.write_csv().encode(),
                                 file_name="hardpoints_template.csv", mime="text/csv",
                                 width="stretch",
-                                help="Baixa o template em CSV para edição manual")
+                                help="Downloads the CSV template for manual editing")
 
         if "hardpoints_df" in st.session_state:
-            if st.button("🗑️ Limpar sessão", width="stretch",
-                          help="Remove o arquivo atual da sessão"):
+            if st.button("🗑️ Clear session", width="stretch",
+                          help="Removes the current file from the session"):
                 for key in ["hardpoints_df", "hardpoints_source", "last_optimization",
                             "manual_hardpoints", "manual_synced_source"]:
                     st.session_state.pop(key, None)
-                # Limpa também as chaves dos data_editors
+                # Also clear the data_editor keys
                 for cid in VALID_CORNERS:
                     st.session_state.pop(f"editor_{cid}", None)
                 st.rerun()
 
         st.divider()
-        st.markdown("### 2️⃣ Setup do veículo")
+        st.markdown("### 2️⃣ Vehicle setup")
         st.session_state.setdefault("vehicle_setup", {
             "brake_bias": 0.60,
             "c_factor_mm": 100.0,
@@ -121,23 +121,23 @@ def render_sidebar() -> None:
         })
         vs = st.session_state["vehicle_setup"]
         vs["brake_bias"] = st.slider("Brake bias front", 0.0, 1.0, vs["brake_bias"],
-                                       step=0.05, help="Fração na frente")
-        with st.expander("🔧 Direção"):
+                                       step=0.05, help="Fraction at the front")
+        with st.expander("🔧 Steering"):
             vs["c_factor_mm"] = st.number_input("c-factor (mm/rev)",
                                                   value=vs["c_factor_mm"], step=1.0,
-                                                  help="2π × raio do pinhão")
-            vs["steering_wheel_lock_deg"] = st.number_input("Lock total volante (°)",
+                                                  help="2π × pinion radius")
+            vs["steering_wheel_lock_deg"] = st.number_input("Total steering-wheel lock (°)",
                                                               value=vs["steering_wheel_lock_deg"],
                                                               step=10.0)
 
         st.divider()
 
-        # ─── TEMA ────────────────────────────────────────────────────────────
-        st.selectbox("🎨 Tema do app", list(THEMES), key="ui_theme",
-                     help="Vale para esta sessão; o padrão de boot vem de "
+        # ─── THEME ───────────────────────────────────────────────────────────
+        st.selectbox("🎨 App theme", list(THEMES), key="ui_theme",
+                     help="Applies to this session; the boot default comes from "
                           ".streamlit/config.toml")
-        # A config alterada só chega ao navegador no PRÓXIMO rerun, então
-        # forçamos um quando a escolha muda (padrão set_option + rerun).
+        # The changed config only reaches the browser on the NEXT rerun, so we
+        # force one when the choice changes (standard set_option + rerun pattern).
         if st.session_state["_theme_applied"] != st.session_state["ui_theme"]:
             st.session_state["_theme_applied"] = st.session_state["ui_theme"]
             st.rerun()

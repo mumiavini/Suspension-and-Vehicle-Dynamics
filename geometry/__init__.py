@@ -1,13 +1,13 @@
 """
 geometry
 ========
-Pacote de geometria do motor de suspensão FSAE.
+Geometry package of the FSAE suspension engine.
 
-Módulos:
-    primitives  : tipos básicos (Point3D, Vector3D, Point2D) + interseções
-    solver_2d   : mecanismo de 4 barras na vista frontal Y-Z
-    model_3d    : classes OOP (ControlArm, SuspensionCorner, Vehicle)
-    solver_3d   : solver cinemático 3D (interseção de 3 esferas + LM)
+Modules:
+    primitives  : basic types (Point3D, Vector3D, Point2D) + intersections
+    solver_2d   : four-bar mechanism in the Y-Z front view
+    model_3d    : OOP classes (ControlArm, SuspensionCorner, Vehicle)
+    solver_3d   : 3D kinematic solver (3-sphere intersection + LM)
 """
 
 from geometry.primitives import Point3D, Point2D, Vector3D

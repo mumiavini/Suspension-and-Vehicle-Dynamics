@@ -1,8 +1,8 @@
 """
 ui/tab_compare.py
 =================
-🔄 Aba Comparação — duas geometrias lado a lado: corners do arquivo, o seed
-da última otimização ou o resultado otimizado (via `last_optimization`).
+🔄 Compare tab — two geometries side by side: corners from the file, the seed
+of the last optimization, or the optimized result (via `last_optimization`).
 """
 
 from __future__ import annotations
@@ -22,29 +22,29 @@ from ui.shared import (
 
 
 def render() -> None:
-    st.header("Comparação entre duas geometrias")
+    st.header("Comparison between two geometries")
 
     df = load_hardpoints_from_state()
     has_optimization = "last_optimization" in st.session_state
 
     if df is None and not has_optimization:
         render_empty_state(
-            "A comparação coloca **duas geometrias lado a lado**: corners do "
-            "arquivo, o seed da última otimização ou o resultado otimizado.",
+            "The comparison places **two geometries side by side**: corners from "
+            "the file, the seed of the last optimization, or the optimized result.",
             key="empty_compare",
         )
         st.stop()
 
     def resolve_geometry(source, side):
-        if source == "Corner do arquivo":
+        if source == "File corner":
             if df is None:
-                st.warning(f"⚠️ Carregue arquivo p/ lado {side}.")
+                st.warning(f"⚠️ Load a file for side {side}.")
                 return None
             cid = st.selectbox(f"Corner {side}", VALID_CORNERS, key=f"cmp_{side}")
             return build_corner_safe(df, cid)
-        elif source == "Última SEED":
+        elif source == "Last SEED":
             if not has_optimization:
-                st.warning("⚠️ Rode otimização primeiro.")
+                st.warning("⚠️ Run an optimization first.")
                 return None
             lo = st.session_state["last_optimization"]
             return lo["seed_corner"], lo["seed_tie_rod"]
@@ -54,16 +54,16 @@ def render() -> None:
 
     col_src_a, col_src_b = st.columns(2)
     with col_src_a.container(border=True):
-        st.markdown("**🅰️ Geometria A**")
-        sa_opts = ["Corner do arquivo", "Última SEED"]
-        if has_optimization: sa_opts.append("Última OTIMIZADA")
+        st.markdown("**🅰️ Geometry A**")
+        sa_opts = ["File corner", "Last SEED"]
+        if has_optimization: sa_opts.append("Last OPTIMIZED")
         source_a = st.radio("A", sa_opts, key="src_a",
                             label_visibility="collapsed", horizontal=True)
         geom_a = resolve_geometry(source_a, "A")
     with col_src_b.container(border=True):
-        st.markdown("**🅱️ Geometria B**")
-        sb_opts = ["Corner do arquivo", "Última SEED"]
-        if has_optimization: sb_opts.append("Última OTIMIZADA")
+        st.markdown("**🅱️ Geometry B**")
+        sb_opts = ["File corner", "Last SEED"]
+        if has_optimization: sb_opts.append("Last OPTIMIZED")
         default_idx = 2 if has_optimization else 0
         source_b = st.radio("B", sb_opts, index=default_idx, key="src_b",
                             label_visibility="collapsed", horizontal=True)
@@ -75,12 +75,12 @@ def render() -> None:
     corner_b, tie_rod_b = geom_b
 
     st.markdown("---")
-    st.markdown("### KPIs estáticos")
+    st.markdown("### Static KPIs")
 
     metrics = [
         ("Caster (°)",          corner_a.static_caster_deg(),         corner_b.static_caster_deg()),
         ("KPI (°)",             corner_a.static_kpi_deg(),            corner_b.static_kpi_deg()),
-        ("Camber estático (°)", corner_a.static_camber_deg(),         corner_b.static_camber_deg()),
+        ("Static camber (°)",   corner_a.static_camber_deg(),         corner_b.static_camber_deg()),
         ("Scrub (mm)",          corner_a.static_scrub_radius_mm(),    corner_b.static_scrub_radius_mm()),
         ("Trail (mm)",          corner_a.static_mechanical_trail_mm(),corner_b.static_mechanical_trail_mm()),
         ("Kingpin Offset (mm)", corner_a.static_kingpin_offset_mm(),  corner_b.static_kingpin_offset_mm()),
@@ -89,18 +89,18 @@ def render() -> None:
         ("RC Height (mm)",      corner_a.roll_center_height_mm(),     corner_b.roll_center_height_mm()),
     ]
     static_cmp = pl.DataFrame([
-        {"Parâmetro": n, "A": f"{a:+.3f}", "B": f"{b:+.3f}",
+        {"Parameter": n, "A": f"{a:+.3f}", "B": f"{b:+.3f}",
          "Δ (B−A)": f"{b-a:+.3f}"} for n, a, b in metrics
     ])
     st.dataframe(static_cmp, width="stretch", hide_index=True)
 
-    st.markdown("### Heave Sweep — Sobreposição")
+    st.markdown("### Heave Sweep — Overlay")
     hsc1, hsc2, hsc3 = st.columns(3)
     with hsc1: cmp_h_min  = st.number_input("Min", value=-25.0, key="cmp_hmin")
     with hsc2: cmp_h_max  = st.number_input("Max", value= 25.0, key="cmp_hmax")
     with hsc3: cmp_h_step = st.number_input("Step",value=  1.0, key="cmp_hstep")
 
-    with st.spinner("Rodando sweeps..."):
+    with st.spinner("Running sweeps..."):
         sweep_a = run_sweep_cached(corner_a, tie_rod_a, "Heave",
                                     (cmp_h_min, cmp_h_max, cmp_h_step))
         sweep_b = run_sweep_cached(corner_b, tie_rod_b, "Heave",

@@ -3,30 +3,30 @@ from __future__ import annotations
 """
 geometry/model_3d.py
 ====================
-Modelo orientado a objetos da suspensão completa em 3D.
+Object-oriented model of the complete 3D suspension.
 
-HIERARQUIA DE CLASSES:
+CLASS HIERARCHY:
 
     Point3D, Vector3D       (geometry/primitives.py)
             ↓
-    ControlArm              braço de controle (A-arm com 2 inboards + 1 outboard)
+    ControlArm              control arm (A-arm with 2 inboards + 1 outboard)
             ↓
-    KingpinGeometry         eixo do pino mestre + métodos de cálculo
+    KingpinGeometry         steering axis + computation methods
             ↓
-    SuspensionCorner        uma ponta (UCA + LCA + WC + CP)
+    SuspensionCorner        one corner (UCA + LCA + WC + CP)
             ↓
-    Vehicle                 4 cantos (FL, FR, RL, RR) + dados gerais
+    Vehicle                 4 corners (FL, FR, RL, RR) + general data
 
-OBJETIVO DESTE MÓDULO:
-    Calcular parâmetros ESTÁTICOS 3D a partir das coordenadas dos hardpoints:
+PURPOSE OF THIS MODULE:
+    Compute STATIC 3D parameters from the hardpoint coordinates:
         - Caster
         - KPI (Kingpin Inclination)
-        - Camber estático
+        - Static camber
         - Scrub Radius
         - Mechanical Trail
         - Roll Center / Roll Axis
 
-NOTA: este módulo trabalha apenas com a POSIÇÃO ESTÁTICA. Para movimentos
+NOTE: this module works only with the STATIC POSITION. For motions
 (bump, roll, steer), use `geometry/solver_3d.py`.
 """
 
@@ -42,25 +42,25 @@ from geometry.primitives import Point3D, Vector3D
 
 
 # =============================================================================
-# ControlArm — Braço de controle (UCA ou LCA)
+# ControlArm — Control arm (UCA or LCA)
 # =============================================================================
 
 @dataclass
 class ControlArm:
     """
-    Braço de controle em "A" ou "L".
+    "A" or "L" shaped control arm.
 
-    Possui DOIS pontos de ancoragem no chassi (inboard_front, inboard_rear)
-    e UM ponto na manga de eixo (outboard).
+    Has TWO anchor points on the chassis (inboard_front, inboard_rear)
+    and ONE point on the upright (outboard).
 
-    Esses dois pontos inboard definem o EIXO DE ROTAÇÃO do braço — o braço
-    pivota em torno dessa linha quando a suspensão se move.
+    These two inboard points define the ARM's ROTATION AXIS — the arm
+    pivots about that line when the suspension moves.
 
-    Atributos:
-        inboard_front : ancoragem inboard frontal (chassi)
-        inboard_rear  : ancoragem inboard traseira (chassi)
-        outboard      : ancoragem na manga de eixo
-        name          : identificador (ex: "UCA_FL")
+    Attributes:
+        inboard_front : front inboard anchor (chassis)
+        inboard_rear  : rear inboard anchor (chassis)
+        outboard      : anchor on the upright
+        name          : identifier (e.g. "UCA_FL")
     """
     inboard_front: Point3D
     inboard_rear:  Point3D
@@ -68,31 +68,31 @@ class ControlArm:
     name:          str = "ControlArm"
 
     # -------------------------------------------------------------------------
-    # Propriedades derivadas
+    # Derived properties
     # -------------------------------------------------------------------------
 
     @property
     def effective_inboard(self) -> Point3D:
         """
-        Ponto inboard EFETIVO: midpoint entre inboard_front e inboard_rear.
+        EFFECTIVE inboard point: midpoint between inboard_front and inboard_rear.
 
-        Para cálculos 2D na vista frontal, projetamos o braço A num único
-        elo equivalente que vai do midpoint até o outboard.
+        For 2D calculations in the front view, we project the A-arm onto a
+        single equivalent link from the midpoint to the outboard.
         """
         return self.inboard_front.midpoint(self.inboard_rear)
 
     def arm_vector(self) -> Vector3D:
-        """Vetor do inboard efetivo até o outboard."""
+        """Vector from the effective inboard to the outboard."""
         return Vector3D.from_points(self.effective_inboard, self.outboard)
 
     def arm_length(self) -> float:
-        """Comprimento efetivo do braço (mm)."""
+        """Effective arm length (mm)."""
         return self.arm_vector().magnitude()
 
     def pivot_axis(self) -> Vector3D:
         """
-        Eixo em torno do qual o braço pivota (linha inboard_front → inboard_rear).
-        Não-unitário.
+        Axis about which the arm pivots (line inboard_front → inboard_rear).
+        Not normalized.
         """
         return Vector3D.from_points(self.inboard_front, self.inboard_rear)
 
@@ -104,28 +104,28 @@ class ControlArm:
 
 
 # =============================================================================
-# KingpinGeometry — Eixo do pino mestre e ângulos derivados
+# KingpinGeometry — Steering axis and derived angles
 # =============================================================================
 
 @dataclass
 class KingpinGeometry:
     """
-    Eixo do pino mestre (steering axis) e métricas associadas.
+    Steering axis (kingpin axis) and associated metrics.
 
-    O PINO MESTRE é a linha imaginária que une os dois ball joints (LBJ e UBJ).
-    A roda esterça em torno dessa linha. Suas inclinações em relação aos eixos
-    verticais geram quatro parâmetros fundamentais:
+    The KINGPIN is the imaginary line joining the two ball joints (LBJ and UBJ).
+    The wheel steers about this line. Its inclinations relative to the vertical
+    axes produce four fundamental parameters:
 
-        - Caster    : inclinação no plano lateral X-Z (afeta auto-centragem)
-        - KPI       : inclinação no plano frontal Y-Z (afeta efeitos de steer)
-        - Scrub     : distância lateral entre eixo e contato (afeta esforço)
-        - Trail     : distância longitudinal entre eixo e contato (afeta retorno)
+        - Caster    : inclination in the side X-Z plane (affects self-centering)
+        - KPI       : inclination in the front Y-Z plane (affects steer effects)
+        - Scrub     : lateral distance between axis and contact (affects effort)
+        - Trail     : longitudinal distance between axis and contact (affects return)
 
-    Atributos:
-        upper_ball_joint : centro da junta esférica superior (outboard do UCA)
-        lower_ball_joint : centro da junta esférica inferior (outboard do LCA)
-        wheel_center     : centro de roda (estático)
-        contact_patch    : contato pneu-solo
+    Attributes:
+        upper_ball_joint : center of the upper ball joint (UCA outboard)
+        lower_ball_joint : center of the lower ball joint (LCA outboard)
+        wheel_center     : wheel center (static)
+        contact_patch    : tire-ground contact
     """
     upper_ball_joint: Point3D
     lower_ball_joint: Point3D
@@ -133,12 +133,12 @@ class KingpinGeometry:
     contact_patch:    Point3D
 
     # -------------------------------------------------------------------------
-    # Eixo do pino mestre (vetor unitário)
+    # Kingpin axis (unit vector)
     # -------------------------------------------------------------------------
 
     def kingpin_axis(self) -> Vector3D:
         """
-        Vetor UNITÁRIO ao longo do pino mestre, apontando de baixo para cima
+        UNIT vector along the kingpin, pointing from bottom to top
         (LBJ → UBJ).
         """
         return Vector3D.from_points(
@@ -151,29 +151,29 @@ class KingpinGeometry:
 
     def kingpin_inclination_deg(self) -> float:
         """
-        Inclinação do pino mestre no plano frontal Y-Z, em graus.
+        Kingpin inclination in the front Y-Z plane, in degrees.
 
-        CONVENÇÃO:
-            KPI POSITIVO quando o topo do pino mestre está mais PARA DENTRO
-            do veículo (mais perto do plano de simetria) do que a base.
+        CONVENTION:
+            POSITIVE KPI when the top of the kingpin is more INWARD
+            (closer to the symmetry plane) than the base.
 
-        TYPICAL FSAE: 5° a 10°
+        TYPICAL FSAE: 5° to 10°
         """
         kp = self.kingpin_axis()
 
-        # Projeção no plano Y-Z (descarta componente X)
+        # Projection onto the Y-Z plane (drops the X component)
         yz = np.array([0.0, kp.y, kp.z])
         norm = float(np.linalg.norm(yz))
         if norm < 1e-12:
             return 0.0
         yz_unit = yz / norm
 
-        # Ângulo com o eixo vertical Z (intervalo 0°..180°)
+        # Angle with the vertical Z axis (range 0°..180°)
         cos_theta = float(np.clip(yz_unit[2], -1.0, 1.0))
         angle = math.degrees(math.acos(cos_theta))
 
-        # Sinal: positivo se UBJ está mais perto do plano de simetria que LBJ
-        # "Mais perto do plano de simetria" = |Y| menor
+        # Sign: positive if UBJ is closer to the symmetry plane than LBJ
+        # "Closer to the symmetry plane" = smaller |Y|
         ubj_inner = abs(self.upper_ball_joint.y) < abs(self.lower_ball_joint.y)
         return angle if ubj_inner else -angle
 
@@ -183,17 +183,17 @@ class KingpinGeometry:
 
     def caster_deg(self) -> float:
         """
-        Inclinação do pino mestre no plano lateral X-Z, em graus.
+        Kingpin inclination in the side X-Z plane, in degrees.
 
-        CONVENÇÃO:
-            Caster POSITIVO quando o topo do pino está deslocado PARA TRÁS
-            em relação à base (configuração que gera auto-centragem do volante).
+        CONVENTION:
+            POSITIVE caster when the top of the kingpin is offset REARWARD
+            relative to the base (configuration that produces steering self-centering).
 
-        TYPICAL FSAE: 3° a 7°
+        TYPICAL FSAE: 3° to 7°
         """
         kp = self.kingpin_axis()
 
-        # Projeção no plano X-Z (descarta componente Y)
+        # Projection onto the X-Z plane (drops the Y component)
         xz = np.array([kp.x, 0.0, kp.z])
         norm = float(np.linalg.norm(xz))
         if norm < 1e-12:
@@ -203,42 +203,42 @@ class KingpinGeometry:
         cos_theta = float(np.clip(xz_unit[2], -1.0, 1.0))
         angle = math.degrees(math.acos(cos_theta))
 
-        # Sinal: positivo se UBJ está ATRÁS de LBJ (UBJ.x < LBJ.x, ou seja, kp.x < 0)
+        # Sign: positive if UBJ is BEHIND LBJ (UBJ.x < LBJ.x, i.e. kp.x < 0)
         return angle if kp.x < 0 else -angle
 
     # -------------------------------------------------------------------------
-    # Scrub Radius (raio de scrub)
+    # Scrub Radius
     # -------------------------------------------------------------------------
 
     def scrub_radius_mm(self) -> float:
         """
-        Distância LATERAL (Y) entre o ponto onde o pino mestre intercepta o
-        solo e o centro de contato do pneu.
+        LATERAL (Y) distance between the point where the kingpin intercepts the
+        ground and the tire contact patch center.
 
-        CONVENÇÃO:
-            POSITIVO: pino cruza o solo PARA DENTRO do contato (típico)
-            NEGATIVO: pino cruza o solo PARA FORA do contato
+        CONVENTION:
+            POSITIVE: kingpin crosses the ground INWARD of the contact (typical)
+            NEGATIVE: kingpin crosses the ground OUTWARD of the contact
 
-        TYPICAL FSAE: −10 a +30 mm
+        TYPICAL FSAE: −10 to +30 mm
         """
         intercept = self._kingpin_ground_intercept()
         if intercept is None:
-            return float("inf")  # pino horizontal: não intercepta o solo
+            return float("inf")  # horizontal kingpin: does not intercept the ground
         return float(self.contact_patch.y - intercept[1])
 
     # -------------------------------------------------------------------------
-    # Mechanical Trail (trail mecânico)
+    # Mechanical Trail
     # -------------------------------------------------------------------------
 
     def mechanical_trail_mm(self) -> float:
         """
-        Distância LONGITUDINAL (X) entre o ponto onde o pino mestre intercepta
-        o solo e o centro de contato do pneu.
+        LONGITUDINAL (X) distance between the point where the kingpin intercepts
+        the ground and the tire contact patch center.
 
-        CONVENÇÃO:
-            POSITIVO: intercepto à frente do contato (trail convencional)
+        CONVENTION:
+            POSITIVE: intercept ahead of the contact (conventional trail)
 
-        TYPICAL FSAE: 5 a 25 mm (depende muito do caster)
+        TYPICAL FSAE: 5 to 25 mm (highly dependent on caster)
         """
         intercept = self._kingpin_ground_intercept()
         if intercept is None:
@@ -246,18 +246,18 @@ class KingpinGeometry:
         return float(self.contact_patch.x - intercept[0])
 
     # -------------------------------------------------------------------------
-    # Helper privado: onde o pino mestre cruza o solo (Z=0)?
+    # Private helper: where does the kingpin cross the ground (Z=0)?
     # -------------------------------------------------------------------------
 
     def _kingpin_ground_intercept(self) -> Optional[NDArray[np.float64]]:
         """
-        Encontra o ponto em que a linha do pino mestre cruza o plano Z=0.
+        Find the point where the kingpin line crosses the Z=0 plane.
 
-        Parametrização: P(t) = LBJ + t · kp_unit
-        Queremos t tal que P.z = 0:
+        Parametrization: P(t) = LBJ + t · kp_unit
+        We want t such that P.z = 0:
             t = -LBJ.z / kp_unit.z
 
-        Retorna None se o pino for horizontal (kp.z ≈ 0).
+        Returns None if the kingpin is horizontal (kp.z ≈ 0).
         """
         kp = self.kingpin_axis().to_array()
         lbj = self.lower_ball_joint.to_array()
@@ -269,23 +269,23 @@ class KingpinGeometry:
         return lbj + t * kp
 
     # -------------------------------------------------------------------------
-    # Kingpin Offset @ Wheel Center (distância perpendicular do WC ao eixo)
+    # Kingpin Offset @ Wheel Center (perpendicular distance from WC to the axis)
     # -------------------------------------------------------------------------
 
     def kingpin_offset_at_wheel_center_mm(self) -> float:
         """
-        Offset do eixo do pino mestre no nível do CENTRO DE RODA.
+        Kingpin-axis offset at the WHEEL CENTER level.
 
-        DEFINIÇÃO: distância LATERAL (Y) entre o ponto onde o pino mestre
-        passa na altura do wheel center, e o próprio wheel center.
+        DEFINITION: LATERAL (Y) distance between the point where the kingpin
+        passes at the wheel-center height and the wheel center itself.
 
-        DIFERENÇA para Scrub Radius:
-            - Scrub Radius é a distância no NÍVEL DO SOLO
-            - Kingpin Offset (este) é no NÍVEL DO CENTRO DE RODA
-            Estes dois valores se relacionam pelo KPI:
+        DIFFERENCE from Scrub Radius:
+            - Scrub Radius is the distance at GROUND LEVEL
+            - Kingpin Offset (this) is at the WHEEL CENTER level
+            These two values relate through the KPI:
                 offset_wc - scrub_radius = WC.z · tan(KPI)
 
-        TÍPICO FSAE: 30-80 mm (positivo)
+        TYPICAL FSAE: 30-80 mm (positive)
         """
         kp_unit = self.kingpin_axis().to_array()
         lbj = self.lower_ball_joint.to_array()
@@ -293,31 +293,31 @@ class KingpinGeometry:
         if abs(kp_unit[2]) < 1e-12:
             return float("inf")
 
-        # Parametriza a linha do pino e encontra o ponto na altura do WC
+        # Parametrize the kingpin line and find the point at the WC height
         t_wc = (self.wheel_center.z - lbj[2]) / kp_unit[2]
         point_on_axis = lbj + t_wc * kp_unit
 
-        # Distância lateral (Y) em relação ao WC
+        # Lateral (Y) distance relative to the WC
         return float(self.wheel_center.y - point_on_axis[1])
 
 
 # =============================================================================
-# SuspensionCorner — Uma ponta completa da suspensão
+# SuspensionCorner — One complete suspension corner
 # =============================================================================
 
 @dataclass
 class SuspensionCorner:
     """
-    Uma ponta de suspensão (uma roda): UCA + LCA + manga + roda.
+    One suspension corner (one wheel): UCA + LCA + upright + wheel.
 
-    Atributos obrigatórios:
-        upper_arm     : braço superior (UCA)
-        lower_arm     : braço inferior (LCA)
-        wheel_center  : centro da roda (estático)
-        contact_patch : contato pneu-solo (estático)
+    Required attributes:
+        upper_arm     : upper arm (UCA)
+        lower_arm     : lower arm (LCA)
+        wheel_center  : wheel center (static)
+        contact_patch : tire-ground contact (static)
         corner_id     : "FL" | "FR" | "RL" | "RR"
 
-    Atributos opcionais (não usados nesta fase do projeto):
+    Optional attributes (not used in this phase of the project):
         toe_link / pushrod / pullrod
     """
     upper_arm:     ControlArm
@@ -331,14 +331,14 @@ class SuspensionCorner:
     pullrod:  Optional[tuple[Point3D, Point3D]] = field(default=None)
 
     # -------------------------------------------------------------------------
-    # Geometria do pino mestre (computada sob demanda)
+    # Kingpin geometry (computed on demand)
     # -------------------------------------------------------------------------
 
     @property
     def kingpin(self) -> KingpinGeometry:
         """
-        Eixo do pino mestre desta ponta.
-        Construído a partir dos outboards do UCA (UBJ) e LCA (LBJ).
+        Kingpin axis of this corner.
+        Built from the UCA outboard (UBJ) and LCA outboard (LBJ).
         """
         return KingpinGeometry(
             upper_ball_joint=self.upper_arm.outboard,
@@ -348,7 +348,7 @@ class SuspensionCorner:
         )
 
     # -------------------------------------------------------------------------
-    # Parâmetros estáticos (delegam para KingpinGeometry)
+    # Static parameters (delegate to KingpinGeometry)
     # -------------------------------------------------------------------------
 
     def static_caster_deg(self)           -> float: return self.kingpin.caster_deg()
@@ -358,28 +358,28 @@ class SuspensionCorner:
     def static_kingpin_offset_mm(self)    -> float: return self.kingpin.kingpin_offset_at_wheel_center_mm()
 
     # -------------------------------------------------------------------------
-    # Steer Arm Length — comprimento do braço de direção efetivo
+    # Steer Arm Length — effective steering arm length
     # -------------------------------------------------------------------------
 
     def steer_arm_length_mm(self, tie_rod_outboard: Point3D) -> float:
         """
-        Comprimento do braço de direção (steer arm).
+        Steering arm length (steer arm).
 
-        DEFINIÇÃO: distância PERPENDICULAR do ponto outboard do tie-rod
-        ao eixo do pino mestre. Esse é o "braço de alavanca" através do
-        qual a força do tie-rod gera torque de esterçamento na roda.
+        DEFINITION: PERPENDICULAR distance from the tie-rod outboard point
+        to the kingpin axis. This is the "lever arm" through which the
+        tie-rod force generates steering torque on the wheel.
 
-        FÓRMULA:
+        FORMULA:
             steer_arm = |(TRO - LBJ) × kp_unit|
 
-        TÍPICO FSAE: 50-100 mm
+        TYPICAL FSAE: 50-100 mm
         """
         kp_unit = self.kingpin.kingpin_axis().to_array()
         v = tie_rod_outboard.to_array() - self.lower_arm.outboard.to_array()
         return float(np.linalg.norm(np.cross(v, kp_unit)))
 
     # -------------------------------------------------------------------------
-    # Anti-dive / Anti-lift (vista lateral X-Z)
+    # Anti-dive / Anti-lift (side view X-Z)
     # -------------------------------------------------------------------------
 
     def anti_dive_percent(
@@ -389,26 +389,26 @@ class SuspensionCorner:
         cg_height_mm: float = 280.0,
     ) -> float:
         """
-        Anti-dive (%) — fração da força de frenagem absorvida pela geometria.
+        Anti-dive (%) — fraction of the braking force absorbed by the geometry.
 
-        FÓRMULA (Milliken & Milliken, "Race Car Vehicle Dynamics" eq. 17.21):
+        FORMULA (Milliken & Milliken, "Race Car Vehicle Dynamics" eq. 17.21):
 
             anti_dive_% = brake_bias × tan(θ) × (wheelbase / h_CG) × 100%
 
-        onde:
-            θ      = ângulo entre a horizontal e a linha do CP ao IC_lateral
-            IC_lat = interseção das prolongações dos braços no plano X-Z
-            h_CG   = altura do centro de gravidade do veículo (mm)
+        where:
+            θ      = angle between the horizontal and the line from CP to IC_side
+            IC_side = intersection of the extended arm lines in the X-Z plane
+            h_CG   = height of the vehicle's center of gravity (mm)
 
-        Por que precisa de wheelbase e h_CG:
-            O termo wheelbase/h_CG vem do equilíbrio de torques na transferência
-            longitudinal de carga. Sem esses parâmetros, a fórmula geométrica
-            isolada não é interpretável como "%".
+        Why wheelbase and h_CG are needed:
+            The wheelbase/h_CG term comes from the torque balance in the
+            longitudinal load transfer. Without these parameters, the isolated
+            geometric formula cannot be interpreted as a "%".
 
-        Parâmetros default são típicos FSAE (wheelbase 1550, CG ~280mm).
-        AJUSTE conforme seu veículo para um valor preciso.
+        Default parameters are typical FSAE (wheelbase 1550, CG ~280mm).
+        ADJUST for your vehicle to get a precise value.
 
-        TÍPICO FSAE: 0% a 30% (anti-dive); negativo = pro-dive
+        TYPICAL FSAE: 0% to 30% (anti-dive); negative = pro-dive
         """
         from geometry.primitives import line_intersection_2d
 
@@ -422,7 +422,7 @@ class SuspensionCorner:
                 uca_in_2d, uca_out_2d, lca_in_2d, lca_out_2d,
             )
         except ValueError:
-            return 0.0   # braços paralelos: IC no infinito → 0%
+            return 0.0   # parallel arms: IC at infinity → 0%
 
         cp_2d = self.contact_patch.project_xz()
         dx = ic_lat.u - cp_2d.u
@@ -431,68 +431,67 @@ class SuspensionCorner:
         if abs(dx) < 1e-6 or cg_height_mm < 1e-6:
             return 0.0
 
-        # tan(θ) = dz / |dx|, com sinal vindo de dz
+        # tan(θ) = dz / |dx|, with sign coming from dz
         tan_theta = dz / abs(dx)
 
-        # Anti-dive % considerando a transferência longitudinal
+        # Anti-dive % accounting for the longitudinal transfer
         anti_dive = brake_bias * tan_theta * (wheelbase_mm / cg_height_mm) * 100.0
 
-        # Saturação física razoável
+        # Reasonable physical saturation
         return float(max(-200.0, min(200.0, anti_dive)))
 
     def anti_squat_percent(self, drive_fraction: float = 1.0) -> float:
         """
-        Anti-squat (%) — equivalente ao anti-dive mas para aceleração
-        (relevante apenas para a suspensão TRASEIRA num carro de tração traseira).
+        Anti-squat (%) — equivalent to anti-dive but for acceleration
+        (relevant only for the REAR suspension on a rear-wheel-drive car).
 
-        Para o eixo dianteiro: anti_squat = 0 (não recebe torque de tração).
-        Para o eixo traseiro (com diff fechado): drive_fraction = 1.0
+        For the front axle: anti_squat = 0 (receives no drive torque).
+        For the rear axle (with locked diff): drive_fraction = 1.0
 
-        ALGORITMO: idêntico ao anti-dive, mas conta o IC do lado oposto
-        ao da frenagem. Aqui simplificamos retornando a mesma geometria.
+        ALGORITHM: identical to anti-dive, but counts the IC on the side opposite
+        to braking. Here we simplify by returning the same geometry.
         """
         return self.anti_dive_percent(brake_bias=drive_fraction)
 
     # -------------------------------------------------------------------------
-    # Camber estático 3D — calculado pela projeção da manga no plano Y-Z
+    # Static 3D camber — computed from the upright projection onto the Y-Z plane
     # -------------------------------------------------------------------------
 
     def static_camber_deg(self) -> float:
         """
-        Cambagem estática construtiva em graus.
+        Constructive static camber in degrees.
 
-        IMPORTANTE: o camber estático NÃO pode ser inferido apenas dos
-        hardpoints. Ele depende de como a MANGA foi fabricada (posição
-        relativa dos furos do mancal de roda em relação aos furos das
-        ball joints).
+        IMPORTANT: static camber CANNOT be inferred from the hardpoints alone.
+        It depends on how the UPRIGHT was manufactured (relative position of
+        the wheel-bearing holes with respect to the ball-joint holes).
 
-        Para a maioria das mangas FSAE, a inclinação construtiva é planejada
-        para dar o camber estático desejado (ex: -1.5°). Esse valor é o
-        OFFSET que precisa ser adicionado ao camber dinâmico calculado
-        pelo solver.
+        For most FSAE uprights, the constructive inclination is designed to
+        give the desired static camber (e.g. -1.5°). That value is the
+        OFFSET that needs to be added to the dynamic camber computed by the
+        solver.
 
-        Este método retorna o offset construtivo gravado em
-        `self.static_camber_offset_deg`. Se não definido, retorna 0.
+        This method returns the constructive offset stored in
+        `self.static_camber_offset_deg`. If not set, returns 0.
 
-        CONVENÇÃO SAE:
-            − = topo da roda inclinado PARA DENTRO do veículo
-            + = topo da roda inclinado PARA FORA
+        SAE CONVENTION:
+            − = top of the wheel tilted INWARD
+            + = top of the wheel tilted OUTWARD
         """
         return getattr(self, "static_camber_offset_deg", 0.0)
 
     # -------------------------------------------------------------------------
-    # Roll Center estático 3D — usa o solver 2D na projeção Y-Z
+    # Static 3D Roll Center — uses the 2D solver on the Y-Z projection
     # -------------------------------------------------------------------------
 
     def roll_center_height_mm(self) -> float:
         """
-        Altura do Roll Center desta ponta (mm), calculada na vista frontal.
+        Roll Center height of this corner (mm), computed in the front view.
 
-        Projeta todos os pontos no plano Y-Z e usa o solver 2D para resolver
-        o estado estático (heave = 0). Retorna a coordenada Z do RC.
-        Retorna NaN se indeterminado.
+        Projects all points onto the Y-Z plane and uses the 2D solver to solve
+        the static state (heave = 0). Returns the RC's Z coordinate.
+        Returns NaN if undetermined.
         """
-        # Import local para evitar ciclo de imports
+        # Local import to avoid an import cycle
         from geometry.solver_2d import SuspensionGeometry2D
 
         geom_2d = SuspensionGeometry2D(
@@ -508,16 +507,16 @@ class SuspensionCorner:
         return h if h is not None else float("nan")
 
     # -------------------------------------------------------------------------
-    # Resumo formatado
+    # Formatted summary
     # -------------------------------------------------------------------------
 
     def summary(self) -> str:
-        """Retorna um resumo formatado dos parâmetros estáticos."""
+        """Return a formatted summary of the static parameters."""
         return "\n".join([
             f"═══ SuspensionCorner [{self.corner_id}] ═══",
             f"  Caster              : {self.static_caster_deg():+.3f}°",
             f"  KPI                 : {self.static_kpi_deg():+.3f}°",
-            f"  Camber (estático)   : {self.static_camber_deg():+.3f}°",
+            f"  Camber (static)     : {self.static_camber_deg():+.3f}°",
             f"  Scrub Radius        : {self.static_scrub_radius_mm():+.2f} mm",
             f"  Mechanical Trail    : {self.static_mechanical_trail_mm():+.2f} mm",
             f"  Roll Center Height  : {self.roll_center_height_mm():+.2f} mm",
@@ -525,21 +524,21 @@ class SuspensionCorner:
 
 
 # =============================================================================
-# Vehicle — Carro completo (4 cantos + dimensões gerais)
+# Vehicle — Complete car (4 corners + general dimensions)
 # =============================================================================
 
 @dataclass
 class Vehicle:
     """
-    Veículo completo: quatro pontas de suspensão + parâmetros gerais.
+    Complete vehicle: four suspension corners + general parameters.
 
-    Atributos:
-        front_left   : ponta FL
-        front_right  : ponta FR
-        rear_left    : ponta RL
-        rear_right   : ponta RR
-        wheelbase_mm : entre-eixos (mm)
-        track_front_mm / track_rear_mm : bitolas (mm)
+    Attributes:
+        front_left   : FL corner
+        front_right  : FR corner
+        rear_left    : RL corner
+        rear_right   : RR corner
+        wheelbase_mm : wheelbase (mm)
+        track_front_mm / track_rear_mm : track widths (mm)
     """
     front_left:  SuspensionCorner
     front_right: SuspensionCorner
@@ -551,14 +550,14 @@ class Vehicle:
     track_rear_mm:  float = 1180.0
 
     # -------------------------------------------------------------------------
-    # Eixo de rolagem (Roll Axis)
+    # Roll Axis
     # -------------------------------------------------------------------------
 
     def roll_axis(self) -> tuple[float, float]:
         """
-        Retorna (rc_front, rc_rear): alturas médias do RC dianteiro e traseiro.
+        Return (rc_front, rc_rear): average RC heights of the front and rear.
 
-        O EIXO DE ROLAGEM do veículo é a linha que une esses dois RCs.
+        The vehicle's ROLL AXIS is the line joining these two RCs.
         """
         rc_front = 0.5 * (self.front_left.roll_center_height_mm()
                         + self.front_right.roll_center_height_mm())
@@ -568,14 +567,14 @@ class Vehicle:
 
     def roll_axis_inclination_deg(self) -> float:
         """
-        Inclinação do eixo de rolagem em relação ao solo (graus).
-        Positivo = parte traseira do eixo mais alta que a dianteira.
+        Roll-axis inclination relative to the ground (degrees).
+        Positive = rear end of the axis higher than the front.
         """
         rc_front, rc_rear = self.roll_axis()
         return math.degrees(math.atan2(rc_rear - rc_front, self.wheelbase_mm))
 
     # -------------------------------------------------------------------------
-    # Ackermann estático (geométrico)
+    # Static (geometric) Ackermann
     # -------------------------------------------------------------------------
 
     def static_ackermann_percent(
@@ -584,54 +583,54 @@ class Vehicle:
         tie_rod_fr_outboard: Point3D,
     ) -> float:
         """
-        Ackermann estático (%) — quanto a geometria de direção SE APROXIMA
-        do Ackermann perfeito (100%).
+        Static Ackermann (%) — how close the steering geometry COMES
+        to perfect Ackermann (100%).
 
-        ALGORITMO:
-            O Ackermann perfeito (100%) ocorre quando as linhas que partem
-            de cada king pin axis, passando pelo respectivo tie-rod outboard,
-            convergem para um único ponto no eixo traseiro.
+        ALGORITHM:
+            Perfect Ackermann (100%) occurs when the lines starting from each
+            kingpin axis, passing through the respective tie-rod outboard,
+            converge to a single point on the rear axle.
 
-            Aproximação prática (Steer Arm method):
-                tan(α_perfeito) = (track / 2) / wheelbase
+            Practical approximation (Steer Arm method):
+                tan(α_perfect) = (track / 2) / wheelbase
                 α_real = atan(steer_arm_offset / wheel_center_to_pin_dist)
 
-            Razão (real / perfeito) × 100% = Ackermann %
+            Ratio (real / perfect) × 100% = Ackermann %
 
-        SIMPLIFICAÇÃO USADA:
-            Mede o ângulo entre o steer arm (vetor da projeção do pino mestre
-            ao TRO, no plano XY) e o eixo Y do veículo. Compara ao ângulo
-            Ackermann perfeito do veículo.
+        SIMPLIFICATION USED:
+            Measure the angle between the steer arm (vector from the kingpin
+            projection to the TRO, in the XY plane) and the vehicle's Y axis.
+            Compare it to the vehicle's perfect Ackermann angle.
 
-        Retorna porcentagem (100% = perfeito, 0% = paralelo).
+        Returns a percentage (100% = perfect, 0% = parallel).
         """
-        # Ângulo Ackermann perfeito do veículo (geometria simples)
+        # Vehicle's perfect Ackermann angle (simple geometry)
         if self.wheelbase_mm < 1e-6 or self.track_front_mm < 1e-6:
             return 0.0
         perfect_angle_rad = math.atan2(self.track_front_mm / 2.0, self.wheelbase_mm)
 
-        # Ângulo real do steer arm da ponta FL
+        # Real steer-arm angle of the FL corner
         kp_fl = self.front_left.kingpin.kingpin_axis().to_array()
         wc_fl = self.front_left.wheel_center.to_array()
         tro_fl = tie_rod_fl_outboard.to_array()
 
-        # Vetor TRO → projeção no plano XY (vista superior)
+        # Vector TRO → projection onto the XY plane (top view)
         steer_arm_vec_fl = tro_fl - wc_fl
-        # Remove componente paralela ao kingpin axis
+        # Remove the component parallel to the kingpin axis
         steer_arm_perp_fl = steer_arm_vec_fl - np.dot(steer_arm_vec_fl, kp_fl) * kp_fl
         sa_xy_fl = np.array([steer_arm_perp_fl[0], steer_arm_perp_fl[1]])
         if float(np.linalg.norm(sa_xy_fl)) < 1e-9:
             return 0.0
-        # O ângulo do steer arm com o eixo Y (lateral)
+        # The steer-arm angle with the Y axis (lateral)
         real_angle_rad = abs(math.atan2(sa_xy_fl[0], abs(sa_xy_fl[1]) + 1e-12))
 
-        # Ackermann % = razão entre o ângulo real e o ideal
+        # Ackermann % = ratio of the real angle to the ideal one
         if perfect_angle_rad < 1e-9:
             return 0.0
         return float(100.0 * real_angle_rad / perfect_angle_rad)
 
     # -------------------------------------------------------------------------
-    # Resumo formatado
+    # Formatted summary
     # -------------------------------------------------------------------------
 
     def summary(self) -> str:
@@ -650,7 +649,7 @@ class Vehicle:
             self.rear_right.summary(),
             "",
             "─── Roll Axis ───",
-            f"  RC Dianteiro (médio)  : {rc_f:+.2f} mm",
-            f"  RC Traseiro  (médio)  : {rc_r:+.2f} mm",
-            f"  Inclinação Roll Axis  : {self.roll_axis_inclination_deg():+.4f}°",
+            f"  Front RC (average)    : {rc_f:+.2f} mm",
+            f"  Rear RC  (average)    : {rc_r:+.2f} mm",
+            f"  Roll Axis Inclination : {self.roll_axis_inclination_deg():+.4f}°",
         ])

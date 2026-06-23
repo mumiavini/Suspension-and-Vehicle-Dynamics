@@ -1,9 +1,9 @@
 """
 ui/tab_synthesis.py
 ===================
-🎯 Aba Síntese — otimização global de hardpoints a partir de targets
-(engenharia reversa), via `analysis.optimizer`. Os resultados ficam em
-`st.session_state["last_optimization"]`, consumido também pela aba Comparação.
+🎯 Synthesis tab — global hardpoint optimization from targets
+(reverse engineering), via `analysis.optimizer`. The results are stored in
+`st.session_state["last_optimization"]`, also consumed by the Comparison tab.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ MIRROR_CORNER = {"FL": "FR", "FR": "FL", "RL": "RR", "RR": "RL"}
 
 
 def _movable_points(corner, tie_rod) -> dict[str, Point3D]:
-    """Os 4 hardpoints que o otimizador pode mover."""
+    """The 4 hardpoints the optimizer is allowed to move."""
     return {
         "UCA_OUT":     corner.upper_arm.outboard,
         "LCA_OUT":     corner.lower_arm.outboard,
@@ -49,7 +49,7 @@ def _movable_points(corner, tie_rod) -> dict[str, Point3D]:
 
 def _overlay_2d_figure(seed_corner, seed_tr, opt_corner, opt_tr,
                        bounds: dict, view: str) -> go.Figure:
-    """Sobreposição 2D seed × otimizado, com as caixas de busca (bounds)."""
+    """2D overlay of seed × optimized, with the search boxes (bounds)."""
 
     def uv(p):
         return (p.y, p.z) if view == "YZ" else (p.x, p.z)
@@ -60,8 +60,8 @@ def _overlay_2d_figure(seed_corner, seed_tr, opt_corner, opt_tr,
             (ua.inboard_front, ua.outboard), (ua.inboard_rear, ua.outboard),
             (la.inboard_front, la.outboard), (la.inboard_rear, la.outboard),
             (tr.inboard, tr.outboard),
-            (ua.outboard, la.outboard),                    # manga
-            (corner.wheel_center, corner.contact_patch),   # roda
+            (ua.outboard, la.outboard),                    # upright
+            (corner.wheel_center, corner.contact_patch),   # wheel
         ]
         xs, ys = [], []
         for p1, p2 in segments:
@@ -86,7 +86,7 @@ def _overlay_2d_figure(seed_corner, seed_tr, opt_corner, opt_tr,
 
     fig = go.Figure()
 
-    # Caixas de busca dos pontos móveis
+    # Search boxes of the movable points
     for b in bounds.values():
         if view == "YZ":
             u0, u1, v0, v1 = b.y_min, b.y_max, b.z_min, b.z_max
@@ -97,12 +97,12 @@ def _overlay_2d_figure(seed_corner, seed_tr, opt_corner, opt_tr,
                       fillcolor="rgba(120,120,120,0.06)")
 
     add_geometry(fig, seed_corner, seed_tr, "#1f77b4", "Seed", dash="dash")
-    add_geometry(fig, opt_corner, opt_tr, "#d62728", "Otimizado")
+    add_geometry(fig, opt_corner, opt_tr, "#d62728", "Optimized")
     fig.add_hline(y=0, line=dict(color="gray", dash="dash", width=1))
 
     axis_u = "Y" if view == "YZ" else "X"
     fig.update_layout(
-        title=f"Vista {view}",
+        title=f"{view} view",
         xaxis_title=f"{axis_u} (mm)", yaxis_title="Z (mm)",
         template="plotly_white", height=420,
         margin=dict(l=40, r=20, t=40, b=40),
@@ -114,12 +114,12 @@ def _overlay_2d_figure(seed_corner, seed_tr, opt_corner, opt_tr,
 
 
 def _apply_optimized_to_session(res: dict, mirror: bool) -> None:
-    """Substitui no df da sessão os hardpoints do corner otimizado
-    (e do corner oposto espelhado, se pedido) e re-executa o app."""
+    """Replace, in the session df, the hardpoints of the optimized corner
+    (and of the mirrored opposite corner, if requested) and re-run the app."""
     cid = res["corner_id"]
     base = st.session_state.get("hardpoints_df")
     if base is None:
-        st.error("❌ Nenhum hardpoint carregado na sessão.")
+        st.error("❌ No hardpoint loaded in the session.")
         return
 
     opt_rows = dataframe_from_corner(res["opt_corner"], res["opt_tie_rod"])
@@ -135,35 +135,35 @@ def _apply_optimized_to_session(res: dict, mirror: bool) -> None:
                 (-pl.col("y_mm")).alias("y_mm"),
             ).select(base.columns)
         )
-    label = f"Otimizado ({' + '.join(replaced)})"
+    label = f"Optimized ({' + '.join(replaced)})"
     st.session_state["hardpoints_df"] = pl.concat(pieces, how="vertical_relaxed")
     st.session_state["hardpoints_source"] = label
-    st.toast(f"Hardpoints aplicados: {label}", icon="✅")
+    st.toast(f"Hardpoints applied: {label}", icon="✅")
     st.rerun(scope="app")
 
 
 @st.fragment
 def render() -> None:
     """
-    Aba de síntese isolada em um st.fragment: interagir com qualquer widget
-    daqui re-executa SÓ esta aba, não o app inteiro (em particular, não
-    recalcula a aba de Análise) — interação muito mais rápida.
+    Synthesis tab isolated in an st.fragment: interacting with any widget here
+    re-runs ONLY this tab, not the whole app (in particular, it does not
+    recompute the Analysis tab) — much faster interaction.
     """
-    st.header("Síntese de geometria — Engenharia reversa")
+    st.header("Geometry synthesis — Reverse engineering")
 
     df = load_hardpoints_from_state()
     if df is None:
         render_empty_state(
-            "A síntese parte de uma geometria existente (o **seed**) e move "
-            "hardpoints automaticamente para atingir os targets definidos.",
+            "Synthesis starts from an existing geometry (the **seed**) and moves "
+            "hardpoints automatically to reach the defined targets.",
             key="empty_synthesis",
         )
         return
 
-    # ── Corner-seed + fotografia dos KPIs atuais ─────────────────────────────
+    # ── Seed corner + snapshot of the current KPIs ───────────────────────────
     sel_col, kpi_col = st.columns([1, 4])
     with sel_col:
-        seed_corner_id = st.selectbox("Corner-seed", VALID_CORNERS,
+        seed_corner_id = st.selectbox("Seed corner", VALID_CORNERS,
                                        key="synth_seed_corner")
     built = build_corner_safe(df, seed_corner_id)
     if built is None:
@@ -171,7 +171,7 @@ def render() -> None:
     seed_corner, seed_tie_rod = built
 
     with kpi_col:
-        st.caption("**Valores atuais do seed** — use como referência ao definir os targets")
+        st.caption("**Current seed values** — use as a reference when defining the targets")
         seed_sweep = run_sweep_cached(seed_corner, seed_tie_rod, "Heave",
                                        (-25.0, 25.0, 5.0))
         m = st.columns(6)
@@ -192,7 +192,7 @@ def render() -> None:
     st.subheader("🎯 Targets")
 
     def _target_row(label, use_key, val_key, default, step, on_default, fmt=None):
-        """Toggle + valor numérico na mesma linha."""
+        """Toggle + numeric value on the same line."""
         c_use, c_val = st.columns([1.3, 1], vertical_alignment="center")
         use = c_use.toggle(label, value=on_default, key=use_key)
         val = c_val.number_input(label, value=default, step=step,
@@ -203,13 +203,13 @@ def render() -> None:
     col_static, col_dynamic = st.columns(2)
 
     with col_static.container(border=True):
-        st.markdown("**Estáticos** — ative os que o otimizador deve perseguir")
+        st.markdown("**Static** — enable the ones the optimizer should pursue")
 
         use_caster, tgt_caster = _target_row("Caster (°)", "use_caster",
                                              "tgt_caster", 4.0, 0.5, True)
         use_kpi, tgt_kpi       = _target_row("KPI (°)", "use_kpi",
                                              "tgt_kpi", 7.0, 0.5, True)
-        use_camber, tgt_camber = _target_row("Camber estático (°)", "use_camber",
+        use_camber, tgt_camber = _target_row("Static camber (°)", "use_camber",
                                              "tgt_camber", -1.5, 0.25, True)
         use_scrub, tgt_scrub   = _target_row("Scrub (mm)", "use_scrub",
                                              "tgt_scrub", 15.0, 1.0, False)
@@ -217,15 +217,15 @@ def render() -> None:
                                              "tgt_trail", 20.0, 1.0, False)
 
     with col_dynamic.container(border=True):
-        st.markdown("**Dinâmicos** — desativar zera o peso do termo no custo")
+        st.markdown("**Dynamic** — disabling zeroes the term's weight in the cost")
 
         use_cg, tgt_cg   = _target_row("Camber Gain (°/mm)", "use_cg",
                                        "tgt_cg", -0.020, 0.005, True, fmt="%.3f")
-        use_bs, tgt_bs   = _target_row("Bump Steer máx (°/mm)", "use_bs",
+        use_bs, tgt_bs   = _target_row("Max Bump Steer (°/mm)", "use_bs",
                                        "tgt_bs", 0.005, 0.001, True, fmt="%.3f")
         use_rch, tgt_rch = _target_row("RC Height (mm)", "use_rch",
                                        "tgt_rch", 45.0, 1.0, True)
-        use_rcm, tgt_rcm = _target_row("RC ΔY máx (mm)", "use_rcm",
+        use_rcm, tgt_rcm = _target_row("Max RC ΔY (mm)", "use_rcm",
                                        "tgt_rcm", 25.0, 1.0, True)
         st.markdown("**Heave sweep range**")
         hc1, hc2, hc3 = st.columns(3)
@@ -235,7 +235,7 @@ def render() -> None:
 
     exp_w, exp_b, exp_s = st.columns(3)
     with exp_w:
-        with st.expander("⚙️ Pesos"):
+        with st.expander("⚙️ Weights"):
             w_caster = st.number_input("w_caster",        value=1.0,  key="w_caster")
             w_kpi    = st.number_input("w_kpi",           value=1.0,  key="w_kpi")
             w_camber = st.number_input("w_static_camber", value=5.0,  key="w_camber")
@@ -255,44 +255,44 @@ def render() -> None:
 
     with exp_s:
         with st.expander("🔧 Solver"):
-            pop_size = st.slider("População (×n_dims)", 5, 30, 12, key="pop")
-            max_iter = st.slider("Iterações", 10, 200, 40, key="iter")
+            pop_size = st.slider("Population (×n_dims)", 5, 30, 12, key="pop")
+            max_iter = st.slider("Iterations", 10, 200, 40, key="iter")
             seed_rng = st.number_input("seed", value=42, key="seed_rng")
             workers  = st.selectbox("Cores", [1, -1],
-                                      format_func=lambda x: "1" if x == 1 else "Todos",
+                                      format_func=lambda x: "1" if x == 1 else "All",
                                       key="workers")
-            polish_opt = st.checkbox("Polish (refino local ao final)", value=True,
+            polish_opt = st.checkbox("Polish (local refinement at the end)", value=True,
                                       key="polish_opt",
-                                      help="Roda L-BFGS-B após o DE. Melhora o "
-                                           "resultado, mas adiciona avaliações extras.")
-            max_seconds = st.number_input("Tempo máx (s) — 0 = sem limite",
+                                      help="Runs L-BFGS-B after the DE. Improves the "
+                                           "result, but adds extra evaluations.")
+            max_seconds = st.number_input("Max time (s) — 0 = no limit",
                                            min_value=0, value=0, step=10,
                                            key="max_seconds",
-                                           help="Interrompe ao exceder, mantendo o "
-                                                "melhor resultado até então.")
+                                           help="Stops when exceeded, keeping the "
+                                                "best result so far.")
 
     st.markdown("---")
     run_col, clear_col, info_col = st.columns([1, 1, 2])
     with run_col:
-        run_opt = st.button("🚀 Rodar Otimização", type="primary",
+        run_opt = st.button("🚀 Run Optimization", type="primary",
                              width="stretch")
     with clear_col:
         if st.session_state.get("last_optimization") is not None:
-            if st.button("🗑️ Limpar resultados", width="stretch"):
+            if st.button("🗑️ Clear results", width="stretch"):
                 st.session_state.pop("last_optimization", None)
                 st.rerun(scope="fragment")
     with info_col:
         n_evals = pop_size * 12 * (max_iter + 1)
-        st.caption(f"≈ até {n_evals:,} avaliações da função objetivo "
-                   f"({pop_size}×12 indivíduos × {max_iter} gerações)")
+        st.caption(f"≈ up to {n_evals:,} objective-function evaluations "
+                   f"({pop_size}×12 individuals × {max_iter} generations)")
 
-    # ── Execução ─────────────────────────────────────────────────────────────
+    # ── Execution ────────────────────────────────────────────────────────────
     if run_opt:
         if not any([use_caster, use_kpi, use_camber, use_scrub, use_trail,
                     use_cg, use_bs, use_rch, use_rcm]):
-            st.error("❌ Ative pelo menos um target (estático ou dinâmico) — "
-                     "com todos desligados a função objetivo é constante e o "
-                     "otimizador não tem o que perseguir.")
+            st.error("❌ Enable at least one target (static or dynamic) — "
+                     "with all of them off the objective function is constant and the "
+                     "optimizer has nothing to pursue.")
             return
 
         targets = DesignTargets(
@@ -305,7 +305,7 @@ def render() -> None:
             scrub_radius_target_mm     = tgt_scrub  if use_scrub  else None,
             mechanical_trail_target_mm = tgt_trail  if use_trail  else None,
             heave_min_mm=opt_h_min, heave_max_mm=opt_h_max, heave_step_mm=opt_h_step,
-            # Toggle desligado ⇒ peso 0 ⇒ termo sai da função objetivo
+            # Toggle off ⇒ weight 0 ⇒ term drops out of the objective function
             w_camber_gain  = w_cg  if use_cg  else 0.0,
             w_bump_steer   = w_bs  if use_bs  else 0.0,
             w_rc_height    = w_rch if use_rch else 0.0,
@@ -324,14 +324,14 @@ def render() -> None:
             "TIE_ROD_OUT": box_around(seed_tie_rod.outboard,          margin_tro),
         }
 
-        progress = st.progress(0.0, text="Inicializando população…")
+        progress = st.progress(0.0, text="Initializing population…")
         t0 = time.monotonic()
 
         def on_generation(gen: int, best_cost: float, convergence: float) -> bool:
             elapsed = time.monotonic() - t0
             progress.progress(
                 min(gen / max_iter, 1.0),
-                text=f"Geração {gen}/{max_iter} · melhor custo {best_cost:.3e} "
+                text=f"Generation {gen}/{max_iter} · best cost {best_cost:.3e} "
                      f"· {elapsed:.0f}s",
             )
             return max_seconds > 0 and elapsed > max_seconds
@@ -354,7 +354,7 @@ def render() -> None:
             result = optimizer.run()
         except Exception as exc:
             progress.empty()
-            st.error(f"❌ Otimização falhou: {exc}")
+            st.error(f"❌ Optimization failed: {exc}")
             return
         elapsed = time.monotonic() - t0
         progress.empty()
@@ -364,11 +364,11 @@ def render() -> None:
         )
 
         st.session_state["last_optimization"] = {
-            # consumido pela aba 🔄 Comparação
+            # consumed by the 🔄 Comparison tab
             "seed_corner": seed_corner, "seed_tie_rod": seed_tie_rod,
             "opt_corner": result.optimal_corner, "opt_tie_rod": result.optimal_tie_rod,
             "targets": targets, "corner_id": seed_corner_id,
-            # consumido pela seção de resultados abaixo
+            # consumed by the results section below
             "seed_cost": float(seed_cost), "cost": float(result.cost),
             "nit": int(result.scipy_result.nit),
             "nfev": int(result.scipy_result.nfev),
@@ -379,21 +379,21 @@ def render() -> None:
             "opt_rows": opt_validation.as_dict_list(),
             "bounds": bounds_map,
         }
-        st.toast(f"Otimização concluída em {elapsed:.1f}s", icon="🏁")
+        st.toast(f"Optimization finished in {elapsed:.1f}s", icon="🏁")
 
-    # ── Resultados (persistem entre interações — fora do bloco do botão) ─────
+    # ── Results (persist across interactions — outside the button block) ─────
     res = st.session_state.get("last_optimization")
     if res is None:
-        st.info("Configure os targets e clique em **🚀 Rodar Otimização**. "
-                "Os resultados aparecem aqui e ficam salvos enquanto você "
-                "ajusta os controles.")
+        st.info("Configure the targets and click **🚀 Run Optimization**. "
+                "The results appear here and stay saved while you "
+                "adjust the controls.")
         return
 
     st.markdown("---")
-    st.subheader(f"📈 Resultados — corner {res['corner_id']}")
+    st.subheader(f"📈 Results — corner {res['corner_id']}")
     if res["corner_id"] != seed_corner_id:
-        st.caption(f"⚠️ Resultados abaixo são do corner **{res['corner_id']}**, "
-                   f"não do corner-seed selecionado ({seed_corner_id}).")
+        st.caption(f"⚠️ The results below are for corner **{res['corner_id']}**, "
+                   f"not the selected seed corner ({seed_corner_id}).")
 
     seed_cost, final_cost = res["seed_cost"], res["cost"]
     improvement = (1.0 - final_cost / seed_cost) * 100.0 if seed_cost > 0 else 0.0
@@ -401,24 +401,24 @@ def render() -> None:
     n_tot = len(res["opt_rows"])
 
     rm = st.columns(5)
-    rm[0].metric("Custo seed",  f"{seed_cost:.3e}", border=True)
-    rm[1].metric("Custo final", f"{final_cost:.3e}",
+    rm[0].metric("Seed cost",   f"{seed_cost:.3e}", border=True)
+    rm[1].metric("Final cost",  f"{final_cost:.3e}",
                  delta=f"{-improvement:.1f}%", delta_color="inverse", border=True)
     rm[2].metric("Targets OK",  f"{n_ok}/{n_tot}", border=True)
-    rm[3].metric("Gerações",    f"{res['nit']} ({res['nfev']} avals)", border=True)
-    rm[4].metric("Tempo",       f"{res['elapsed_s']:.1f}s", border=True)
+    rm[3].metric("Generations", f"{res['nit']} ({res['nfev']} evals)", border=True)
+    rm[4].metric("Time",        f"{res['elapsed_s']:.1f}s", border=True)
 
     t_targets, t_points, t_visual, t_conv = st.tabs([
-        "✅ Targets", "📍 Hardpoints", "👁️ Comparação visual", "📉 Convergência",
+        "✅ Targets", "📍 Hardpoints", "👁️ Visual comparison", "📉 Convergence",
     ])
 
     with t_targets:
         comparison = pl.DataFrame([
-            {"Parâmetro": s["name"], "Target": s["target_str"],
-             "Seed": s["obtained_str"], "Otimizado": o["obtained_str"],
-             "Erro Seed": s["error_str"], "Erro Otimizado": o["error_str"],
-             "OK Seed": "✅" if s["ok"] else "❌",
-             "OK Otimizado": "✅" if o["ok"] else "❌"}
+            {"Parameter": s["name"], "Target": s["target_str"],
+             "Seed": s["obtained_str"], "Optimized": o["obtained_str"],
+             "Seed Error": s["error_str"], "Optimized Error": o["error_str"],
+             "Seed OK": "✅" if s["ok"] else "❌",
+             "Optimized OK": "✅" if o["ok"] else "❌"}
             for s, o in zip(res["seed_rows"], res["opt_rows"])
         ])
         st.dataframe(comparison, width="stretch", hide_index=True)
@@ -431,40 +431,40 @@ def render() -> None:
             o = opt_pts[name]
             dx, dy, dz = o.x - s.x, o.y - s.y, o.z - s.z
             disp_rows.append({
-                "Ponto":     name,
+                "Point":     name,
                 "Seed":      f"({s.x:.1f}, {s.y:.1f}, {s.z:.1f})",
-                "Otimizado": f"({o.x:.1f}, {o.y:.1f}, {o.z:.1f})",
+                "Optimized": f"({o.x:.1f}, {o.y:.1f}, {o.z:.1f})",
                 "Δx (mm)":   f"{dx:+.1f}",
                 "Δy (mm)":   f"{dy:+.1f}",
                 "Δz (mm)":   f"{dz:+.1f}",
                 "|Δ| (mm)":  f"{math.sqrt(dx*dx + dy*dy + dz*dz):.1f}",
             })
-        st.markdown("**Deslocamento dos pontos móveis**")
+        st.markdown("**Displacement of the movable points**")
         st.dataframe(pl.DataFrame(disp_rows), width="stretch",
                      hide_index=True)
 
         opt_df = dataframe_from_corner(res["opt_corner"], res["opt_tie_rod"])
-        with st.expander("Tabela completa de hardpoints otimizados"):
+        with st.expander("Full table of optimized hardpoints"):
             st.dataframe(opt_df, width="stretch", hide_index=True)
 
         ac1, ac2, ac3 = st.columns([1.2, 1.2, 1.6])
         with ac1:
             st.download_button(
-                "⬇️ Baixar CSV otimizado",
+                "⬇️ Download optimized CSV",
                 data=opt_df.write_csv().encode(),
                 file_name=f"hardpoints_optimized_{res['corner_id']}.csv",
                 mime="text/csv", width="stretch",
             )
         with ac3:
             mirror = st.checkbox(
-                f"Espelhar p/ {MIRROR_CORNER[res['corner_id']]} (Y → −Y)",
+                f"Mirror to {MIRROR_CORNER[res['corner_id']]} (Y → −Y)",
                 value=True, key="synth_apply_mirror",
             )
         with ac2:
-            if st.button("✅ Aplicar à sessão", type="primary",
+            if st.button("✅ Apply to session", type="primary",
                           width="stretch",
-                          help="Substitui os hardpoints deste corner na sessão "
-                               "— todas as abas passam a usar a geometria otimizada."):
+                          help="Replaces this corner's hardpoints in the session "
+                               "— all tabs then use the optimized geometry."):
                 _apply_optimized_to_session(res, mirror)
 
     with t_visual:
@@ -481,27 +481,27 @@ def render() -> None:
                                    res["opt_corner"], res["opt_tie_rod"],
                                    res["bounds"], "XZ"),
                 width="stretch", key="synth_overlay_xz")
-        st.caption("Azul tracejado = seed · vermelho = otimizado · caixas "
-                   "pontilhadas = região de busca (bounds) dos pontos móveis.")
+        st.caption("Dashed blue = seed · red = optimized · dotted "
+                   "boxes = search region (bounds) of the movable points.")
 
     with t_conv:
         history = res.get("history") or []
         if len(history) < 2:
-            st.info("Histórico de convergência indisponível "
-                    "(otimização terminou em menos de 2 gerações).")
+            st.info("Convergence history unavailable "
+                    "(optimization finished in fewer than 2 generations).")
         else:
             fig_conv = go.Figure()
             fig_conv.add_trace(go.Scatter(
                 x=list(range(1, len(history) + 1)), y=history,
-                mode="lines+markers", name="Melhor custo",
+                mode="lines+markers", name="Best cost",
                 line=dict(width=2, color="#d62728"),
             ))
             fig_conv.add_hline(y=seed_cost,
                                line=dict(color="gray", dash="dash", width=1),
-                               annotation_text="custo do seed")
+                               annotation_text="seed cost")
             fig_conv.update_layout(
-                title="Convergência do differential evolution",
-                xaxis_title="Geração", yaxis_title="Custo (escala log)",
+                title="Differential evolution convergence",
+                xaxis_title="Generation", yaxis_title="Cost (log scale)",
                 yaxis_type="log", template="plotly_white", height=420,
             )
             st.plotly_chart(fig_conv, width="stretch",

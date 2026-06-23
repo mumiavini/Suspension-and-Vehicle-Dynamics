@@ -1,17 +1,17 @@
 """
 ui/
 ===
-Camada de interface Streamlit, um módulo por aba:
+Streamlit interface layer, one module per tab:
 
-    theme.py         : presets de tema, CSS de polimento e header.
-    shared.py        : helpers compartilhados entre as abas (estado, caches).
-    sidebar.py       : sidebar (carregar dados, setup do veículo, tema).
-    tab_inputs.py    : ✏️  Inputs — editor manual com vistas 2D.
-    tab_analysis.py  : 📊 Análise — ficha de setup completa + sweeps.
-    tab_view3d.py    : 🌐 Vista 3D — visualização interativa.
-    tab_synthesis.py : 🎯 Síntese — otimização global (engenharia reversa).
-    tab_compare.py   : 🔄 Comparação — duas geometrias lado a lado.
+    theme.py         : theme presets, polish CSS and header.
+    shared.py        : helpers shared across tabs (state, caches).
+    sidebar.py       : sidebar (load data, vehicle setup, theme).
+    tab_inputs.py    : ✏️  Inputs — manual editor with 2D views.
+    tab_analysis.py  : 📊 Analysis — complete setup sheet + sweeps.
+    tab_view3d.py    : 🌐 View 3D — interactive visualization.
+    tab_synthesis.py : 🎯 Synthesis — global optimization (reverse engineering).
+    tab_compare.py   : 🔄 Comparison — two geometries side by side.
 
-Cada módulo de aba expõe uma função `render()` chamada pelo app.py dentro do
-`with` do respectivo `st.tabs`.
+Each tab module exposes a `render()` function called by app.py inside the
+`with` of its respective `st.tabs`.
 """

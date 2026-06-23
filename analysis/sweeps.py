@@ -1,29 +1,29 @@
 """
 analysis/sweeps.py
 ==================
-Varreduras paramétricas (SWEEPS) da cinemática da suspensão.
+Parametric sweeps of the suspension kinematics.
 
-Um SWEEP é uma sequência de configurações (heave, roll, rack) executadas
-em ordem, onde cada ponto usa o anterior como seed para o solver — isso
-garante continuidade física do movimento.
+A SWEEP is a sequence of configurations (heave, roll, rack) run in order,
+where each point uses the previous one as the solver seed — this guarantees
+physical continuity of the motion.
 
-TIPOS DE SWEEP:
-    - Heave Sweep : varia o heave, com roll=0 e rack=0
-    - Roll Sweep  : varia o roll,  com heave=0 e rack=0
-    - Steer Sweep : varia o rack,  com heave=0 e roll=0
+SWEEP TYPES:
+    - Heave Sweep : varies heave, with roll=0 and rack=0
+    - Roll Sweep  : varies roll,  with heave=0 and rack=0
+    - Steer Sweep : varies rack,  with heave=0 and roll=0
 
-SAÍDA:
-    np.ndarray com dtype estruturado (definido em SWEEP_DTYPE). Acesso por
-    nome de coluna: `sweep["camber_deg"]`, `sweep["heave_mm"]`, etc.
+OUTPUT:
+    np.ndarray with a structured dtype (defined in SWEEP_DTYPE). Access by
+    column name: `sweep["camber_deg"]`, `sweep["heave_mm"]`, etc.
 
-MÉTRICAS DERIVADAS:
-    - camber_gain_per_mm  : taxa de variação da cambagem com heave
-    - bump_steer_per_mm   : taxa de variação do toe com heave
-    - rc_migration_range  : amplitude de migração do Roll Center
+DERIVED METRICS:
+    - camber_gain_per_mm  : rate of camber change with heave
+    - bump_steer_per_mm   : rate of toe change with heave
+    - rc_migration_range  : Roll Center migration amplitude
 
-PLOTAGEM (Plotly):
-    Funções `plot_*` retornam objetos `plotly.graph_objects.Figure` para
-    renderização no Streamlit ou Jupyter.
+PLOTTING (Plotly):
+    The `plot_*` functions return `plotly.graph_objects.Figure` objects for
+    rendering in Streamlit or Jupyter.
 """
 
 from __future__ import annotations
@@ -37,71 +37,72 @@ from numpy.typing import NDArray
 from geometry.solver_3d import KinematicSolver3D, KinematicState3D
 
 if TYPE_CHECKING:
-    # plotly é importado APENAS para type hints — em runtime, é lazy import
+    # plotly is imported ONLY for type hints — at runtime it is a lazy import
     import plotly.graph_objects as go
 
 
 # =============================================================================
-# Dtype estruturado para o resultado dos sweeps
+# Structured dtype for the sweep results
 # =============================================================================
 
 SWEEP_DTYPE: np.dtype = np.dtype([
-    # Inputs aplicados
+    # Applied inputs
     ("heave_mm",   "f8"),
     ("roll_deg",   "f8"),
     ("rack_mm",    "f8"),
-    # Ângulos derivados
+    # Derived angles
     ("camber_deg", "f8"),
     ("toe_deg",    "f8"),
     ("caster_deg", "f8"),
     ("kpi_deg",    "f8"),
-    # Posição do Roll Center na vista frontal
+    # Roll Center position in the front view
     ("rc_y_mm",    "f8"),
     ("rc_z_mm",    "f8"),
-    # Posição do centro de roda
+    # Wheel-center position
     ("wc_x_mm",    "f8"),
     ("wc_y_mm",    "f8"),
     ("wc_z_mm",    "f8"),
-    # Diagnóstico
+    # Diagnostics
     ("residual",   "f8"),
     ("converged",  "?"),     # bool
 ])
 
 
 # =============================================================================
-# SweepRunner — Executor de varreduras
+# SweepRunner — Sweep executor
 # =============================================================================
 
 @dataclass
 class SweepRunner:
     """
-    Executa varreduras paramétricas usando um KinematicSolver3D.
+    Runs parametric sweeps using a KinematicSolver3D.
 
-    Uso:
+    Usage:
         runner = SweepRunner(solver=my_solver)
         heave_data = runner.heave_sweep(-25.0, 25.0, 1.0)
         roll_data  = runner.roll_sweep(-3.0, 3.0, 0.2)
         steer_data = runner.steer_sweep(-30.0, 30.0, 1.0)
 
-    Atributos:
-        solver       : solver 3D já inicializado
-        static_state : estado estático (resolvido sob demanda e cacheado —
-                       evita 1 solve extra por SweepRunner quando ninguém usa,
-                       o que importa no otimizador, que cria um por avaliação)
+    Attributes:
+        solver       : already-initialized 3D solver
+        static_state : static state (solved on demand and cached —
+                       avoids 1 extra solve per SweepRunner when nobody uses it,
+                       which matters in the optimizer, which creates one per
+                       evaluation)
     """
     solver:        KinematicSolver3D
     _static_cache: Optional[KinematicState3D] = field(default=None, repr=False)
 
     @property
     def static_state(self) -> KinematicState3D:
-        """Estado estático (heave=roll=rack=0), computado na 1ª leitura."""
+        """Static state (heave=roll=rack=0), computed on first read."""
         if self._static_cache is None:
             self.solver.reset_seed()
             self._static_cache = self.solver.solve(0.0, 0.0, 0.0)
         return self._static_cache
 
     # -------------------------------------------------------------------------
-    # Sweeps padrão
+    # Standard sweeps
     # -------------------------------------------------------------------------
 
     def heave_sweep(
@@ -111,13 +112,13 @@ class SweepRunner:
         step_mm:      float =   1.0,
     ) -> NDArray:
         """
-        Varredura de heave puro (bump/rebound), com roll=0 e rack=0.
+        Pure heave sweep (bump/rebound), with roll=0 and rack=0.
         """
         if step_mm <= 0:
-            raise ValueError(f"step_mm deve ser positivo, recebido: {step_mm}")
+            raise ValueError(f"step_mm must be positive, got: {step_mm}")
         if heave_max_mm < heave_min_mm:
             raise ValueError(
-                f"heave_max ({heave_max_mm}) deve ser >= heave_min ({heave_min_mm})"
+                f"heave_max ({heave_max_mm}) must be >= heave_min ({heave_min_mm})"
             )
         values = np.arange(heave_min_mm, heave_max_mm + step_mm * 0.5, step_mm)
         configurations = [(float(h), 0.0, 0.0) for h in values]
@@ -130,13 +131,13 @@ class SweepRunner:
         step_deg:     float =  0.1,
     ) -> NDArray:
         """
-        Varredura de rolagem do chassi, com heave=0 e rack=0.
+        Chassis roll sweep, with heave=0 and rack=0.
         """
         if step_deg <= 0:
-            raise ValueError(f"step_deg deve ser positivo, recebido: {step_deg}")
+            raise ValueError(f"step_deg must be positive, got: {step_deg}")
         if roll_max_deg < roll_min_deg:
             raise ValueError(
-                f"roll_max ({roll_max_deg}) deve ser >= roll_min ({roll_min_deg})"
+                f"roll_max ({roll_max_deg}) must be >= roll_min ({roll_min_deg})"
             )
         values = np.arange(roll_min_deg, roll_max_deg + step_deg * 0.5, step_deg)
         configurations = [(0.0, float(r), 0.0) for r in values]
@@ -149,13 +150,13 @@ class SweepRunner:
         step_mm:     float =   1.0,
     ) -> NDArray:
         """
-        Varredura de esterçamento (deslocamento do rack), com heave=0 e roll=0.
+        Steering sweep (rack displacement), with heave=0 and roll=0.
         """
         if step_mm <= 0:
-            raise ValueError(f"step_mm deve ser positivo, recebido: {step_mm}")
+            raise ValueError(f"step_mm must be positive, got: {step_mm}")
         if rack_max_mm < rack_min_mm:
             raise ValueError(
-                f"rack_max ({rack_max_mm}) deve ser >= rack_min ({rack_min_mm})"
+                f"rack_max ({rack_max_mm}) must be >= rack_min ({rack_min_mm})"
             )
         values = np.arange(rack_min_mm, rack_max_mm + step_mm * 0.5, step_mm)
         configurations = [(0.0, 0.0, float(r)) for r in values]
@@ -166,15 +167,15 @@ class SweepRunner:
         configurations: list[tuple[float, float, float]],
     ) -> NDArray:
         """
-        Varredura arbitrária. Use para combinações tipo heave+roll simultâneo.
+        Arbitrary sweep. Use for combinations such as simultaneous heave+roll.
 
-        IMPORTANTE: ordene as configurações para que pontos adjacentes estejam
-        próximos no espaço de fase (o solver usa o anterior como seed).
+        IMPORTANT: order the configurations so that adjacent points are close
+        in phase space (the solver uses the previous one as the seed).
         """
         return self._run_sweep(configurations)
 
     # -------------------------------------------------------------------------
-    # Loop principal de execução
+    # Main execution loop
     # -------------------------------------------------------------------------
 
     def _run_sweep(
@@ -182,12 +183,12 @@ class SweepRunner:
         configurations: list[tuple[float, float, float]],
     ) -> NDArray:
         """
-        Executa o solver para cada configuração e preenche o array de resultado.
+        Run the solver for each configuration and fill the result array.
         """
         n = len(configurations)
         result = np.empty(n, dtype=SWEEP_DTYPE)
 
-        # Reset do seed: o sweep começa da posição estática
+        # Reset the seed: the sweep starts from the static position
         self.solver.reset_seed()
 
         for i, (heave, roll, rack) in enumerate(configurations):
@@ -195,13 +196,13 @@ class SweepRunner:
                 state = self.solver.solve(heave_mm=heave, roll_deg=roll, rack_mm=rack)
                 self._fill_record(result, i, state)
             except Exception:
-                # Solver falhou: marca o registro como não-convergido
+                # Solver failed: mark the record as non-converged
                 result[i] = self._make_failed_record(heave, roll, rack)
 
         return result
 
     # -------------------------------------------------------------------------
-    # Preenche um registro do array com os dados do estado
+    # Fill an array record with the state data
     # -------------------------------------------------------------------------
 
     def _fill_record(
@@ -210,7 +211,7 @@ class SweepRunner:
         idx:   int,
         state: KinematicState3D,
     ) -> None:
-        """Copia os campos do KinematicState3D para o registro do array."""
+        """Copy the KinematicState3D fields into the array record."""
         rc_y, rc_z = self._estimate_roll_center_yz(state)
 
         arr[idx]["heave_mm"]   = state.heave_mm
@@ -230,7 +231,7 @@ class SweepRunner:
 
     @staticmethod
     def _make_failed_record(heave: float, roll: float, rack: float) -> NDArray:
-        """Registro padrão para falha do solver."""
+        """Default record for a solver failure."""
         rec = np.zeros(1, dtype=SWEEP_DTYPE)[0]
         rec["heave_mm"]  = heave
         rec["roll_deg"]  = roll
@@ -240,7 +241,7 @@ class SweepRunner:
         return rec
 
     # -------------------------------------------------------------------------
-    # Estimativa do Roll Center a partir do estado 3D
+    # Roll Center estimate from the 3D state
     # -------------------------------------------------------------------------
 
     def _estimate_roll_center_yz(
@@ -248,19 +249,19 @@ class SweepRunner:
         state: KinematicState3D,
     ) -> tuple[float, float]:
         """
-        Estima o Roll Center na vista frontal Y-Z usando o método 2D padrão
-        (Centro Instantâneo → linha até contact patch → plano de simetria).
+        Estimate the Roll Center in the front Y-Z view using the standard 2D
+        method (Instant Center → line to contact patch → symmetry plane).
 
-        IMPORTANTE: o "plano de simetria" do veículo gira com o chassi durante
-        o roll. Para calcular corretamente o RC em condição de roll, precisamos:
+        IMPORTANT: the vehicle's "symmetry plane" rotates with the chassis
+        during roll. To compute the RC correctly under roll, we need to:
 
-            1. Achar o IC no referencial do MUNDO
-            2. Achar onde a linha IC→CP cruza o plano de simetria do CHASSI
-               (que é o plano vertical no Y=0 do referencial do chassi rolado)
-            3. O resultado é a posição do RC no mundo (em Y e Z)
+            1. Find the IC in the WORLD frame
+            2. Find where the IC→CP line crosses the CHASSIS symmetry plane
+               (which is the vertical plane at Y=0 of the rolled chassis frame)
+            3. The result is the RC position in the world (in Y and Z)
 
-        Para roll=0, o plano do chassi é o plano Y=0 do mundo (comportamento
-        anterior). Para roll≠0, o plano está inclinado.
+        For roll=0, the chassis plane is the world's Y=0 plane (previous
+        behavior). For roll≠0, the plane is tilted.
         """
         import math
         from geometry.primitives import Point2D, line_intersection_2d
@@ -269,7 +270,7 @@ class SweepRunner:
         uca_in_eff = corner.upper_arm.effective_inboard
         lca_in_eff = corner.lower_arm.effective_inboard
 
-        # Aplica o movimento do chassi nos inboards efetivos
+        # Apply the chassis motion to the effective inboards
         uca_in_arr = self.solver._move_chassis_point(
             uca_in_eff, state.heave_mm, state.roll_deg
         )
@@ -277,41 +278,41 @@ class SweepRunner:
             lca_in_eff, state.heave_mm, state.roll_deg
         )
 
-        # Projeções no plano Y-Z (u=Y, v=Z)
+        # Projections onto the Y-Z plane (u=Y, v=Z)
         uca_in_2d  = Point2D(float(uca_in_arr[1]),  float(uca_in_arr[2]))
         uca_out_2d = Point2D(state.uca_outboard.y,  state.uca_outboard.z)
         lca_in_2d  = Point2D(float(lca_in_arr[1]),  float(lca_in_arr[2]))
         lca_out_2d = Point2D(state.lca_outboard.y,  state.lca_outboard.z)
 
-        # Centro Instantâneo: interseção das prolongações dos braços
+        # Instant Center: intersection of the extended arm lines
         try:
             ic = line_intersection_2d(lca_in_2d, lca_out_2d, uca_in_2d, uca_out_2d)
         except ValueError:
-            return (0.0, 0.0)   # braços paralelos: RC no nível do solo
+            return (0.0, 0.0)   # parallel arms: RC at ground level
 
         cp = Point2D(state.contact_patch.y, state.contact_patch.z)
 
-        # Vetor da linha IC→CP no plano YZ
+        # Vector of the IC→CP line in the YZ plane
         du = cp.u - ic.u
         dv = cp.v - ic.v
 
         if abs(du) < 1e-12 and abs(dv) < 1e-12:
             return (float(ic.u), float(ic.v))
 
-        # ─── Plano de simetria do CHASSI no plano YZ ─────────────────────────
-        # Em roll=0: plano vertical Y=0 (linha Y=0, dz qualquer)
-        # Em roll>0 (chassi rola para a direita = topo do chassi para −Y):
-        #   o plano é uma linha que passa pela origem do chassi e tem direção
-        #   rotacionada por -roll em torno de X.
+        # ─── CHASSIS symmetry plane in the YZ plane ──────────────────────────
+        # At roll=0: vertical plane Y=0 (line Y=0, any dz)
+        # At roll>0 (chassis rolls to the right = chassis top toward −Y):
+        #   the plane is a line through the chassis origin with direction
+        #   rotated by -roll about X.
         roll_rad = math.radians(state.roll_deg)
-        # Vetor da "vertical do chassi" no plano YZ (rotação de Z por -roll)
-        # Origem do chassi assumida em (Y=0, Z=0)
-        cy = -math.sin(roll_rad)   # componente Y
-        cz =  math.cos(roll_rad)   # componente Z
+        # Vector of the "chassis vertical" in the YZ plane (Z rotated by -roll)
+        # Chassis origin assumed at (Y=0, Z=0)
+        cy = -math.sin(roll_rad)   # Y component
+        cz =  math.cos(roll_rad)   # Z component
 
-        # Interseção da reta paramétrica IC + t*(CP-IC) com a reta paramétrica
-        # do plano do chassi: (0,0) + s*(cy, cz)
-        # Sistema:
+        # Intersection of the parametric line IC + t*(CP-IC) with the parametric
+        # line of the chassis plane: (0,0) + s*(cy, cz)
+        # System:
         #   ic.u + t*du = s*cy
         #   ic.v + t*dv = s*cz
         # → t*du - s*cy = -ic.u
@@ -327,17 +328,17 @@ class SweepRunner:
 
 
 # =============================================================================
-# Métricas derivadas dos sweeps
+# Derived metrics from the sweeps
 # =============================================================================
 
 def camber_gain_per_mm(sweep: NDArray) -> float:
     """
-    Camber gain (°/mm) — regressão linear de camber vs heave.
+    Camber gain (°/mm) — linear regression of camber vs heave.
 
-    Para um heave sweep, retorna a INCLINAÇÃO da reta que melhor ajusta
-    os pontos (camber_deg) em função de (heave_mm).
+    For a heave sweep, returns the SLOPE of the line that best fits
+    the points (camber_deg) as a function of (heave_mm).
 
-    TÍPICO FSAE: −0.005 a −0.025 °/mm
+    TYPICAL FSAE: −0.005 to −0.025 °/mm
     """
     mask = sweep["converged"]
     if mask.sum() < 2:
@@ -348,10 +349,10 @@ def camber_gain_per_mm(sweep: NDArray) -> float:
 
 def bump_steer_per_mm(sweep: NDArray) -> float:
     """
-    Bump steer (°/mm) — regressão linear de toe vs heave.
+    Bump steer (°/mm) — linear regression of toe vs heave.
 
-    Quanto a roda esterça (involuntariamente) quando faz bump/rebound.
-    Deve ser MINIMIZADO (idealmente < 0.005°/mm).
+    How much the wheel steers (involuntarily) during bump/rebound.
+    Should be MINIMIZED (ideally < 0.005°/mm).
     """
     mask = sweep["converged"]
     if mask.sum() < 2:
@@ -362,12 +363,12 @@ def bump_steer_per_mm(sweep: NDArray) -> float:
 
 def rc_migration_range(sweep: NDArray) -> tuple[float, float]:
     """
-    Amplitude de migração do Roll Center: (ΔY, ΔZ) em mm.
+    Roll Center migration amplitude: (ΔY, ΔZ) in mm.
 
-    ΔY = quanto o RC migra lateralmente
-    ΔZ = quanto o RC migra verticalmente
+    ΔY = how much the RC migrates laterally
+    ΔZ = how much the RC migrates vertically
 
-    Idealmente próximos de zero (RC estável).
+    Ideally close to zero (stable RC).
     """
     mask = sweep["converged"]
     if mask.sum() < 2:
@@ -378,11 +379,11 @@ def rc_migration_range(sweep: NDArray) -> tuple[float, float]:
 
 
 # =============================================================================
-# Plotagem (Plotly) — imports lazy para não exigir plotly fora dos plots
+# Plotting (Plotly) — lazy imports so plotly is not required outside the plots
 # =============================================================================
 
 def plot_camber_vs_heave(sweep: NDArray, title: str = "Camber vs Heave") -> "go.Figure":
-    """Gráfico: Camber (°) versus Heave (mm)."""
+    """Chart: Camber (°) versus Heave (mm)."""
     import plotly.graph_objects as go
 
     fig = go.Figure()
@@ -396,7 +397,7 @@ def plot_camber_vs_heave(sweep: NDArray, title: str = "Camber vs Heave") -> "go.
     fig.update_layout(
         title=title,
         xaxis_title="Heave (mm)  [+ = bump]",
-        yaxis_title="Camber (°)  [− = topo p/ dentro]",
+        yaxis_title="Camber (°)  [− = top inward]",
         template="plotly_white",
         hovermode="x unified",
     )
@@ -405,10 +406,10 @@ def plot_camber_vs_heave(sweep: NDArray, title: str = "Camber vs Heave") -> "go.
 
 def plot_bump_steer(sweep: NDArray, title: str = "Bump Steer") -> "go.Figure":
     """
-    Gráfico: variação de toe (°) versus Heave (mm).
+    Chart: toe variation (°) versus Heave (mm).
 
-    NOTA: o solver já retorna toe como DELTA relativo ao estado estático,
-    então pode ser plotado diretamente.
+    NOTE: the solver already returns toe as a DELTA relative to the static
+    state, so it can be plotted directly.
     """
     import plotly.graph_objects as go
 
@@ -432,7 +433,7 @@ def plot_bump_steer(sweep: NDArray, title: str = "Bump Steer") -> "go.Figure":
 
 def plot_rc_migration(sweep: NDArray, title: str = "Roll Center Migration") -> "go.Figure":
     """
-    Gráfico: trajetória do Roll Center no plano Y-Z, colorida pelo heave.
+    Chart: Roll Center trajectory in the Y-Z plane, colored by heave.
     """
     import plotly.graph_objects as go
 
@@ -457,7 +458,7 @@ def plot_rc_migration(sweep: NDArray, title: str = "Roll Center Migration") -> "
         yaxis_title="RC Z (mm)",
         template="plotly_white",
     )
-    fig.update_yaxes(scaleanchor="x", scaleratio=1)   # eixos isométricos
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)   # isometric axes
     return fig
 
 
@@ -465,7 +466,7 @@ def plot_caster_kpi_vs_steer(
     sweep: NDArray,
     title: str = "Caster & KPI vs Steer",
 ) -> "go.Figure":
-    """Gráfico: Caster e KPI (°) versus deslocamento do rack (mm)."""
+    """Chart: Caster and KPI (°) versus rack displacement (mm)."""
     import plotly.graph_objects as go
 
     fig = go.Figure()
@@ -482,7 +483,7 @@ def plot_caster_kpi_vs_steer(
     fig.update_layout(
         title=title,
         xaxis_title="Rack (mm)",
-        yaxis_title="Ângulo (°)",
+        yaxis_title="Angle (°)",
         template="plotly_white",
         hovermode="x unified",
     )

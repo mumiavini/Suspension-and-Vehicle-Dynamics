@@ -1,23 +1,23 @@
 """
 analysis/kpis.py
 ================
-Cálculo de KPIs adicionais da geometria de suspensão.
+Computation of additional KPIs for the suspension geometry.
 
-Complementa os KPIs básicos (Caster, KPI, Camber, Scrub, Trail, RC Height)
-calculados em `geometry/model_3d.py` com:
+Complements the basic KPIs (Caster, KPI, Camber, Scrub, Trail, RC Height)
+computed in `geometry/model_3d.py` with:
 
     - Wheelbase, Track Width
-    - Ride Camber (°/m) e Roll Camber (°/°)
+    - Ride Camber (°/m) and Roll Camber (°/°)
     - Static Sum Toe
     - Static Ackermann (%)
     - Steer Ratio, C-factor, Steer Arm Length
-    - Roll Center sob carga lateral (aproximação 1g)
-    - Anti-dive / Anti-squat (versão simplificada)
+    - Roll Center under lateral load (1g approximation)
+    - Anti-dive / Anti-squat (simplified version)
 
-NOTA: alguns KPIs (wheel rate, motion ratio, damping) dependem de
-parâmetros externos (rigidez de mola, geometria de rocker, dados de
-amortecedor) e não são calculáveis pela cinemática pura. Esses ficam
-como INPUTS do usuário no app, não como cálculos.
+NOTE: some KPIs (wheel rate, motion ratio, damping) depend on external
+parameters (spring stiffness, rocker geometry, damper data) and are not
+computable from pure kinematics. Those remain USER INPUTS in the app, not
+computed values.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from geometry.solver_3d import TieRod, KinematicSolver3D
 
 
 # =============================================================================
-# Dimensões gerais do veículo
+# General vehicle dimensions
 # =============================================================================
 
 def wheelbase_mm(
@@ -42,8 +42,8 @@ def wheelbase_mm(
     rear_corner:  SuspensionCorner,
 ) -> float:
     """
-    Wheelbase (entre-eixos): distância longitudinal (X) entre o WC dianteiro
-    e o WC traseiro do MESMO lado.
+    Wheelbase: longitudinal (X) distance between the front WC and the rear WC
+    on the SAME side.
     """
     return abs(front_corner.wheel_center.x - rear_corner.wheel_center.x)
 
@@ -53,14 +53,14 @@ def track_width_mm(
     right_corner: SuspensionCorner,
 ) -> float:
     """
-    Bitola (track width): distância lateral (Y) entre o WC esquerdo e o WC
-    direito do MESMO eixo (dianteiro ou traseiro).
+    Track width: lateral (Y) distance between the left WC and the right WC
+    on the SAME axle (front or rear).
     """
     return abs(left_corner.wheel_center.y - right_corner.wheel_center.y)
 
 
 # =============================================================================
-# Camber dinâmico — Ride Camber e Roll Camber
+# Dynamic camber — Ride Camber and Roll Camber
 # =============================================================================
 
 def ride_camber_deg_per_m(
@@ -69,11 +69,11 @@ def ride_camber_deg_per_m(
     heave_range_mm: float = 25.0,
 ) -> float:
     """
-    Ride Camber: taxa de variação do camber com heave, em °/m.
+    Ride Camber: rate of camber change with heave, in °/m.
 
-    É o mesmo que "camber gain", mas na unidade da imagem (°/m em vez de °/mm).
+    Same as "camber gain", but in the picture's unit (°/m instead of °/mm).
 
-    Calculado por regressão linear de camber × heave num pequeno range.
+    Computed by linear regression of camber × heave over a small range.
     """
     solver = KinematicSolver3D(corner, tie_rod)
     heaves = np.linspace(-heave_range_mm, heave_range_mm, 11)
@@ -82,9 +82,9 @@ def ride_camber_deg_per_m(
         solver.reset_seed()
         cambers.append(solver.solve(float(h), 0.0, 0.0).camber_deg)
 
-    # Regressão linear: slope em °/mm
+    # Linear regression: slope in °/mm
     slope_mm = float(np.polyfit(heaves, cambers, 1)[0])
-    return slope_mm * 1000.0   # converte para °/m
+    return slope_mm * 1000.0   # convert to °/m
 
 
 def roll_camber_deg_per_deg(
@@ -93,12 +93,12 @@ def roll_camber_deg_per_deg(
     roll_range_deg: float = 2.0,
 ) -> float:
     """
-    Roll Camber: taxa de variação do camber com roll do chassi, em °/°.
+    Roll Camber: rate of camber change with chassis roll, in °/°.
 
-    Caracteriza quanto a roda EXTERNA ganha de camber quando o chassi rola.
-    Valor típico FSAE: -0.5 a -1.5 (camber negativo aumenta com roll positivo).
+    Characterizes how much camber the OUTER wheel gains when the chassis rolls.
+    Typical FSAE value: -0.5 to -1.5 (negative camber increases with positive roll).
 
-    Calculado por regressão linear de camber × roll.
+    Computed by linear regression of camber × roll.
     """
     solver = KinematicSolver3D(corner, tie_rod)
     rolls = np.linspace(-roll_range_deg, roll_range_deg, 11)
@@ -112,7 +112,7 @@ def roll_camber_deg_per_deg(
 
 
 # =============================================================================
-# Toe estático e Sum Toe
+# Static toe and Sum Toe
 # =============================================================================
 
 def static_toe_deg(
@@ -120,59 +120,59 @@ def static_toe_deg(
     tie_rod: TieRod,
 ) -> float:
     """
-    Toe estático absoluto desta roda, em graus.
+    Absolute static toe of this wheel, in degrees.
 
-    CONVENÇÃO:
-        + = toe-in (roda apontando para o centro do veículo)
+    CONVENTION:
+        + = toe-in (wheel pointing toward the vehicle center)
         − = toe-out
 
-    DEFINIÇÃO:
-        Toe é o ângulo entre a direção em que a roda aponta (no plano XY)
-        e o eixo longitudinal X do veículo.
+    DEFINITION:
+        Toe is the angle between the direction the wheel points (in the XY
+        plane) and the vehicle's longitudinal X axis.
 
-        Como o "ponto que define a frente da roda" não é um hardpoint,
-        usamos a convenção que o WC e o CP estão alinhados no plano da
-        roda. Para roda perfeitamente neutra (toe=0), CP fica em (X_wc,
-        Y_wc, 0) — exatamente abaixo do WC.
+        Since the "point defining the front of the wheel" is not a hardpoint,
+        we use the convention that the WC and CP are aligned in the wheel
+        plane. For a perfectly neutral wheel (toe=0), the CP is at (X_wc,
+        Y_wc, 0) — exactly below the WC.
 
-        Se houver deslocamento longitudinal entre CP e WC (CP.x != WC.x),
-        a roda está com toe.
+        If there is a longitudinal offset between CP and WC (CP.x != WC.x),
+        the wheel has toe.
 
-    NOTA: para um carro montado simétrico com CP exatamente abaixo do WC
-    em XY, este valor sempre será 0. Para introduzir toe estático, o usuário
-    pode deslocar o CP em X (ou rotacionar a manga construtivamente).
+    NOTE: for a symmetric assembly with the CP exactly below the WC in XY,
+    this value is always 0. To introduce static toe, the user can offset the
+    CP in X (or rotate the upright constructively).
     """
     wc = corner.wheel_center
     cp = corner.contact_patch
 
-    # vetor da CP→WC projetado em XY: define a direção longitudinal da roda
+    # CP→WC vector projected onto XY: defines the wheel's longitudinal direction
     dx = wc.x - cp.x
     dy = wc.y - cp.y
 
-    # Para roda neutra, dx=0 e dy=0 (CP exatamente abaixo do WC) → toe = 0
-    # Se dx != 0 mas dy = 0, indica deslocamento puro longitudinal: ainda toe = 0
-    # Toe real = ângulo entre o EIXO DA RODA (perpendicular ao eixo do hub)
-    # e o eixo X. Como a definição depende da orientação da manga, retornamos
-    # 0 para geometrias simétricas e o ângulo derivado caso WC e CP estejam
-    # rotacionados em XY.
+    # For a neutral wheel, dx=0 and dy=0 (CP exactly below the WC) → toe = 0
+    # If dx != 0 but dy = 0, it indicates a pure longitudinal offset: still toe = 0
+    # Real toe = angle between the WHEEL AXIS (perpendicular to the hub axis)
+    # and the X axis. Since the definition depends on the upright orientation,
+    # we return 0 for symmetric geometries and the derived angle if the WC and
+    # CP are rotated in XY.
 
-    # Aproximação: usa o ângulo do vetor "WC para frente" em XY.
-    # Se WC e CP coincidem em XY, o toe é 0 (geometria neutra).
+    # Approximation: use the angle of the "WC forward" vector in XY.
+    # If WC and CP coincide in XY, the toe is 0 (neutral geometry).
     if abs(dx) < 1e-9 and abs(dy) < 1e-9:
         return 0.0
 
-    # Caso o usuário tenha colocado CP deslocado, calcula o toe relativo
-    # ao plano YZ (eixo lateral). O toe positivo (in) significa frente
-    # da roda para dentro.
-    # Para esquerda (Y>0): frente para dentro = +X (frente) tem Y menor
-    # Para direita (Y<0): frente para dentro = +X tem Y maior
+    # If the user placed the CP offset, compute the toe relative to the YZ
+    # plane (lateral axis). Positive toe (in) means the front of the wheel
+    # points inward.
+    # For the left (Y>0): front inward = +X (front) has smaller Y
+    # For the right (Y<0): front inward = +X has larger Y
     angle = math.degrees(math.atan2(dx, abs(dy) + 1e-12))
 
-    # Convenção: angle pequeno → toe ~0
-    # Se WC.y > 0 (esquerda) e dx > 0 → frente da roda apontando para fora? não.
-    # Mantemos a convenção simples: módulo pequeno, sinal por lado.
+    # Convention: small angle → toe ~0
+    # If WC.y > 0 (left) and dx > 0 → front of the wheel pointing outward? no.
+    # We keep the simple convention: small magnitude, sign per side.
     if abs(angle) > 45:
-        # Provavelmente o CP foi colocado errado, retorna 0
+        # The CP was probably placed wrong, return 0
         return 0.0
 
     return angle if corner.wheel_center.y > 0 else -angle
@@ -183,13 +183,13 @@ def static_sum_toe_deg(
     right_corner: SuspensionCorner, right_tie_rod: TieRod,
 ) -> float:
     """
-    Static Sum Toe (graus): soma do toe estático das duas rodas do mesmo eixo.
+    Static Sum Toe (degrees): sum of the static toe of both wheels on the same axle.
 
-    CONVENÇÃO (imagem):
-        + = toe-in total (ambas convergindo)
-        − = toe-out total (ambas divergindo)
+    CONVENTION (picture):
+        + = total toe-in (both converging)
+        − = total toe-out (both diverging)
 
-    É o valor que aparece na ficha de setup do carro.
+    It is the value that appears on the car's setup sheet.
     """
     return (
         static_toe_deg(left_corner, left_tie_rod)
@@ -198,7 +198,7 @@ def static_sum_toe_deg(
 
 
 # =============================================================================
-# Ackermann e geometria de direção
+# Ackermann and steering geometry
 # =============================================================================
 
 def ackermann_geometry(
@@ -207,41 +207,41 @@ def ackermann_geometry(
     rear_corner: SuspensionCorner,
 ) -> dict[str, float]:
     """
-    Calcula a geometria de Ackermann estática.
+    Compute the static Ackermann geometry.
 
-    DEFINIÇÃO:
-        Ackermann puro 100% = quando os prolongamentos das linhas dos
-        steering arms (do KPI até o ponto outboard do tie-rod, projetados
-        no plano horizontal) se encontram exatamente sobre o eixo traseiro.
+    DEFINITION:
+        Pure 100% Ackermann = when the extensions of the steering-arm lines
+        (from the kingpin to the tie-rod outboard point, projected onto the
+        horizontal plane) meet exactly on the rear axle.
 
-        Ackermann 0% = quando essas linhas são paralelas (roda interna e
-        externa esterçam pelo mesmo ângulo).
+        0% Ackermann = when those lines are parallel (inner and outer wheels
+        steer by the same angle).
 
-    CÁLCULO:
-        1. Para cada roda dianteira, determina o ponto onde o pino mestre
-           cruza o plano da altura do tie-rod.
-        2. Traça uma reta desse ponto até o TRO, projetada em XY.
-        3. Vê onde essas duas retas se cruzam em X (longitudinal).
-        4. Compara com a posição do eixo traseiro:
-              x_inter = x_eixo_traseiro  → 100% Ackermann
-              x_inter = -∞               → 0% Ackermann
+    COMPUTATION:
+        1. For each front wheel, determine the point where the kingpin
+           crosses the plane at the tie-rod height.
+        2. Draw a line from that point to the TRO, projected onto XY.
+        3. See where those two lines cross in X (longitudinal).
+        4. Compare with the rear-axle position:
+              x_inter = x_rear_axle  → 100% Ackermann
+              x_inter = -∞           → 0% Ackermann
         5. Ackermann (%) = wheelbase / (x_kpi - x_intersect) × 100
 
-    Retorna dict com:
-        ackermann_percent : % de Ackermann estático
+    Returns a dict with:
+        ackermann_percent : % of static Ackermann
         wheelbase_mm
-        steer_arm_length_left, _right : comprimento do steering arm (mm)
+        steer_arm_length_left, _right : steering-arm length (mm)
     """
-    # --- Comprimento do steering arm em cada roda ---
-    # Steering arm = distância do tie-rod outboard até o pino mestre
+    # --- Steering-arm length at each wheel ---
+    # Steering arm = distance from the tie-rod outboard to the kingpin
     sa_l = _steering_arm_length(front_left_corner, fl_tie_rod)
     sa_r = _steering_arm_length(front_right_corner, fr_tie_rod)
 
-    # --- Pontos do KPI no plano horizontal (altura do TRO) ---
-    # Aproximamos a "linha de ackermann" como TRO → projeção do KPI em XY
-    # na altura do TRO.
+    # --- Kingpin points in the horizontal plane (TRO height) ---
+    # We approximate the "Ackermann line" as TRO → projection of the kingpin
+    # onto XY at the TRO height.
     def kpi_at_height(corner: SuspensionCorner, z_target: float) -> tuple[float, float]:
-        """Retorna (X, Y) do eixo do pino mestre na altura z_target."""
+        """Return (X, Y) of the kingpin axis at height z_target."""
         lbj = corner.lower_arm.outboard.to_array()
         ubj = corner.upper_arm.outboard.to_array()
         kp = ubj - lbj
@@ -256,18 +256,18 @@ def ackermann_geometry(
     kpi_l = kpi_at_height(front_left_corner,  fl_tro.z)
     kpi_r = kpi_at_height(front_right_corner, fr_tro.z)
 
-    # --- Linhas KPI → TRO no plano XY, prolongadas para trás ---
-    # Equação da reta: P(t) = KPI + t · (TRO - KPI)
-    # Para grande t > 1, vai além do TRO; queremos achar onde as duas se cruzam.
+    # --- Kingpin → TRO lines in the XY plane, extended rearward ---
+    # Line equation: P(t) = KPI + t · (TRO - KPI)
+    # For large t > 1, it goes beyond the TRO; we want to find where the two cross.
     def line_intersection_xy(p1, p2, p3, p4):
-        """Interseção das retas (p1,p2) e (p3,p4) no plano XY."""
+        """Intersection of lines (p1,p2) and (p3,p4) in the XY plane."""
         x1, y1 = p1
         x2, y2 = p2
         x3, y3 = p3
         x4, y4 = p4
         denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
         if abs(denom) < 1e-9:
-            return None  # linhas paralelas → 0% Ackermann
+            return None  # parallel lines → 0% Ackermann
         t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
         return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
 
@@ -281,12 +281,12 @@ def ackermann_geometry(
     if intersect is None:
         ackermann_pct = 0.0
     else:
-        # Pega o X médio do KPI dianteiro como referência do eixo dianteiro
+        # Take the average X of the front kingpins as the front-axle reference
         x_front = 0.5 * (kpi_l[0] + kpi_r[0])
-        x_rear_target = front_left_corner.wheel_center.x - wb  # eixo traseiro
+        x_rear_target = front_left_corner.wheel_center.x - wb  # rear axle
         x_inter = intersect[0]
 
-        # Ackermann% = (eixo_diant - x_inter) / (eixo_diant - eixo_tras) × 100
+        # Ackermann% = (front_axle - x_inter) / (front_axle - rear_axle) × 100
         denom = x_front - x_rear_target
         if abs(denom) < 1e-9:
             ackermann_pct = 0.0
@@ -303,8 +303,8 @@ def ackermann_geometry(
 
 def _steering_arm_length(corner: SuspensionCorner, tie_rod: TieRod) -> float:
     """
-    Comprimento do steering arm: distância perpendicular do TRO ao eixo
-    do pino mestre (= raio efetivo de esterçamento).
+    Steering-arm length: perpendicular distance from the TRO to the kingpin
+    axis (= effective steering radius).
     """
     ubj = corner.upper_arm.outboard.to_array()
     lbj = corner.lower_arm.outboard.to_array()
@@ -316,14 +316,14 @@ def _steering_arm_length(corner: SuspensionCorner, tie_rod: TieRod) -> float:
         return 0.0
     kp_unit = kp / kp_norm
 
-    # Vetor do LBJ ao TRO, componente perpendicular ao pino
+    # Vector from LBJ to TRO, component perpendicular to the kingpin
     v = tro - lbj
     v_perp = v - np.dot(v, kp_unit) * kp_unit
     return float(np.linalg.norm(v_perp))
 
 
 # =============================================================================
-# Steer Ratio e C-factor (rack)
+# Steer Ratio and C-factor (rack)
 # =============================================================================
 
 def steer_ratio_and_cfactor(
@@ -333,32 +333,32 @@ def steer_ratio_and_cfactor(
     rack_test_mm: float = 5.0,
 ) -> dict[str, float]:
     """
-    Calcula Steer Ratio (volante:roda) e C-factor (mm de rack por rotação
-    do volante).
+    Compute Steer Ratio (steering wheel:road wheel) and C-factor (mm of rack
+    per steering-wheel revolution).
 
-    DEFINIÇÕES:
-        C-factor (mm/rev) : deslocamento do rack para 1 rotação completa
-                             do pinhão (360°). DEPENDE DO PINHÃO da cremalheira,
-                             que é INPUT do usuário — aqui retornamos o que
-                             pode ser calculado: a relação rack → roda em
-                             unidades de mm de rack por grau de roda.
+    DEFINITIONS:
+        C-factor (mm/rev) : rack displacement for 1 full revolution of the
+                            pinion (360°). It DEPENDS ON THE RACK PINION,
+                            which is a USER INPUT — here we return what can be
+                            computed: the rack → wheel ratio in units of mm of
+                            rack per degree of road wheel.
 
-        Steer Ratio (x:1) : graus de volante por grau de roda. Depende do
-                            C-factor + do que calculamos aqui.
+        Steer Ratio (x:1) : steering-wheel degrees per road-wheel degree.
+                            Depends on the C-factor + what we compute here.
 
-    SAÍDA INTERMEDIÁRIA:
-        rack_per_wheel_deg_mm_per_deg : quantos mm de rack são necessários
-                                         para 1° de esterçamento da roda.
+    INTERMEDIATE OUTPUT:
+        rack_per_wheel_deg_mm_per_deg : how many mm of rack are needed
+                                        for 1° of wheel steering.
 
-    Para obter o Steer Ratio final, o usuário multiplica por:
+    To obtain the final Steer Ratio, the user multiplies by:
         steer_ratio = c_factor / 360 / rack_per_wheel_deg_mm_per_deg
     """
-    # Roda em rack=0 e em rack=test, mede diferença de toe
+    # Solve at rack=0 and rack=test, measure the toe difference
     solver = KinematicSolver3D(corner, tie_rod)
     s0 = solver.solve(0.0, 0.0, 0.0)
     s1 = solver.solve(0.0, 0.0, rack_test_mm)
 
-    # delta toe em graus
+    # delta toe in degrees
     d_toe = s1.toe_deg - s0.toe_deg
 
     if abs(d_toe) < 1e-9:
@@ -367,9 +367,9 @@ def steer_ratio_and_cfactor(
             "wheel_deg_per_rack_mm":         0.0,
         }
 
-    # Quantos mm de rack para 1° de roda
+    # How many mm of rack for 1° of wheel
     rack_per_deg = rack_test_mm / abs(d_toe)
-    # Inverso: quantos graus de roda por mm de rack
+    # Inverse: how many wheel degrees per mm of rack
     deg_per_rack_mm = 1.0 / rack_per_deg
 
     return {
@@ -383,10 +383,10 @@ def steer_ratio_from_pinion(
     c_factor_mm_per_rev: float,
 ) -> float:
     """
-    Calcula Steer Ratio (volante:roda) a partir do C-factor da cremalheira.
+    Compute Steer Ratio (steering wheel:road wheel) from the rack C-factor.
 
-    Steer Ratio = (graus de volante por grau de roda)
-                = (mm_rack/grau_roda) / (mm_rack/grau_volante)
+    Steer Ratio = (steering-wheel degrees per road-wheel degree)
+                = (mm_rack/wheel_deg) / (mm_rack/steering_wheel_deg)
                 = rack_per_wheel_deg / (c_factor / 360)
     """
     if c_factor_mm_per_rev <= 0:
@@ -397,7 +397,7 @@ def steer_ratio_from_pinion(
 
 
 # =============================================================================
-# Roll Center sob carga lateral (1g)
+# Roll Center under lateral load (1g)
 # =============================================================================
 
 def roll_center_at_1g_lat(
@@ -409,40 +409,40 @@ def roll_center_at_1g_lat(
     roll_stiffness_deg_per_g: float = 1.5,
 ) -> dict[str, float]:
     """
-    Estima a posição do Roll Center (Y, Z) com o carro sob aceleração
-    lateral de 1g, simulado como o roll equivalente.
+    Estimate the Roll Center position (Y, Z) with the car under 1g of lateral
+    acceleration, simulated as the equivalent roll.
 
-    SIMPLIFICAÇÃO:
-        Em 1g lateral, o chassi rola um ângulo proporcional à roll stiffness.
-        Aplicamos esse roll e calculamos onde o RC fica.
+    SIMPLIFICATION:
+        Under 1g lateral, the chassis rolls an angle proportional to the roll
+        stiffness. We apply that roll and compute where the RC ends up.
 
-    Parâmetros:
-        cg_height_mm           : altura do CG (necessário só para o cálculo
-                                  formal — não afeta o RC diretamente aqui)
-        roll_stiffness_deg_per_g: quantos graus o chassi rola por g
-                                  (valor típico FSAE: 1.0–2.0 °/g)
+    Parameters:
+        cg_height_mm           : CG height (needed only for the formal
+                                  calculation — does not affect the RC directly here)
+        roll_stiffness_deg_per_g: how many degrees the chassis rolls per g
+                                  (typical FSAE value: 1.0–2.0 °/g)
 
-    Retorna dict com:
-        rc_y_mm, rc_z_mm : posição do RC sob 1g
+    Returns a dict with:
+        rc_y_mm, rc_z_mm : RC position under 1g
     """
-    # Roll aplicado em 1g
+    # Roll applied at 1g
     roll_1g = float(roll_stiffness_deg_per_g)
 
-    # Roda o solver com esse roll nos dois corners; o RC é calculado pelo
-    # método 2D na projeção YZ dos pontos atuais.
+    # Run the solver with that roll on both corners; the RC is computed by the
+    # 2D method on the YZ projection of the current points.
     solver_l = KinematicSolver3D(left_corner,  left_tie_rod)
     solver_r = KinematicSolver3D(right_corner, right_tie_rod)
     state_l = solver_l.solve(0.0, roll_1g, 0.0)
     state_r = solver_r.solve(0.0, roll_1g, 0.0)
 
-    # RC ESQUERDO (calculado pelo solver via projeção 2D)
+    # LEFT RC (computed by the solver via 2D projection)
     from analysis.sweeps import SweepRunner
     runner_l = SweepRunner(solver=solver_l)
     rc_y_l, rc_z_l = runner_l._estimate_roll_center_yz(state_l)
     runner_r = SweepRunner(solver=solver_r)
     rc_y_r, rc_z_r = runner_r._estimate_roll_center_yz(state_r)
 
-    # RC médio dos dois lados (em estado de roll, eles divergem; pegamos média)
+    # Average RC of the two sides (under roll they diverge; we take the average)
     return {
         "rc_y_mm": 0.5 * (rc_y_l + rc_y_r),
         "rc_z_mm": 0.5 * (rc_z_l + rc_z_r),
@@ -451,7 +451,7 @@ def roll_center_at_1g_lat(
 
 
 # =============================================================================
-# Anti-dive / Anti-squat (versão simplificada, vista lateral)
+# Anti-dive / Anti-squat (simplified version, side view)
 # =============================================================================
 
 def anti_dive_percent(
@@ -462,31 +462,32 @@ def anti_dive_percent(
     wheelbase_mm_value: Optional[float] = None,
 ) -> float:
     """
-    Anti-dive (%) — VERSÃO SIMPLIFICADA.
+    Anti-dive (%) — SIMPLIFIED VERSION.
 
-    DEFINIÇÃO RIGOROSA:
+    RIGOROUS DEFINITION:
         Anti-dive = tan(θ_SVIC) × wheelbase / cg_height × brake_bias_pct
-        onde θ_SVIC é o ângulo entre o eixo de força de frenagem e a horizontal,
-        medido a partir do CP até o "Side View Instant Center" (SVIC) —
-        a interseção das prolongações dos braços UCA e LCA na vista LATERAL (X-Z).
+        where θ_SVIC is the angle between the braking-force axis and the
+        horizontal, measured from the CP to the "Side View Instant Center"
+        (SVIC) — the intersection of the extended UCA and LCA arms in the
+        SIDE view (X-Z).
 
-    APROXIMAÇÃO USADA AQUI:
-        Calculamos o SVIC como interseção das prolongações dos braços projetados
-        em XZ (usando os pontos efetivos inboard e outboard).
-        Depois aplicamos a fórmula acima.
+    APPROXIMATION USED HERE:
+        We compute the SVIC as the intersection of the extended arms projected
+        onto XZ (using the effective inboard and outboard points).
+        Then we apply the formula above.
 
-    NOTA: para resultados precisos, o cálculo formal de anti-dive depende
-    de se o freio é INBOARD (preso ao chassi) ou OUTBOARD (preso à manga).
-    Aqui assumimos OUTBOARD (caso comum em FSAE). Para freio inboard, o
-    valor de anti-dive geometricamente possível é 0.
+    NOTE: for accurate results, the formal anti-dive calculation depends on
+    whether the brake is INBOARD (attached to the chassis) or OUTBOARD
+    (attached to the upright). Here we assume OUTBOARD (the common FSAE case).
+    For an inboard brake, the geometrically possible anti-dive value is 0.
     """
-    # Projeção em XZ dos pontos efetivos
+    # XZ projection of the effective points
     uca_in = corner.upper_arm.effective_inboard
     uca_out = corner.upper_arm.outboard
     lca_in = corner.lower_arm.effective_inboard
     lca_out = corner.lower_arm.outboard
 
-    # Interseção das retas dos braços no plano XZ
+    # Intersection of the arm lines in the XZ plane
     def line_intersect_xz(p1, p2, p3, p4):
         x1, z1 = p1.x, p1.z
         x2, z2 = p2.x, p2.z
@@ -500,20 +501,20 @@ def anti_dive_percent(
 
     svic = line_intersect_xz(lca_in, lca_out, uca_in, uca_out)
     if svic is None:
-        return 0.0   # braços paralelos em XZ → 0% anti-dive
+        return 0.0   # parallel arms in XZ → 0% anti-dive
 
-    # Ângulo do SVIC visto do contact patch
+    # Angle of the SVIC seen from the contact patch
     cp = corner.contact_patch
     dx = svic[0] - cp.x
     dz = svic[1] - cp.z
     if abs(dx) < 1e-9:
         return 0.0
-    theta = math.atan2(dz, abs(dx))  # ângulo positivo se SVIC está acima
+    theta = math.atan2(dz, abs(dx))  # positive angle if the SVIC is above
 
-    # Wheelbase: precisa ser informado externamente (ou usa padrão)
+    # Wheelbase: must be supplied externally (or uses a default)
     wb = wheelbase_mm_value if wheelbase_mm_value else 1550.0
 
-    # Proteção contra cg_height inválido (evita ZeroDivision e valores negativos)
+    # Guard against an invalid cg_height (avoids ZeroDivision and negative values)
     if cg_height_mm <= 1e-6:
         return 0.0
 
@@ -529,40 +530,40 @@ def anti_squat_percent(
     drive_type:     str = "RWD",
 ) -> float:
     """
-    Anti-squat (%) — análogo ao anti-dive para a traseira.
+    Anti-squat (%) — analogous to anti-dive for the rear.
 
-    Funciona apenas para o corner traseiro (motor). Para FWD, retorna 0.
+    Works only for the rear corner (engine). For FWD, returns 0.
     """
     if drive_type.upper() not in ("RWD", "AWD"):
         return 0.0
 
-    # Mesma lógica do anti-dive, mas para o corner traseiro
+    # Same logic as anti-dive, but for the rear corner
     return anti_dive_percent(
         corner,
-        brake_bias_pct=100.0,   # toda a tração na traseira
+        brake_bias_pct=100.0,   # all traction at the rear
         cg_height_mm=cg_height_mm,
         wheelbase_mm_value=wheelbase_mm_value,
     )
 
 
 # =============================================================================
-# KPI Bundle — reúne tudo em um único dict
+# KPI Bundle — gathers everything into a single dict
 # =============================================================================
 
 @dataclass
 class FullKPIReport:
     """
-    Relatório completo de KPIs para um veículo, no formato da ficha de setup.
+    Complete KPI report for a vehicle, in the setup-sheet format.
 
-    Os campos None são aqueles que não são calculáveis sem dados externos
-    (rigidez de mola, motion ratio, etc.) — fica como input do usuário.
+    The None fields are those that cannot be computed without external data
+    (spring stiffness, motion ratio, etc.) — they remain user inputs.
     """
-    # Dimensões
+    # Dimensions
     wheelbase_mm: float
     track_front_mm: float
     track_rear_mm: float
 
-    # Por ROW (linha) — dianteiro e traseiro separados
+    # Per AXLE (row) — front and rear separated
     front: dict[str, float]
     rear:  dict[str, float]
 
@@ -577,14 +578,14 @@ def build_full_report(
     roll_stiffness_deg_per_g: float = 1.5,
 ) -> FullKPIReport:
     """
-    Constrói o relatório completo de KPIs para o veículo.
+    Build the complete KPI report for the vehicle.
 
-    Parâmetros externos (que não vêm dos hardpoints):
-        cg_height_mm              : altura do CG
-        brake_bias_pct            : % de frenagem na dianteira
-        drive_type                : "RWD", "FWD" ou "AWD"
-        roll_stiffness_deg_per_g  : roll por g lateral (tunable, depende
-                                     das molas e ARB; valor típico FSAE)
+    External parameters (which do not come from the hardpoints):
+        cg_height_mm              : CG height
+        brake_bias_pct            : % of braking at the front
+        drive_type                : "RWD", "FWD" or "AWD"
+        roll_stiffness_deg_per_g  : roll per lateral g (tunable, depends on
+                                     the springs and ARB; typical FSAE value)
     """
     fl, fr = vehicle.front_left,  vehicle.front_right
     rl, rr = vehicle.rear_left,   vehicle.rear_right
@@ -595,7 +596,7 @@ def build_full_report(
     tr_f   = track_width_mm(fl, fr)
     tr_r   = track_width_mm(rl, rr)
 
-    # --- Dianteiro ---
+    # --- Front ---
     ack_geom = ackermann_geometry(fl, tr_fl, fr, tr_fr, rl)
     steer_info = steer_ratio_and_cfactor(fl, tr_fl)
     rc_1g_front = roll_center_at_1g_lat(
@@ -605,7 +606,7 @@ def build_full_report(
     )
 
     front = {
-        # Estáticos
+        # Static
         "static_camber_left":   fl.static_camber_deg(),
         "static_camber_right":  fr.static_camber_deg(),
         "static_sum_toe":       static_sum_toe_deg(fl, tr_fl, fr, tr_fr),
@@ -621,13 +622,13 @@ def build_full_report(
         "rc_height_static":     0.5*(fl.roll_center_height_mm() + fr.roll_center_height_mm()),
         "rc_y_at_1g":           rc_1g_front["rc_y_mm"],
         "rc_z_at_1g":           rc_1g_front["rc_z_mm"],
-        # Dinâmicos
+        # Dynamic
         "ride_camber_deg_per_m": ride_camber_deg_per_m(fl, tr_fl),
         "roll_camber":           roll_camber_deg_per_deg(fl, tr_fl),
         "anti_dive_pct":         anti_dive_percent(
                                     fl, brake_bias_pct=brake_bias_pct,
                                     cg_height_mm=cg_height_mm, wheelbase_mm_value=wb),
-        # Direção
+        # Steering
         "ackermann_pct":        ack_geom["ackermann_percent"],
         "steer_arm_length_l":   ack_geom["steer_arm_length_left"],
         "steer_arm_length_r":   ack_geom["steer_arm_length_right"],
@@ -635,7 +636,7 @@ def build_full_report(
         "wheel_deg_per_rack":   steer_info["wheel_deg_per_rack_mm"],
     }
 
-    # --- Traseiro ---
+    # --- Rear ---
     rc_1g_rear = roll_center_at_1g_lat(
         rl, tr_rl, rr, tr_rr,
         cg_height_mm=cg_height_mm,

@@ -1,12 +1,12 @@
 """
 ui/theme.py
 ===========
-Temas (presets selecionáveis na sidebar), CSS de polimento e header do app.
+Themes (presets selectable in the sidebar), polish CSS and the app header.
 
-O Streamlit não tem API pública para trocar tema em runtime; o padrão da
-comunidade é `st._config.set_option("theme.*", ...)` seguido de `st.rerun()`.
-Atenção: opções de config são globais ao PROCESSO (não à sessão) — ok para
-uso local/single-user; em deploy multi-usuário a troca afetaria todos.
+Streamlit has no public API to switch themes at runtime; the community pattern
+is `st._config.set_option("theme.*", ...)` followed by `st.rerun()`.
+Note: config options are global to the PROCESS (not the session) — fine for
+local/single-user use; in a multi-user deployment the switch would affect everyone.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from __future__ import annotations
 import streamlit as st
 
 THEMES: dict[str, dict[str, str]] = {
-    "🌙 Midnight (padrão)": {
+    "🌙 Midnight (default)": {
         "base": "dark",
         "primaryColor": "#FBBF24",
         "backgroundColor": "#0A0A0A",
@@ -34,7 +34,7 @@ THEMES: dict[str, dict[str, str]] = {
         "sidebar.secondaryBackgroundColor": "#262633",
         "sidebar.textColor": "#FAFAFA",
     },
-    "🔴 Racing Escuro": {
+    "🔴 Racing Dark": {
         "base": "dark",
         "primaryColor": "#E10600",
         "backgroundColor": "#0F0F0F",
@@ -44,7 +44,7 @@ THEMES: dict[str, dict[str, str]] = {
         "sidebar.secondaryBackgroundColor": "#242424",
         "sidebar.textColor": "#FAFAFA",
     },
-    "🌊 Azul Petróleo": {
+    "🌊 Petrol Blue": {
         "base": "dark",
         "primaryColor": "#38BDF8",
         "backgroundColor": "#0B1220",
@@ -54,7 +54,7 @@ THEMES: dict[str, dict[str, str]] = {
         "sidebar.secondaryBackgroundColor": "#1A2940",
         "sidebar.textColor": "#E2E8F0",
     },
-    "☀️ Claro Clássico": {
+    "☀️ Classic Light": {
         "base": "light",
         "primaryColor": "#2563EB",
         "backgroundColor": "#FFFFFF",
@@ -66,25 +66,25 @@ THEMES: dict[str, dict[str, str]] = {
     },
 }
 
-# Deve espelhar o tema definido em .streamlit/config.toml (estado de boot)
-_DEFAULT_THEME = "🌙 Midnight (padrão)"
+# Must mirror the theme defined in .streamlit/config.toml (boot state)
+_DEFAULT_THEME = "🌙 Midnight (default)"
 
 
 def _apply_theme(name: str) -> None:
-    """Aplica todas as chaves do preset via config (vale a partir do próximo rerun)."""
+    """Apply all preset keys via config (takes effect from the next rerun)."""
     for option, value in THEMES[name].items():
         st._config.set_option(f"theme.{option}", value)
 
 
 def init_theme() -> None:
-    """Inicializa o estado de tema na sessão e aplica o preset escolhido."""
+    """Initialize the theme state in the session and apply the chosen preset."""
     st.session_state.setdefault("ui_theme", _DEFAULT_THEME)
     st.session_state.setdefault("_theme_applied", _DEFAULT_THEME)
     _apply_theme(st.session_state["ui_theme"])
 
 
 def inject_css() -> None:
-    """CSS de polimento: paddings mais compactos e abas mais legíveis."""
+    """Polish CSS: more compact paddings and more readable tabs."""
     st.markdown(
         """
         <style>
@@ -99,11 +99,11 @@ def inject_css() -> None:
 
 
 def render_header() -> None:
-    """Título do app + badges com o status da geometria carregada."""
+    """App title + badges with the status of the loaded geometry."""
     header_left, header_right = st.columns([3, 2], vertical_alignment="bottom")
     with header_left:
         st.title("🏎️ FSAE Suspension Geometry Engine")
-        st.caption("Análise · Síntese · Inputs visuais de geometria de suspensão")
+        st.caption("Analysis · Synthesis · Visual suspension-geometry inputs")
     with header_right:
         _df_hdr = st.session_state.get("hardpoints_df")
         if _df_hdr is not None:
@@ -111,8 +111,8 @@ def render_header() -> None:
             _corners_hdr = sorted(_df_hdr["corner"].unique().to_list())
             st.markdown(
                 f":green-badge[✅ {_src_hdr}] "
-                f":blue-badge[📍 {_df_hdr.height} pontos] "
+                f":blue-badge[📍 {_df_hdr.height} points] "
                 f":gray-badge[{' · '.join(_corners_hdr)}]"
             )
         else:
-            st.markdown(":orange-badge[⚠️ Nenhuma geometria carregada]")
+            st.markdown(":orange-badge[⚠️ No geometry loaded]")

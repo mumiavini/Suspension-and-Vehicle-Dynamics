@@ -1,30 +1,30 @@
 """
 analysis/optimizer.py
 =====================
-Motor de SÍNTESE da geometria de suspensão.
+Suspension geometry SYNTHESIS engine.
 
-OBJETIVO:
-    Dado um veículo com hardpoints VARIÁVEIS dentro de bounding boxes
-    (keep-out zones do chassi), encontrar a configuração que MINIMIZA um
-    custo composto de metas (targets):
+PURPOSE:
+    Given a vehicle with hardpoints that are VARIABLE inside bounding boxes
+    (chassis keep-out zones), find the configuration that MINIMIZES a composite
+    cost of targets:
 
         cost = w_cg * (camber_gain - target)²
              + w_bs * Σ(Δtoe)²
              + w_rch * (rc_height - target)²
              + w_rcm * max(0, ΔY_rc - max_allowed)²
 
-ALGORITMO: scipy.optimize.differential_evolution
+ALGORITHM: scipy.optimize.differential_evolution
 
-    É um algoritmo evolutivo GLOBAL, robusto a espaços não-convexos com
-    muitos mínimos locais (típico em problemas de hardpoint placement).
-    Mais lento que gradiente, mas não precisa de derivadas.
+    It is a GLOBAL evolutionary algorithm, robust to non-convex spaces with
+    many local minima (typical in hardpoint-placement problems).
+    Slower than gradient methods, but does not require derivatives.
 
-FLUXO DE USO:
-    1. Crie um SuspensionCorner e TieRod como "seed" (geometria inicial)
-    2. Defina DesignTargets com seus alvos e pesos
-    3. (Opcional) Defina HardpointBounds para restringir a busca
-    4. Instancie SuspensionOptimizer e chame .run()
-    5. Use OptimizationResult.optimal_corner e .optimal_tie_rod
+USAGE FLOW:
+    1. Create a SuspensionCorner and TieRod as the "seed" (initial geometry)
+    2. Define DesignTargets with your targets and weights
+    3. (Optional) Define HardpointBounds to constrain the search
+    4. Instantiate SuspensionOptimizer and call .run()
+    5. Use OptimizationResult.optimal_corner and .optimal_tie_rod
 """
 
 from __future__ import annotations
@@ -48,24 +48,24 @@ from analysis.sweeps import (
 
 
 # =============================================================================
-# HardpointBounds — Bounding box espacial para um hardpoint
+# HardpointBounds — Spatial bounding box for a hardpoint
 # =============================================================================
 
 @dataclass
 class HardpointBounds:
     """
-    Limites espaciais (caixa) para um hardpoint variável.
+    Spatial limits (box) for a variable hardpoint.
 
-    Define a região do espaço onde o otimizador pode mover este hardpoint.
-    Use para representar KEEP-OUT ZONES (regiões interditadas pelo chassi,
-    pacote do motor, requisitos de packaging, etc).
+    Defines the region of space where the optimizer may move this hardpoint.
+    Use it to represent KEEP-OUT ZONES (regions forbidden by the chassis,
+    the engine package, packaging requirements, etc).
     """
     x_min: float; x_max: float
     y_min: float; y_max: float
     z_min: float; z_max: float
 
     def as_bounds(self) -> list[tuple[float, float]]:
-        """Formato esperado por scipy.optimize.differential_evolution."""
+        """Format expected by scipy.optimize.differential_evolution."""
         return [
             (self.x_min, self.x_max),
             (self.y_min, self.y_max),
@@ -73,91 +73,91 @@ class HardpointBounds:
         ]
 
     def contains(self, point: Point3D) -> bool:
-        """Testa se um ponto está dentro da caixa."""
+        """Test whether a point is inside the box."""
         return (self.x_min <= point.x <= self.x_max and
                 self.y_min <= point.y <= self.y_max and
                 self.z_min <= point.z <= self.z_max)
 
 
 # =============================================================================
-# DesignTargets — Metas e pesos da função objetivo
+# DesignTargets — Targets and weights of the objective function
 # =============================================================================
 
 @dataclass
 class DesignTargets:
     """
-    Metas de projeto e pesos da função objetivo do otimizador.
+    Design targets and weights of the optimizer's objective function.
 
-    Pesos (w_*) controlam a IMPORTÂNCIA RELATIVA de cada termo no custo
-    total. Definir um peso como 0.0 desativa o termo correspondente.
-    Targets do tipo Optional[float] são DESATIVADOS quando = None.
+    Weights (w_*) control the RELATIVE IMPORTANCE of each term in the total
+    cost. Setting a weight to 0.0 disables the corresponding term.
+    Targets of type Optional[float] are DISABLED when = None.
     """
-    # ─── TARGETS DINÂMICOS (medidos ao longo do heave sweep) ──────────────────
+    # ─── DYNAMIC TARGETS (measured along the heave sweep) ─────────────────────
     camber_gain_target_deg_per_mm: float = -0.015   # ≈ −0.4°/inch
     bump_steer_max_abs_deg_per_mm: float =  0.010   # |bump_steer| < 0.01 °/mm
-    rc_height_target_mm:           float =  50.0    # altura desejada do RC
-    rc_y_migration_max_mm:         float =  30.0    # migração lateral máxima
+    rc_height_target_mm:           float =  50.0    # desired RC height
+    rc_y_migration_max_mm:         float =  30.0    # max lateral migration
 
-    # ─── TARGETS ESTÁTICOS (medidos na posição neutra) ────────────────────────
-    # None = ignorar este target
-    caster_target_deg:           Optional[float] = None    # ex: 4.0
-    kpi_target_deg:              Optional[float] = None    # ex: 7.0
-    static_camber_target_deg:    Optional[float] = None    # ex: -1.5
-    scrub_radius_target_mm:      Optional[float] = None    # ex: 15.0
-    mechanical_trail_target_mm:  Optional[float] = None    # ex: 20.0
+    # ─── STATIC TARGETS (measured at the neutral position) ────────────────────
+    # None = ignore this target
+    caster_target_deg:           Optional[float] = None    # e.g. 4.0
+    kpi_target_deg:              Optional[float] = None    # e.g. 7.0
+    static_camber_target_deg:    Optional[float] = None    # e.g. -1.5
+    scrub_radius_target_mm:      Optional[float] = None    # e.g. 15.0
+    mechanical_trail_target_mm:  Optional[float] = None    # e.g. 20.0
 
-    # ─── Faixa do sweep usado para avaliação ──────────────────────────────────
+    # ─── Sweep range used for evaluation ──────────────────────────────────────
     heave_min_mm:  float = -25.0
     heave_max_mm:  float =  25.0
     heave_step_mm: float =   2.5
 
-    # ─── PESOS — TARGETS DINÂMICOS ────────────────────────────────────────────
+    # ─── WEIGHTS — DYNAMIC TARGETS ────────────────────────────────────────────
     w_camber_gain:  float = 1.0
     w_bump_steer:   float = 10.0
     w_rc_height:    float = 0.01
     w_rc_migration: float = 0.05
 
-    # ─── PESOS — TARGETS ESTÁTICOS ────────────────────────────────────────────
+    # ─── WEIGHTS — STATIC TARGETS ─────────────────────────────────────────────
     w_caster:        float = 1.0
     w_kpi:           float = 1.0
     w_static_camber: float = 5.0
     w_scrub:         float = 0.01
     w_trail:         float = 0.01
 
-    # ─── Penalidade para configurações que quebram o solver ──────────────────
+    # ─── Penalty for configurations that break the solver ─────────────────────
     penalty_non_converged: float = 1e6
 
 
 # =============================================================================
-# SuspensionOptimizer — Loop principal de otimização
+# SuspensionOptimizer — Main optimization loop
 # =============================================================================
 
 @dataclass
 class SuspensionOptimizer:
     """
-    Otimizador de geometria para UMA ponta de suspensão.
+    Geometry optimizer for ONE suspension corner.
 
-    VARIÁVEIS DE DESIGN (12 DOF):
+    DESIGN VARIABLES (12 DOF):
         UCA outboard   (x, y, z)
         LCA outboard   (x, y, z)
         Tie-rod inboard  (x, y, z)
         Tie-rod outboard (x, y, z)
 
-    Os pontos INBOARD do UCA/LCA são mantidos FIXOS (consideram-se determinados
-    pelo packaging do chassi). Para libertar mais variáveis, estenda esta classe.
+    The UCA/LCA INBOARD points are kept FIXED (considered determined by the
+    chassis packaging). To free more variables, extend this class.
     """
-    # ─── Geometria inicial (seed) ─────────────────────────────────────────────
+    # ─── Initial geometry (seed) ──────────────────────────────────────────────
     seed_corner:  SuspensionCorner
     seed_tie_rod: TieRod
     targets:      DesignTargets
 
-    # ─── Limites para cada hardpoint variável ─────────────────────────────────
+    # ─── Bounds for each variable hardpoint ───────────────────────────────────
     bounds_uca_outboard: HardpointBounds = field(default=None)  # type: ignore
     bounds_lca_outboard: HardpointBounds = field(default=None)  # type: ignore
     bounds_tie_rod_in:   HardpointBounds = field(default=None)  # type: ignore
     bounds_tie_rod_out:  HardpointBounds = field(default=None)  # type: ignore
 
-    # ─── Configurações do differential_evolution ──────────────────────────────
+    # ─── differential_evolution settings ──────────────────────────────────────
     population_size: int  = 15
     max_iterations:  int  = 60
     seed:            int  = 42
@@ -165,19 +165,18 @@ class SuspensionOptimizer:
     polish:          bool = True
     verbose:         bool = False
 
-    # ─── Callback de progresso (opcional) ─────────────────────────────────────
-    # Chamado uma vez por geração: on_generation(geração, melhor_custo, convergência).
-    # Retornar True INTERROMPE a otimização (early stop), mantendo o melhor
-    # indivíduo encontrado até então. Útil para barras de progresso e limites
-    # de tempo em UIs.
+    # ─── Progress callback (optional) ─────────────────────────────────────────
+    # Called once per generation: on_generation(generation, best_cost, convergence).
+    # Returning True STOPS the optimization (early stop), keeping the best
+    # individual found so far. Useful for progress bars and time limits in UIs.
     on_generation: Optional[Callable[[int, float, float], bool]] = None
 
     # -------------------------------------------------------------------------
-    # Inicialização: cria bounds default se não fornecidos
+    # Initialization: create default bounds if none are provided
     # -------------------------------------------------------------------------
 
     def __post_init__(self) -> None:
-        """Cria bounds default (caixa ±50mm) para hardpoints sem bounds."""
+        """Create default bounds (±50mm box) for hardpoints without bounds."""
         def default_box(p: Point3D, margin: float = 50.0) -> HardpointBounds:
             return HardpointBounds(
                 p.x - margin, p.x + margin,
@@ -195,11 +194,11 @@ class SuspensionOptimizer:
             self.bounds_tie_rod_out = default_box(self.seed_tie_rod.outboard, 30.0)
 
     # -------------------------------------------------------------------------
-    # Mapeamento entre vetor de design e objetos de geometria
+    # Mapping between the design vector and the geometry objects
     # -------------------------------------------------------------------------
 
     def _design_bounds(self) -> list[tuple[float, float]]:
-        """Concatena todos os bounds em uma única lista (12 tuplas)."""
+        """Concatenate all bounds into a single list (12 tuples)."""
         return (
             self.bounds_uca_outboard.as_bounds()
             + self.bounds_lca_outboard.as_bounds()
@@ -212,9 +211,9 @@ class SuspensionOptimizer:
         x: NDArray[np.float64],
     ) -> tuple[SuspensionCorner, TieRod]:
         """
-        Converte vetor de design (12 floats) em (SuspensionCorner, TieRod).
+        Convert a design vector (12 floats) into (SuspensionCorner, TieRod).
 
-        Layout do vetor:
+        Vector layout:
             [0:3]   UCA outboard
             [3:6]   LCA outboard
             [6:9]   Tie-rod inboard
@@ -225,7 +224,7 @@ class SuspensionOptimizer:
         tr_in   = Point3D(float(x[6]),  float(x[7]),  float(x[8]))
         tr_out  = Point3D(float(x[9]),  float(x[10]), float(x[11]))
 
-        # Mantém os inboards do UCA/LCA fixos (do seed)
+        # Keep the UCA/LCA inboards fixed (from the seed)
         new_uca = ControlArm(
             inboard_front=self.seed_corner.upper_arm.inboard_front,
             inboard_rear =self.seed_corner.upper_arm.inboard_rear,
@@ -249,7 +248,7 @@ class SuspensionOptimizer:
         return new_corner, new_tr
 
     def _initial_guess_vector(self) -> NDArray[np.float64]:
-        """Vetor de design correspondente ao seed (12 floats)."""
+        """Design vector corresponding to the seed (12 floats)."""
         return np.array([
             *self.seed_corner.upper_arm.outboard.to_array(),
             *self.seed_corner.lower_arm.outboard.to_array(),
@@ -258,21 +257,21 @@ class SuspensionOptimizer:
         ])
 
     # =========================================================================
-    # FUNÇÃO OBJETIVO
+    # OBJECTIVE FUNCTION
     # =========================================================================
 
     def objective(self, x: NDArray[np.float64]) -> float:
         """
-        Avalia o custo de uma configuração de hardpoints.
+        Evaluate the cost of a hardpoint configuration.
 
-        ETAPAS:
-            1. Constrói SuspensionCorner + TieRod a partir do vetor x
-            2. Cria solver 3D e roda um heave sweep curto
-            3. Calcula métricas (camber_gain, bump_steer, rc_height, rc_migration)
-            4. Soma os termos ponderados em um único custo escalar
+        STEPS:
+            1. Build SuspensionCorner + TieRod from the vector x
+            2. Create a 3D solver and run a short heave sweep
+            3. Compute metrics (camber_gain, bump_steer, rc_height, rc_migration)
+            4. Sum the weighted terms into a single scalar cost
 
-        Se algo falhar (geometria inválida, solver não converge), retorna
-        a penalidade gigante (targets.penalty_non_converged).
+        If anything fails (invalid geometry, solver does not converge), return
+        the huge penalty (targets.penalty_non_converged).
         """
         try:
             corner, tie_rod = self._vector_to_geometry(x)
@@ -285,32 +284,32 @@ class SuspensionOptimizer:
                 self.targets.heave_step_mm,
             )
 
-            # Se algum ponto não convergiu, descarta esta configuração
+            # If any point did not converge, discard this configuration
             if not bool(sweep["converged"].all()):
                 return float(self.targets.penalty_non_converged)
 
         except Exception:
             return float(self.targets.penalty_non_converged)
 
-        # ─── Termo 1: camber gain ─────────────────────────────────────────────
+        # ─── Term 1: camber gain ──────────────────────────────────────────────
         cg = camber_gain_per_mm(sweep)
         cost_cg = (cg - self.targets.camber_gain_target_deg_per_mm) ** 2
 
-        # ─── Termo 2: bump steer (integral do quadrado do Δtoe) ──────────────
-        # Como o solver retorna toe relativo ao estático, sweep["toe_deg"][zero]≈0
+        # ─── Term 2: bump steer (integral of the squared Δtoe) ───────────────
+        # Since the solver returns toe relative to static, sweep["toe_deg"][zero]≈0
         cost_bs = float(np.mean(sweep["toe_deg"] ** 2))
 
-        # ─── Termo 3: altura do Roll Center ──────────────────────────────────
+        # ─── Term 3: Roll Center height ──────────────────────────────────────
         rc_z_mean = float(np.mean(sweep["rc_z_mm"]))
         cost_rch = (rc_z_mean - self.targets.rc_height_target_mm) ** 2
 
-        # ─── Termo 4: migração do RC (penaliza só se passar do limite) ───────
+        # ─── Term 4: RC migration (penalize only if it exceeds the limit) ────
         dy, _ = rc_migration_range(sweep)
         excess_y = max(0.0, dy - self.targets.rc_y_migration_max_mm)
         cost_rcm = excess_y ** 2
 
-        # ─── TERMOS ESTÁTICOS (só ativos quando target != None) ──────────────
-        # Calcula KPIs estáticos uma única vez
+        # ─── STATIC TERMS (only active when target != None) ──────────────────
+        # Compute the static KPIs only once
         cost_caster = cost_kpi = cost_static_camber = cost_scrub = cost_trail = 0.0
 
         if self.targets.caster_target_deg is not None:
@@ -335,12 +334,12 @@ class SuspensionOptimizer:
             ) ** 2
 
         return float(
-            # Dinâmicos
+            # Dynamic
             self.targets.w_camber_gain    * cost_cg
           + self.targets.w_bump_steer     * cost_bs
           + self.targets.w_rc_height      * cost_rch
           + self.targets.w_rc_migration   * cost_rcm
-            # Estáticos
+            # Static
           + self.targets.w_caster         * cost_caster
           + self.targets.w_kpi            * cost_kpi
           + self.targets.w_static_camber  * cost_static_camber
@@ -349,24 +348,24 @@ class SuspensionOptimizer:
         )
 
     # =========================================================================
-    # LOOP PRINCIPAL DE OTIMIZAÇÃO
+    # MAIN OPTIMIZATION LOOP
     # =========================================================================
 
     def run(self) -> "OptimizationResult":
         """
-        Executa o differential evolution.
+        Run the differential evolution.
 
-        ESTRATÉGIA DE INICIALIZAÇÃO DA POPULAÇÃO:
-            - 1º indivíduo = seed (geometria inicial)
-            - 50% dos demais = perturbação gaussiana em torno do seed
-            - 50% restantes = sorteio uniforme nos bounds
+        POPULATION INITIALIZATION STRATEGY:
+            - 1st individual = seed (initial geometry)
+            - 50% of the rest = Gaussian perturbation around the seed
+            - remaining 50% = uniform sampling within the bounds
 
-        Isso acelera muito a convergência mantendo diversidade global.
+        This greatly speeds up convergence while preserving global diversity.
         """
         bounds = self._design_bounds()
         seed_vec = self._initial_guess_vector()
 
-        # ─── Constrói população inicial mista ─────────────────────────────────
+        # ─── Build a mixed initial population ─────────────────────────────────
         rng = np.random.default_rng(self.seed)
         n_dims = len(bounds)
         pop_size = self.population_size * n_dims
@@ -376,23 +375,23 @@ class SuspensionOptimizer:
             for j in range(n_dims):
                 lo, hi = bounds[j]
                 if i == 0:
-                    # 1º indivíduo = seed
+                    # 1st individual = seed
                     init_pop[i, j] = seed_vec[j]
                 elif rng.random() < 0.5:
-                    # Perturbação gaussiana em torno do seed
+                    # Gaussian perturbation around the seed
                     sigma = (hi - lo) * 0.15
                     init_pop[i, j] = np.clip(
                         seed_vec[j] + rng.normal(0, sigma), lo, hi
                     )
                 else:
-                    # Amostragem uniforme nos bounds
+                    # Uniform sampling within the bounds
                     init_pop[i, j] = rng.uniform(lo, hi)
 
-        # ─── Callback por geração: histórico de convergência + early stop ─────
-        # Usa a assinatura legada do scipy `callback(xk, convergence)`, que
-        # funciona em qualquer versão. `xk` é o melhor indivíduo da geração;
-        # reavaliá-lo custa 1 avaliação extra por geração (desprezível frente
-        # às population_size × 12 avaliações da geração).
+        # ─── Per-generation callback: convergence history + early stop ────────
+        # Uses the legacy scipy signature `callback(xk, convergence)`, which
+        # works in any version. `xk` is the best individual of the generation;
+        # re-evaluating it costs 1 extra evaluation per generation (negligible
+        # compared with the population_size × 12 evaluations per generation).
         history: list[float] = []
 
         def _de_callback(xk, convergence: float = 0.0) -> bool:
@@ -404,7 +403,7 @@ class SuspensionOptimizer:
                 ))
             return False
 
-        # ─── Roda differential_evolution ──────────────────────────────────────
+        # ─── Run differential_evolution ───────────────────────────────────────
         result = differential_evolution(
             func=self.objective,
             bounds=bounds,
@@ -434,31 +433,31 @@ class SuspensionOptimizer:
 
 
 # =============================================================================
-# OptimizationResult — Encapsula o resultado
+# OptimizationResult — Encapsulates the result
 # =============================================================================
 
 @dataclass
 class OptimizationResult:
-    """Resultado da otimização: geometria ótima + diagnóstico do solver."""
+    """Optimization result: optimal geometry + solver diagnostics."""
     optimal_corner:  SuspensionCorner
     optimal_tie_rod: TieRod
     cost:            float
     x:               NDArray[np.float64]
     scipy_result:    OptimizeResult
-    # Melhor custo ao fim de cada geração (índice 0 = geração 1)
+    # Best cost at the end of each generation (index 0 = generation 1)
     convergence_history: list[float] = field(default_factory=list)
 
     def summary(self) -> str:
-        """Resumo formatado do resultado."""
+        """Formatted summary of the result."""
         return "\n".join([
             "═══ Optimization Result ═══",
-            f"  Custo final         : {self.cost:.6e}",
-            f"  Iterações           : {self.scipy_result.nit}",
-            f"  Avaliações de obj   : {self.scipy_result.nfev}",
-            f"  Sucesso             : {self.scipy_result.success}",
-            f"  Mensagem            : {self.scipy_result.message}",
+            f"  Final cost          : {self.cost:.6e}",
+            f"  Iterations          : {self.scipy_result.nit}",
+            f"  Objective evals     : {self.scipy_result.nfev}",
+            f"  Success             : {self.scipy_result.success}",
+            f"  Message             : {self.scipy_result.message}",
             "",
-            "  Hardpoints otimizados:",
+            "  Optimized hardpoints:",
             f"    UCA outboard      : {self.optimal_corner.upper_arm.outboard}",
             f"    LCA outboard      : {self.optimal_corner.lower_arm.outboard}",
             f"    Tie-rod inboard   : {self.optimal_tie_rod.inboard}",
@@ -467,27 +466,27 @@ class OptimizationResult:
 
 
 # =============================================================================
-# Validação de uma geometria contra os targets
+# Validation of a geometry against the targets
 # =============================================================================
 
 @dataclass
 class TargetValidation:
     """
-    Resultado de validar uma geometria contra um conjunto de targets.
+    Result of validating a geometry against a set of targets.
 
-    Cada linha do relatório contém: nome, target, obtido, erro absoluto,
-    e se está dentro de uma tolerância aceitável.
+    Each report row contains: name, target, obtained, absolute error,
+    and whether it is within an acceptable tolerance.
     """
     rows: list[dict[str, object]]
 
     def as_dict_list(self) -> list[dict[str, object]]:
-        """Retorna os dados como lista de dicts (fácil de virar DataFrame)."""
+        """Return the data as a list of dicts (easy to turn into a DataFrame)."""
         return self.rows
 
     def summary(self) -> str:
-        """Tabela ASCII formatada."""
+        """Formatted ASCII table."""
         lines = [
-            f"{'Parâmetro':<22} {'Target':>10} {'Obtido':>10} {'Erro':>10}  Status",
+            f"{'Parameter':<22} {'Target':>10} {'Obtained':>10} {'Error':>10}  Status",
             "─" * 65,
         ]
         for r in self.rows:
@@ -507,12 +506,12 @@ def validate_against_targets(
     targets: DesignTargets,
 ) -> TargetValidation:
     """
-    Avalia uma geometria contra todos os targets ativos.
+    Evaluate a geometry against all active targets.
 
-    Roda um heave sweep curto para medir os targets dinâmicos e calcula
-    os estáticos diretamente. Retorna um relatório linha-por-linha.
+    Runs a short heave sweep to measure the dynamic targets and computes the
+    static ones directly. Returns a row-by-row report.
 
-    USO TÍPICO (validação pós-otimização):
+    TYPICAL USE (post-optimization validation):
         result = optimizer.run()
         report = validate_against_targets(result.optimal_corner,
                                           result.optimal_tie_rod, targets)
@@ -536,13 +535,13 @@ def validate_against_targets(
             "error":        err,
             "tolerance":    tol,
             "ok":           abs(err) <= tol,
-            # Strings pré-formatadas para o summary
+            # Pre-formatted strings for the summary
             "target_str":   format(target,   fmt),
             "obtained_str": format(obtained, fmt),
             "error_str":    format(err,      fmt),
         })
 
-    # ─── ESTÁTICOS ────────────────────────────────────────────────────────────
+    # ─── STATIC ───────────────────────────────────────────────────────────────
     if targets.caster_target_deg is not None:
         _row("Caster", targets.caster_target_deg,
              corner.static_caster_deg(), "°", tol=0.5)
@@ -552,7 +551,7 @@ def validate_against_targets(
              corner.static_kpi_deg(), "°", tol=0.5)
 
     if targets.static_camber_target_deg is not None:
-        _row("Camber estático", targets.static_camber_target_deg,
+        _row("Static camber", targets.static_camber_target_deg,
              corner.static_camber_deg(), "°", tol=0.25)
 
     if targets.scrub_radius_target_mm is not None:
@@ -560,10 +559,10 @@ def validate_against_targets(
              corner.static_scrub_radius_mm(), "mm", tol=3.0, fmt="+.2f")
 
     if targets.mechanical_trail_target_mm is not None:
-        _row("Trail Mecânico", targets.mechanical_trail_target_mm,
+        _row("Mechanical Trail", targets.mechanical_trail_target_mm,
              corner.static_mechanical_trail_mm(), "mm", tol=3.0, fmt="+.2f")
 
-    # ─── DINÂMICOS (peso 0 = termo desativado, fora do relatório) ─────────────
+    # ─── DYNAMIC (weight 0 = term disabled, left out of the report) ───────────
     if targets.w_camber_gain > 0.0:
         _row("Camber Gain", targets.camber_gain_target_deg_per_mm,
              camber_gain_per_mm(sweep), "°/mm", tol=0.005, fmt="+.5f")
@@ -575,12 +574,12 @@ def validate_against_targets(
 
     if targets.w_rc_height > 0.0:
         rc_z = float(np.mean(sweep["rc_z_mm"]))
-        _row("RC Height (médio)", targets.rc_height_target_mm,
+        _row("RC Height (average)", targets.rc_height_target_mm,
              rc_z, "mm", tol=10.0, fmt="+.2f")
 
     if targets.w_rc_migration > 0.0:
         dy, _dz = rc_migration_range(sweep)
-        _row("RC ΔY (migração)", targets.rc_y_migration_max_mm,
+        _row("RC ΔY (migration)", targets.rc_y_migration_max_mm,
              dy, "mm", tol=targets.rc_y_migration_max_mm, fmt="+.2f")
 
     return TargetValidation(rows=rows)

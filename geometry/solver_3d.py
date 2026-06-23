@@ -1,38 +1,38 @@
 """
 geometry/solver_3d.py
 =====================
-Solver cinemático 3D — movimento da manga de eixo como CORPO RÍGIDO.
+3D kinematic solver — motion of the upright as a RIGID BODY.
 
-CONCEITO FÍSICO
----------------
-A manga de eixo tem TRÊS pontos de ancoragem (ball joints):
-    - UBJ (Upper Ball Joint)  : outboard do UCA
-    - LBJ (Lower Ball Joint)  : outboard do LCA
-    - TRO (Tie-Rod Outboard)  : outboard do tie-rod
+PHYSICAL CONCEPT
+----------------
+The upright has THREE anchor points (ball joints):
+    - UBJ (Upper Ball Joint)  : UCA outboard
+    - LBJ (Lower Ball Joint)  : LCA outboard
+    - TRO (Tie-Rod Outboard)  : tie-rod outboard
 
-Cada um deve manter distância FIXA do respectivo ponto inboard (3 esferas
-no espaço 3D). Adicionalmente, as três distâncias INTERNAS da manga
-(UBJ-LBJ, UBJ-TRO, LBJ-TRO) também devem ser preservadas (corpo rígido).
+Each one must keep a FIXED distance from its respective inboard point (3 spheres
+in 3D space). Additionally, the three INTERNAL distances of the upright
+(UBJ-LBJ, UBJ-TRO, LBJ-TRO) must also be preserved (rigid body).
 
-SISTEMA NÃO-LINEAR A RESOLVER (9 incógnitas, 6 equações):
-    Para cada ball joint i:
+NON-LINEAR SYSTEM TO SOLVE (9 unknowns, 6 equations):
+    For each ball joint i:
         (X_i - x_i_in)² + (Y_i - y_i_in)² + (Z_i - z_i_in)² = L_i²
 
-    Mais 3 equações de corpo rígido:
-        |UBJ - LBJ| = const     (dist. estática)
+    Plus 3 rigid-body equations:
+        |UBJ - LBJ| = const     (static dist.)
         |UBJ - TRO| = const
         |LBJ - TRO| = const
 
-Como temos 9 DOF (3 pontos × 3 coords) e 6 constraints, restam 3 DOF.
-Adicionamos REGULARIZAÇÃO SUAVE (ancorar perto da posição anterior)
-para que o sistema seja bem-condicionado.
+Since we have 9 DOF (3 points × 3 coords) and 6 constraints, 3 DOF remain.
+We add SOFT REGULARIZATION (anchor near the previous position)
+so the system is well-conditioned.
 
-ALGORITMO: scipy.optimize.least_squares com Levenberg-Marquardt.
+ALGORITHM: scipy.optimize.least_squares with Levenberg-Marquardt.
 
-ENTRADAS DO SOLVER:
-    - heave_mm : deslocamento vertical do chassi
-    - roll_deg : ângulo de rolagem do chassi (em torno do eixo X)
-    - rack_mm  : deslocamento do rack de direção (em Y)
+SOLVER INPUTS:
+    - heave_mm : vertical displacement of the chassis
+    - roll_deg : chassis roll angle (about the X axis)
+    - rack_mm  : steering rack displacement (in Y)
 """
 
 from __future__ import annotations
@@ -50,17 +50,17 @@ from geometry.model_3d import SuspensionCorner, ControlArm
 
 
 # =============================================================================
-# Tie-Rod (terminal de direção)
+# Tie-Rod (steering link)
 # =============================================================================
 
 @dataclass
 class TieRod:
     """
-    Tie-rod: barra que liga o rack/braço pitman à manga.
+    Tie-rod: bar connecting the rack/pitman arm to the upright.
 
-    Atributos:
-        inboard  : ponto fixo no rack (move-se com o chassi + offset do rack)
-        outboard : ponto na manga (rotaciona com ela)
+    Attributes:
+        inboard  : fixed point on the rack (moves with the chassis + rack offset)
+        outboard : point on the upright (rotates with it)
     """
     inboard:  Point3D
     outboard: Point3D
@@ -68,7 +68,7 @@ class TieRod:
 
     @property
     def length(self) -> float:
-        """Comprimento do tie-rod (mm), invariante durante o movimento."""
+        """Tie-rod length (mm), invariant during motion."""
         return self.inboard.distance_to(self.outboard)
 
     def __repr__(self) -> str:
@@ -76,24 +76,24 @@ class TieRod:
 
 
 # =============================================================================
-# Estado cinemático 3D (resultado de uma resolução)
+# 3D kinematic state (result of one solve)
 # =============================================================================
 
 @dataclass
 class KinematicState3D:
     """
-    Estado da suspensão para uma dada configuração (heave, roll, rack).
+    Suspension state for a given configuration (heave, roll, rack).
 
     Inputs:
         heave_mm, roll_deg, rack_mm
 
-    Posições resolvidas:
+    Solved positions:
         uca_outboard, lca_outboard, tie_rod_outboard, wheel_center, contact_patch
 
-    Ângulos derivados:
+    Derived angles:
         camber_deg, toe_deg, caster_deg, kpi_deg
 
-    Diagnóstico do solver:
+    Solver diagnostics:
         converged, residual_norm, iterations
     """
     heave_mm: float = 0.0
@@ -117,23 +117,23 @@ class KinematicState3D:
 
 
 # =============================================================================
-# Solver 3D
+# 3D solver
 # =============================================================================
 
 class KinematicSolver3D:
     """
-    Resolve a cinemática 3D da manga de eixo via least_squares.
+    Solve the 3D upright kinematics via least_squares.
 
-    Uso típico:
+    Typical use:
         solver = KinematicSolver3D(corner, tie_rod)
         state  = solver.solve(heave_mm=10.0, roll_deg=0.5, rack_mm=0.0)
 
-    Para sweeps (varreduras), o solver mantém um cache do último estado
-    como SEED para o próximo, garantindo continuidade física. Use
-    `solver.reset_seed()` ao iniciar um novo sweep.
+    For sweeps, the solver keeps a cache of the last state as a SEED for the
+    next one, ensuring physical continuity. Use `solver.reset_seed()` when
+    starting a new sweep.
     """
 
-    # Peso da regularização suave (usado em _residuals e _residuals_jac)
+    # Soft-regularization weight (used in _residuals and _residuals_jac)
     _REG_WEIGHT: float = 1e-4
 
     def __init__(
@@ -145,19 +145,19 @@ class KinematicSolver3D:
         max_iter:  int   = 100,
     ) -> None:
         """
-        Inicializa o solver pré-calculando todas as distâncias invariantes.
+        Initialize the solver by pre-computing all invariant distances.
         """
         self.corner: SuspensionCorner = corner
         self.tie_rod: TieRod           = tie_rod
         self.tolerance: float          = tolerance
         self.max_iter: int             = max_iter
 
-        # ─── Comprimentos dos elos (invariantes) ──────────────────────────────
+        # ─── Link lengths (invariants) ───────────────────────────────────────
         self._L_uca: float = corner.upper_arm.arm_length()
         self._L_lca: float = corner.lower_arm.arm_length()
         self._L_tr:  float = tie_rod.length
 
-        # ─── Distâncias internas da manga (corpo rígido) ──────────────────────
+        # ─── Internal upright distances (rigid body) ─────────────────────────
         ubj = corner.upper_arm.outboard.to_array()
         lbj = corner.lower_arm.outboard.to_array()
         tro = tie_rod.outboard.to_array()
@@ -165,9 +165,9 @@ class KinematicSolver3D:
         self._d_ubj_tro: float = float(np.linalg.norm(ubj - tro))
         self._d_lbj_tro: float = float(np.linalg.norm(lbj - tro))
 
-        # ─── Offsets locais do WC e CP em relação ao referencial da manga ────
-        # Precisamos disso para reconstruir as posições do WC/CP após a manga
-        # girar. Calculados UMA vez aqui no init.
+        # ─── Local offsets of WC and CP relative to the upright frame ────────
+        # We need these to reconstruct the WC/CP positions after the upright
+        # rotates. Computed ONCE here in init.
         self._wc_local_offset: NDArray[np.float64] = self._compute_local_offset(
             corner.wheel_center.to_array(), ubj, lbj, tro
         )
@@ -175,20 +175,20 @@ class KinematicSolver3D:
             corner.contact_patch.to_array(), ubj, lbj, tro
         )
 
-        # ─── Toe DE REFERÊNCIA (estado estático) ──────────────────────────────
-        # Pré-calcula o toe na posição estática para que reportemos sempre
-        # o DELTA em relação a este zero. Isso elimina o offset arbitrário
-        # do toe absoluto.
+        # ─── REFERENCE toe (static state) ────────────────────────────────────
+        # Pre-compute the toe at the static position so we always report the
+        # DELTA relative to this zero. This removes the arbitrary offset of the
+        # absolute toe.
         self._toe_static: float = self._compute_toe_absolute(
             corner.upper_arm.outboard, corner.lower_arm.outboard,
             tie_rod.outboard, corner.wheel_center,
         )
 
-        # Cache do último estado (para usar como seed do próximo)
+        # Cache of the last state (to use as the next seed)
         self._last_state: Optional[KinematicState3D] = None
 
     # =========================================================================
-    # MÉTODO PRINCIPAL: resolver
+    # MAIN METHOD: solve
     # =========================================================================
 
     def solve(
@@ -198,15 +198,15 @@ class KinematicSolver3D:
         rack_mm:  float = 0.0,
     ) -> KinematicState3D:
         """
-        Resolve a cinemática 3D para uma configuração (heave, roll, rack).
+        Solve the 3D kinematics for a configuration (heave, roll, rack).
 
-        Parâmetros:
-            heave_mm : deslocamento vertical do chassi (+ = chassi sobe)
-            roll_deg : rolagem do chassi em torno do eixo X
-                       (+ = chassi rola para a direita; lado esquerdo desce)
-            rack_mm  : deslocamento lateral do rack (+ = para a esquerda)
+        Parameters:
+            heave_mm : vertical chassis displacement (+ = chassis rises)
+            roll_deg : chassis roll about the X axis
+                       (+ = chassis rolls to the right; left side drops)
+            rack_mm  : lateral rack displacement (+ = to the left)
         """
-        # ─── 1. Mover os pontos inboard (chassi + rack) ───────────────────────
+        # ─── 1. Move the inboard points (chassis + rack) ─────────────────────
         uca_in_eff = self.corner.upper_arm.effective_inboard
         lca_in_eff = self.corner.lower_arm.effective_inboard
         tr_in      = self.tie_rod.inboard
@@ -214,9 +214,9 @@ class KinematicSolver3D:
         uca_in_moved = self._move_chassis_point(uca_in_eff, heave_mm, roll_deg)
         lca_in_moved = self._move_chassis_point(lca_in_eff, heave_mm, roll_deg)
         tr_in_moved  = self._move_chassis_point(tr_in,      heave_mm, roll_deg)
-        tr_in_moved[1] += rack_mm   # rack desloca-se lateralmente em Y
+        tr_in_moved[1] += rack_mm   # the rack moves laterally in Y
 
-        # ─── 2. Construir seed inicial (último estado ou estático) ────────────
+        # ─── 2. Build the initial seed (last state or static) ────────────────
         if self._last_state is not None:
             seed = np.concatenate([
                 self._last_state.uca_outboard.to_array(),
@@ -230,9 +230,9 @@ class KinematicSolver3D:
                 self.tie_rod.outboard.to_array(),
             ])
 
-        # ─── 3. Resolver o sistema não-linear ────────────────────────────────
-        # jac analítico: evita ~10 avaliações numéricas do residual por passo
-        # do LM (diferenças finitas em 9 variáveis) → solver ~3-5× mais rápido.
+        # ─── 3. Solve the non-linear system ──────────────────────────────────
+        # Analytic jac: avoids ~10 numerical residual evaluations per LM step
+        # (finite differences over 9 variables) → solver ~3-5× faster.
         result = least_squares(
             fun=self._residuals,
             jac=self._residuals_jac,
@@ -244,25 +244,25 @@ class KinematicSolver3D:
             max_nfev=self.max_iter * 10,
         )
 
-        # ─── 4. Extrair posições resolvidas ──────────────────────────────────
+        # ─── 4. Extract the solved positions ─────────────────────────────────
         x = result.x
         ubj = x[0:3]; lbj = x[3:6]; tro = x[6:9]
         uca_out = Point3D.from_array(ubj)
         lca_out = Point3D.from_array(lbj)
         tr_out  = Point3D.from_array(tro)
 
-        # ─── 5. Reconstruir WC e CP a partir do referencial local da manga ────
+        # ─── 5. Reconstruct WC and CP from the upright's local frame ─────────
         wc_arr = self._reconstruct_from_local(self._wc_local_offset, ubj, lbj, tro)
         cp_arr = self._reconstruct_from_local(self._cp_local_offset, ubj, lbj, tro)
         wheel_center  = Point3D.from_array(wc_arr)
         contact_patch = Point3D.from_array(cp_arr)
 
-        # ─── 6. Calcular ângulos derivados ───────────────────────────────────
+        # ─── 6. Compute the derived angles ───────────────────────────────────
         camber = self._compute_camber(uca_out, lca_out, wheel_center, contact_patch)
         caster = self._compute_caster(uca_out, lca_out)
         kpi    = self._compute_kpi(uca_out, lca_out)
 
-        # Toe RELATIVO ao estado estático (= bump steer + steer angle)
+        # Toe RELATIVE to the static state (= bump steer + steer angle)
         toe_abs = self._compute_toe_absolute(uca_out, lca_out, tr_out, wheel_center)
         toe = toe_abs - self._toe_static
 
@@ -282,16 +282,16 @@ class KinematicSolver3D:
             iterations=int(result.nfev),
         )
 
-        # Cache para a próxima chamada (continuidade no sweep)
+        # Cache for the next call (continuity within the sweep)
         self._last_state = state
         return state
 
     def reset_seed(self) -> None:
-        """Limpa o cache. Use ao iniciar um novo sweep."""
+        """Clear the cache. Use when starting a new sweep."""
         self._last_state = None
 
     # =========================================================================
-    # Função residual (least_squares minimiza ||residuals||²)
+    # Residual function (least_squares minimizes ||residuals||²)
     # =========================================================================
 
     def _residuals(
@@ -303,26 +303,26 @@ class KinematicSolver3D:
         seed:         NDArray[np.float64],
     ) -> NDArray[np.float64]:
         """
-        Vetor de resíduos. O solver minimiza a soma dos quadrados destes.
+        Residual vector. The solver minimizes the sum of squares of these.
 
-        Composição:
-            r[0..2] : 3 constraints de distância para os inboards (esferas)
-            r[3..5] : 3 constraints de distância interna da manga (rigid body)
-            r[6..14]: 9 termos de regularização suave (ancora perto do seed)
+        Composition:
+            r[0..2] : 3 distance constraints for the inboards (spheres)
+            r[3..5] : 3 internal upright distance constraints (rigid body)
+            r[6..14]: 9 soft-regularization terms (anchor near the seed)
         """
         ubj = x[0:3]; lbj = x[3:6]; tro = x[6:9]
 
-        # 1. Distâncias para os inboards (esferas)
+        # 1. Distances to the inboards (spheres)
         r_ubj = np.linalg.norm(ubj - uca_in_moved) - self._L_uca
         r_lbj = np.linalg.norm(lbj - lca_in_moved) - self._L_lca
         r_tro = np.linalg.norm(tro - tr_in_moved)  - self._L_tr
 
-        # 2. Distâncias internas da manga (corpo rígido)
+        # 2. Internal upright distances (rigid body)
         r_d1 = np.linalg.norm(ubj - lbj) - self._d_ubj_lbj
         r_d2 = np.linalg.norm(ubj - tro) - self._d_ubj_tro
         r_d3 = np.linalg.norm(lbj - tro) - self._d_lbj_tro
 
-        # 3. Regularização suave (peso muito pequeno para não dominar)
+        # 3. Soft regularization (very small weight so it does not dominate)
         reg = (x - seed) * self._REG_WEIGHT
 
         return np.concatenate([
@@ -339,12 +339,12 @@ class KinematicSolver3D:
         seed:         NDArray[np.float64],
     ) -> NDArray[np.float64]:
         """
-        Jacobiano ANALÍTICO de `_residuals` (15 resíduos × 9 variáveis).
+        ANALYTIC Jacobian of `_residuals` (15 residuals × 9 variables).
 
-        Para um resíduo de distância r = ||a − b|| − L:
-            ∂r/∂a = (a − b) / ||a − b||      (e ∂r/∂b = −∂r/∂a)
+        For a distance residual r = ||a − b|| − L:
+            ∂r/∂a = (a − b) / ||a − b||      (and ∂r/∂b = −∂r/∂a)
 
-        As linhas de regularização são simplesmente I₉ × _REG_WEIGHT.
+        The regularization rows are simply I₉ × _REG_WEIGHT.
         """
         ubj = x[0:3]; lbj = x[3:6]; tro = x[6:9]
 
@@ -354,22 +354,22 @@ class KinematicSolver3D:
 
         J = np.zeros((15, 9))
 
-        # 1. Distâncias para os inboards (só dependem do próprio ponto)
+        # 1. Distances to the inboards (depend only on their own point)
         J[0, 0:3] = unit(ubj - uca_in_moved)
         J[1, 3:6] = unit(lbj - lca_in_moved)
         J[2, 6:9] = unit(tro - tr_in_moved)
 
-        # 2. Distâncias internas da manga (par de pontos, sinais opostos)
+        # 2. Internal upright distances (point pair, opposite signs)
         u = unit(ubj - lbj); J[3, 0:3] = u; J[3, 3:6] = -u
         u = unit(ubj - tro); J[4, 0:3] = u; J[4, 6:9] = -u
         u = unit(lbj - tro); J[5, 3:6] = u; J[5, 6:9] = -u
 
-        # 3. Regularização
+        # 3. Regularization
         J[6:15, :] = np.eye(9) * self._REG_WEIGHT
         return J
 
     # =========================================================================
-    # Movimento dos pontos do chassi (heave + roll)
+    # Chassis point motion (heave + roll)
     # =========================================================================
 
     @staticmethod
@@ -379,20 +379,20 @@ class KinematicSolver3D:
         roll_deg: float,
     ) -> NDArray[np.float64]:
         """
-        Aplica heave (translação Z) e roll (rotação em X) a um ponto do chassi.
+        Apply heave (Z translation) and roll (X rotation) to a chassis point.
 
-        ORDEM DAS TRANSFORMAÇÕES:
-            1. Roll: rotação em torno do eixo X (longitudinal), origem em Y=Z=0
-            2. Heave: translação em Z
+        ORDER OF TRANSFORMATIONS:
+            1. Roll: rotation about the X (longitudinal) axis, origin at Y=Z=0
+            2. Heave: translation in Z
 
-        Para o eixo de rolagem real (que não passa pela origem), a rigor
-        deveríamos transladar para o RC, rotacionar, e desfazer. Aqui usamos
-        a aproximação simples (rotação na origem), que é válida para
-        ângulos de roll pequenos típicos de FSAE (< 3°).
+        For the real roll axis (which does not pass through the origin), we
+        should strictly translate to the RC, rotate, and undo. Here we use the
+        simple approximation (rotation at the origin), which is valid for the
+        small roll angles typical of FSAE (< 3°).
         """
         p = point.to_array().copy()
 
-        # Roll em torno do eixo X (Y e Z são rotacionados)
+        # Roll about the X axis (Y and Z are rotated)
         if abs(roll_deg) > 1e-12:
             theta = math.radians(roll_deg)
             cos_t = math.cos(theta)
@@ -407,7 +407,7 @@ class KinematicSolver3D:
         return p
 
     # =========================================================================
-    # Referencial local da manga (para reconstruir WC e CP)
+    # Upright local frame (to reconstruct WC and CP)
     # =========================================================================
 
     @staticmethod
@@ -417,15 +417,15 @@ class KinematicSolver3D:
         tro: NDArray[np.float64],
     ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """
-        Constrói uma base ORTONORMAL fixa na manga, ancorada em LBJ.
+        Build an ORTHONORMAL basis fixed on the upright, anchored at LBJ.
 
-        Procedimento (Gram-Schmidt):
-            e1 = (UBJ - LBJ) / |UBJ - LBJ|         direção do pino mestre
-            e2 = (TRO - LBJ) - (projetado em e1)    ortogonal a e1
-            e3 = e1 × e2                            completa a base destro
+        Procedure (Gram-Schmidt):
+            e1 = (UBJ - LBJ) / |UBJ - LBJ|         kingpin direction
+            e2 = (TRO - LBJ) - (projected onto e1)  orthogonal to e1
+            e3 = e1 × e2                            completes the right-handed basis
 
-        Essa base ROTACIONA junto com a manga, mantendo as coordenadas
-        locais de qualquer ponto SOLIDÁRIO à manga constantes.
+        This basis ROTATES together with the upright, keeping the local
+        coordinates of any point RIGIDLY attached to the upright constant.
         """
         v1 = ubj - lbj
         e1 = v1 / np.linalg.norm(v1)
@@ -446,8 +446,8 @@ class KinematicSolver3D:
         tro:   NDArray[np.float64],
     ) -> NDArray[np.float64]:
         """
-        Calcula as coordenadas de `point` no referencial local da manga.
-        Estes valores são INVARIANTES durante o movimento (manga rígida).
+        Compute the coordinates of `point` in the upright's local frame.
+        These values are INVARIANT during motion (rigid upright).
         """
         e1, e2, e3 = cls._build_local_frame(ubj, lbj, tro)
         delta = point - lbj
@@ -466,31 +466,31 @@ class KinematicSolver3D:
         tro: NDArray[np.float64],
     ) -> NDArray[np.float64]:
         """
-        Reconstrói a posição GLOBAL de um ponto a partir de seu offset local.
-        Usa o referencial local da manga na configuração ATUAL.
+        Reconstruct the GLOBAL position of a point from its local offset.
+        Uses the upright's local frame in the CURRENT configuration.
         """
         e1, e2, e3 = cls._build_local_frame(ubj, lbj, tro)
         return lbj + local_offset[0] * e1 + local_offset[1] * e2 + local_offset[2] * e3
 
     # =========================================================================
-    # Cálculo dos ângulos derivados
+    # Computation of the derived angles
     # =========================================================================
 
     @staticmethod
     def _compute_camber(uca_out: Point3D, lca_out: Point3D,
                          wheel_center: Point3D, contact_patch: Point3D) -> float:
         """
-        Camber dinâmico: inclinação do plano da roda em relação à vertical,
-        na vista frontal (plano Y-Z).
+        Dynamic camber: inclination of the wheel plane relative to vertical,
+        in the front view (Y-Z plane).
 
-        DEFINIÇÃO:
-            Usa o vetor CP→WC projetado em Y-Z. Para roda vertical (camber=0),
-            esse vetor é (0, 0, +R). Se a manga rotaciona em torno de X,
-            o vetor ganha componente em Y.
+        DEFINITION:
+            Uses the CP→WC vector projected onto Y-Z. For a vertical wheel
+            (camber=0), this vector is (0, 0, +R). If the upright rotates about
+            X, the vector gains a Y component.
 
-        CONVENÇÃO SAE:
-            − = topo da roda inclinado PARA DENTRO do veículo
-            + = topo da roda inclinado PARA FORA
+        SAE CONVENTION:
+            − = top of the wheel tilted INWARD
+            + = top of the wheel tilted OUTWARD
         """
         wc = wheel_center.to_array()
         cp = contact_patch.to_array()
@@ -501,25 +501,25 @@ class KinematicSolver3D:
         if abs(dz) < 1e-9:
             return 0.0
 
-        # Ângulo entre (CP→WC) e o eixo Z vertical
+        # Angle between (CP→WC) and the vertical Z axis
         angle = math.degrees(math.atan2(dy, dz))
 
-        # Sinal: para esquerda (WC.y > 0), camber negativo = WC mais para dentro
-        # que CP = dy < 0 → angle < 0 → camber = +angle (mantém negativo)
-        # Wait: dy < 0 dá angle < 0; queremos camber = -|angle| (negativo)
-        # → camber = angle quando lado esquerdo
-        # Para direita (WC.y < 0), camber negativo = WC mais para dentro = dy > 0
-        # → camber = -angle quando lado direito
-        if wc[1] > 0:   # esquerdo
+        # Sign: for the left (WC.y > 0), negative camber = WC more inward
+        # than CP = dy < 0 → angle < 0 → camber = +angle (stays negative)
+        # Wait: dy < 0 gives angle < 0; we want camber = -|angle| (negative)
+        # → camber = angle for the left side
+        # For the right (WC.y < 0), negative camber = WC more inward = dy > 0
+        # → camber = -angle for the right side
+        if wc[1] > 0:   # left
             return angle
-        else:           # direito
+        else:           # right
             return -angle
 
     @staticmethod
     def _compute_caster(uca_out: Point3D, lca_out: Point3D) -> float:
         """
-        Caster: inclinação do pino mestre no plano X-Z.
-        Positivo = topo do pino atrás da base.
+        Caster: kingpin inclination in the X-Z plane.
+        Positive = top of the kingpin behind the base.
         """
         ubj = uca_out.to_array()
         lbj = lca_out.to_array()
@@ -535,8 +535,8 @@ class KinematicSolver3D:
     @staticmethod
     def _compute_kpi(uca_out: Point3D, lca_out: Point3D) -> float:
         """
-        KPI: inclinação do pino mestre no plano Y-Z.
-        Positivo = topo do pino para dentro (mais perto do plano de simetria).
+        KPI: kingpin inclination in the Y-Z plane.
+        Positive = top of the kingpin inward (closer to the symmetry plane).
         """
         ubj = uca_out.to_array()
         lbj = lca_out.to_array()
@@ -557,38 +557,38 @@ class KinematicSolver3D:
         wheel_center: Point3D,
     ) -> float:
         """
-        Toe ABSOLUTO em graus.
+        ABSOLUTE toe in degrees.
 
-        ALGORITMO:
-            1. Eixo do pino mestre (LBJ → UBJ), normalizado
-            2. Steering arm = (TRO - WC), projetado PERPENDICULARMENTE ao pino
-            3. Toe = atan2(componente X, componente Y) deste vetor projetado
+        ALGORITHM:
+            1. Kingpin axis (LBJ → UBJ), normalized
+            2. Steering arm = (TRO - WC), projected PERPENDICULARLY to the kingpin
+            3. Toe = atan2(X component, Y component) of this projected vector
 
-        IMPORTANTE: este valor sozinho não tem significado direto — ele
-        depende de uma escolha arbitrária de orientação do tie-rod. O que
-        importa é a VARIAÇÃO em relação ao estado estático (delta toe),
-        que é o que o solver retorna em `state.toe_deg`.
+        IMPORTANT: this value alone has no direct meaning — it depends on an
+        arbitrary choice of tie-rod orientation. What matters is the VARIATION
+        relative to the static state (delta toe), which is what the solver
+        returns in `state.toe_deg`.
         """
         ubj = uca_out.to_array()
         lbj = lca_out.to_array()
         tro = tr_out.to_array()
         wc  = wheel_center.to_array()
 
-        # Eixo unitário do pino mestre
+        # Kingpin unit axis
         kp = ubj - lbj
         kp_norm = float(np.linalg.norm(kp))
         if kp_norm < 1e-12:
             return 0.0
         kp_unit = kp / kp_norm
 
-        # Steering arm: vetor do WC ao TRO, projetado perpendicularmente ao pino
+        # Steering arm: vector from WC to TRO, projected perpendicular to the kingpin
         steer_arm = tro - wc
         steer_perp = steer_arm - np.dot(steer_arm, kp_unit) * kp_unit
 
-        # Projeção no plano XY (vista superior)
+        # Projection onto the XY plane (top view)
         sa_xy = np.array([steer_perp[0], steer_perp[1]])
         if float(np.linalg.norm(sa_xy)) < 1e-9:
             return 0.0
 
-        # Toe = ângulo do steering arm em relação ao eixo Y, no plano XY
+        # Toe = angle of the steering arm relative to the Y axis, in the XY plane
         return math.degrees(math.atan2(sa_xy[0], abs(sa_xy[1]) + 1e-12))

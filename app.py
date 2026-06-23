@@ -1,20 +1,20 @@
 """
 app.py
 ======
-Streamlit app — Interface gráfica do motor FSAE Suspension Geometry.
+Streamlit app — Graphical interface for the FSAE Suspension Geometry engine.
 
-Este arquivo é só orquestração: config da página, tema, header, sidebar e as
-abas. O código de cada aba vive em `ui/` (um módulo por aba, expondo `render()`).
+This file is orchestration only: page config, theme, header, sidebar and the
+tabs. The code for each tab lives in `ui/` (one module per tab, exposing `render()`).
 
-ESTRUTURA EM ABAS:
-    ✏️  Inputs       : Cria/edita hardpoints manualmente, com visualização
-                       2D em vistas YZ (frontal), XZ (lateral), XY (superior).
-    📊 Análise       : Carrega hardpoints, roda sweeps, mostra KPIs e gráficos.
-    🌐 Vista 3D      : Visualização 3D interativa (veículo, corner, animação).
-    🎯 Síntese       : Otimização global a partir de targets (engenharia reversa).
-    🔄 Comparação    : Compara duas geometrias lado a lado.
+TAB STRUCTURE:
+    ✏️  Inputs       : Create/edit hardpoints manually, with 2D visualization
+                       in YZ (front), XZ (side), XY (top) views.
+    📊 Analysis      : Load hardpoints, run sweeps, show KPIs and charts.
+    🌐 View 3D       : Interactive 3D visualization (vehicle, corner, animation).
+    🎯 Synthesis     : Global optimization from targets (reverse engineering).
+    🔄 Comparison    : Compare two geometries side by side.
 
-COMO RODAR:
+HOW TO RUN:
     streamlit run app.py
 """
 
@@ -39,7 +39,7 @@ render_header()
 render_sidebar()
 
 t_inputs, t_analysis, t_3d, t_synthesis, t_compare = st.tabs([
-    "✏️ Inputs", "📊 Análise", "🌐 Vista 3D", "🎯 Síntese / Otimização", "🔄 Comparação",
+    "✏️ Inputs", "📊 Analysis", "🌐 View 3D", "🎯 Synthesis / Optimization", "🔄 Comparison",
 ])
 
 with t_inputs:

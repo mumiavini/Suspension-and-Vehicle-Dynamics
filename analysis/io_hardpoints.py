@@ -1,25 +1,25 @@
 """
 analysis/io_hardpoints.py
 =========================
-Leitura, validação e ESCRITA de hardpoints da suspensão.
+Reading, validation and WRITING of suspension hardpoints.
 
-FORMATOS SUPORTADOS:
+SUPPORTED FORMATS:
     .xlsx, .csv, .json
 
-ESTRUTURA DO ARQUIVO (uma linha por hardpoint):
+FILE STRUCTURE (one row per hardpoint):
     corner | point        | x_mm | y_mm | z_mm
     -------+--------------+------+------+------
     FL     | UCA_IN_FRONT |  60  |  150 |  295
     FL     | UCA_IN_REAR  | -70  |  150 |  295
     ...
 
-PONTOS ESPERADOS POR CORNER (10 pontos):
+EXPECTED POINTS PER CORNER (10 points):
     UCA_IN_FRONT, UCA_IN_REAR, UCA_OUT
     LCA_IN_FRONT, LCA_IN_REAR, LCA_OUT
     TIE_ROD_IN,   TIE_ROD_OUT
     WHEEL_CENTER, CONTACT_PATCH
 
-CORNERS VÁLIDOS:
+VALID CORNERS:
     FL (front-left), FR (front-right), RL (rear-left), RR (rear-right)
 """
 
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
-# Constantes do schema
+# Schema constants
 # =============================================================================
 
 REQUIRED_COLUMNS: list[str] = ["corner", "point", "x_mm", "y_mm", "z_mm"]
@@ -53,29 +53,29 @@ VALID_CORNERS: list[str] = ["FL", "FR", "RL", "RR"]
 
 
 class HardpointValidationError(ValueError):
-    """Erro de validação do arquivo de hardpoints."""
+    """Validation error for the hardpoints file."""
     pass
 
 
 # =============================================================================
-# Leitura
+# Reading
 # =============================================================================
 
 def read_hardpoints(filepath: str | Path) -> "pl.DataFrame":
     """
-    Lê um arquivo de hardpoints (.xlsx, .csv, .json) e retorna DataFrame polars.
+    Read a hardpoints file (.xlsx, .csv, .json) and return a polars DataFrame.
 
-    Aplica validações:
-        - colunas obrigatórias presentes
-        - corners válidos
-        - todos os 10 pontos por corner
-        - coordenadas numéricas finitas
+    Applies validations:
+        - required columns present
+        - valid corners
+        - all 10 points per corner
+        - finite numeric coordinates
     """
     import polars as pl
 
     path = Path(filepath)
     if not path.is_file():
-        raise FileNotFoundError(f"Arquivo não encontrado: {path}")
+        raise FileNotFoundError(f"File not found: {path}")
 
     ext = path.suffix.lower()
     if ext in (".xlsx", ".xls"):
@@ -85,9 +85,9 @@ def read_hardpoints(filepath: str | Path) -> "pl.DataFrame":
     elif ext == ".json":
         df = pl.read_json(path)
     else:
-        raise ValueError(f"Extensão não suportada: {ext}")
+        raise ValueError(f"Unsupported extension: {ext}")
 
-    # Normaliza nomes de colunas e valores categóricos
+    # Normalize column names and categorical values
     df = df.rename({col: col.lower().strip() for col in df.columns})
     df = df.with_columns([
         pl.col("corner").str.strip_chars().str.to_uppercase(),
@@ -99,33 +99,33 @@ def read_hardpoints(filepath: str | Path) -> "pl.DataFrame":
 
 
 def _validate_dataframe(df: "pl.DataFrame") -> None:
-    """Validação completa do schema do DataFrame."""
+    """Full validation of the DataFrame schema."""
     import polars as pl
 
-    # 1. Colunas obrigatórias
+    # 1. Required columns
     missing = set(REQUIRED_COLUMNS) - set(df.columns)
     if missing:
         raise HardpointValidationError(
-            f"Colunas faltando: {sorted(missing)}. Esperadas: {REQUIRED_COLUMNS}"
+            f"Missing columns: {sorted(missing)}. Expected: {REQUIRED_COLUMNS}"
         )
 
-    # 2. Corners válidos
+    # 2. Valid corners
     found_corners = df["corner"].unique().to_list()
     invalid = [c for c in found_corners if c not in VALID_CORNERS]
     if invalid:
         raise HardpointValidationError(
-            f"Corners inválidos: {invalid}. Válidos: {VALID_CORNERS}"
+            f"Invalid corners: {invalid}. Valid: {VALID_CORNERS}"
         )
 
-    # 3. Nomes de pontos válidos
+    # 3. Valid point names
     found_points = set(df["point"].unique().to_list())
     invalid_points = found_points - set(REQUIRED_POINTS_PER_CORNER)
     if invalid_points:
         raise HardpointValidationError(
-            f"Pontos desconhecidos: {sorted(invalid_points)}"
+            f"Unknown points: {sorted(invalid_points)}"
         )
 
-    # 4. Cada corner tem todos os pontos
+    # 4. Each corner has all the points
     for corner in found_corners:
         corner_points = set(
             df.filter(pl.col("corner") == corner)["point"].unique().to_list()
@@ -133,45 +133,45 @@ def _validate_dataframe(df: "pl.DataFrame") -> None:
         missing = set(REQUIRED_POINTS_PER_CORNER) - corner_points
         if missing:
             raise HardpointValidationError(
-                f"Corner '{corner}' faltando pontos: {sorted(missing)}"
+                f"Corner '{corner}' missing points: {sorted(missing)}"
             )
 
-    # 5. Coordenadas numéricas e finitas
+    # 5. Numeric and finite coordinates
     for col in ("x_mm", "y_mm", "z_mm"):
         if not df[col].dtype.is_numeric():
             raise HardpointValidationError(
-                f"Coluna '{col}' deve ser numérica (dtype: {df[col].dtype})"
+                f"Column '{col}' must be numeric (dtype: {df[col].dtype})"
             )
         if df[col].is_null().any():
-            raise HardpointValidationError(f"Coluna '{col}' contém nulos")
+            raise HardpointValidationError(f"Column '{col}' contains nulls")
         if df[col].is_infinite().any():
-            raise HardpointValidationError(f"Coluna '{col}' contém infinitos")
+            raise HardpointValidationError(f"Column '{col}' contains infinities")
 
 
 # =============================================================================
-# Construção de objetos a partir do DataFrame
+# Building objects from the DataFrame
 # =============================================================================
 
 def build_corner_from_dataframe(
     df: "pl.DataFrame",
     corner_id: str,
 ) -> tuple[SuspensionCorner, TieRod]:
-    """Constrói SuspensionCorner + TieRod a partir do DataFrame para UM corner."""
+    """Build a SuspensionCorner + TieRod from the DataFrame for ONE corner."""
     import polars as pl
 
     if corner_id not in VALID_CORNERS:
-        raise ValueError(f"corner_id inválido: {corner_id}")
+        raise ValueError(f"Invalid corner_id: {corner_id}")
 
     sub = df.filter(pl.col("corner") == corner_id)
     if sub.height == 0:
-        raise HardpointValidationError(f"Nenhum hardpoint para corner '{corner_id}'")
+        raise HardpointValidationError(f"No hardpoint for corner '{corner_id}'")
 
     def get_point(name: str) -> Point3D:
         row = sub.filter(pl.col("point") == name)
         if row.height != 1:
             raise HardpointValidationError(
-                f"Ponto '{name}' para corner '{corner_id}' encontrado "
-                f"{row.height} vezes (esperado 1)"
+                f"Point '{name}' for corner '{corner_id}' found "
+                f"{row.height} times (expected 1)"
             )
         r = row.row(0, named=True)
         return Point3D(float(r["x_mm"]), float(r["y_mm"]), float(r["z_mm"]))
@@ -206,7 +206,7 @@ def build_corner_from_dataframe(
 def build_vehicle_from_dataframe(
     df: "pl.DataFrame",
 ) -> tuple[Vehicle, dict[str, TieRod]]:
-    """Constrói o Vehicle completo + dict de tie-rods por corner."""
+    """Build the complete Vehicle + a dict of tie-rods per corner."""
     fl_corner, fl_tr = build_corner_from_dataframe(df, "FL")
     fr_corner, fr_tr = build_corner_from_dataframe(df, "FR")
     rl_corner, rl_tr = build_corner_from_dataframe(df, "RL")
@@ -229,7 +229,7 @@ def build_vehicle_from_dataframe(
 
 
 # =============================================================================
-# Escrita / Export
+# Writing / Export
 # =============================================================================
 
 def dataframe_from_corner(
@@ -237,8 +237,8 @@ def dataframe_from_corner(
     tie_rod: TieRod,
 ) -> "pl.DataFrame":
     """
-    Converte UM corner + tie_rod em DataFrame no formato padrão.
-    Útil para exportar geometrias otimizadas.
+    Convert ONE corner + tie_rod into a DataFrame in the standard format.
+    Useful for exporting optimized geometries.
     """
     import polars as pl
 
@@ -267,7 +267,7 @@ def dataframe_from_corner(
 
 
 def save_dataframe(df: "pl.DataFrame", filepath: str | Path) -> None:
-    """Salva um DataFrame em .xlsx, .csv ou .json."""
+    """Save a DataFrame to .xlsx, .csv or .json."""
     path = Path(filepath)
     ext = path.suffix.lower()
     if ext == ".xlsx":
@@ -277,21 +277,21 @@ def save_dataframe(df: "pl.DataFrame", filepath: str | Path) -> None:
     elif ext == ".json":
         df.write_json(path)
     else:
-        raise ValueError(f"Extensão não suportada: {ext}")
+        raise ValueError(f"Unsupported extension: {ext}")
 
 
 # =============================================================================
-# Template demo (geometria FSAE realista)
+# Demo template (realistic FSAE geometry)
 # =============================================================================
 
 def generate_template_dataframe() -> "pl.DataFrame":
     """
-    Gera DataFrame template com geometria FSAE realista, espelhada para
-    os 4 corners. Use como ponto de partida.
+    Generate a template DataFrame with realistic FSAE geometry, mirrored for
+    the 4 corners. Use as a starting point.
     """
     import polars as pl
 
-    # Geometria base do corner FL (lado esquerdo, dianteiro)
+    # Base geometry of the FL corner (left side, front)
     fl_data: dict[str, tuple[float, float, float]] = {
         "UCA_IN_FRONT":  ( 60.0, 150.0, 295.0),
         "UCA_IN_REAR":   (-70.0, 150.0, 295.0),
@@ -323,5 +323,5 @@ def generate_template_dataframe() -> "pl.DataFrame":
 
 
 def save_template(filepath: str | Path) -> None:
-    """Salva um arquivo template em .xlsx, .csv ou .json."""
+    """Save a template file to .xlsx, .csv or .json."""
     save_dataframe(generate_template_dataframe(), filepath)

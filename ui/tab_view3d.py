@@ -1,8 +1,8 @@
 """
 ui/tab_view3d.py
 ================
-🌐 Aba Vista 3D — visualização interativa da suspensão: veículo completo,
-corner individual ou animação de sweep (heave/roll/steer).
+🌐 View 3D tab — interactive visualization of the suspension: complete vehicle,
+single corner or sweep animation (heave/roll/steer).
 """
 
 from __future__ import annotations
@@ -22,116 +22,116 @@ from ui.shared import (
 
 
 def render() -> None:
-    st.header("Visualização 3D dos hardpoints")
+    st.header("3D visualization of the hardpoints")
     st.markdown(
-        "Veja a suspensão em **3D interativo**: rotacione, dê zoom, e veja como "
-        "os hardpoints se relacionam no espaço. Use o modo animado para ver o "
-        "movimento durante heave, roll ou steer."
+        "See the suspension in **interactive 3D**: rotate, zoom, and watch how "
+        "the hardpoints relate to each other in space. Use the animated mode to "
+        "see the motion during heave, roll or steer."
     )
 
     df = load_hardpoints_from_state()
     if df is None:
         render_empty_state(
-            "A vista 3D mostra a suspensão completa de forma interativa: "
-            "rotação, zoom e animação de heave/roll/steer.",
+            "The 3D view shows the complete suspension interactively: "
+            "rotation, zoom and heave/roll/steer animation.",
             key="empty_3d",
         )
     else:
         from analysis.viz3d import (plot_corner_3d, plot_vehicle_3d,
                                      plot_corner_animated)
 
-        # ── Controles principais ─────────────────────────────────────────────
+        # ── Main controls ────────────────────────────────────────────────────
         view_mode = st.segmented_control(
-            "Modo de visualização",
-            ["🏎️ Veículo completo", "🔍 Corner individual",
-             "🎬 Animação de sweep"],
-            default="🏎️ Veículo completo",
+            "Visualization mode",
+            ["🏎️ Complete vehicle", "🔍 Single corner",
+             "🎬 Sweep animation"],
+            default="🏎️ Complete vehicle",
             key="view3d_mode",
         )
-        if view_mode is None:  # clicar no item selecionado desseleciona
-            view_mode = "🏎️ Veículo completo"
+        if view_mode is None:  # clicking the selected item deselects it
+            view_mode = "🏎️ Complete vehicle"
 
         st.markdown("---")
 
-        # ─── MODO 1: VEÍCULO COMPLETO ────────────────────────────────────────
-        if view_mode == "🏎️ Veículo completo":
+        # ─── MODE 1: COMPLETE VEHICLE ────────────────────────────────────────
+        if view_mode == "🏎️ Complete vehicle":
             try:
                 vehicle, tie_rods = build_vehicle_from_dataframe(df)
 
                 opt1, opt2, _ = st.columns([1, 1.4, 1.6])
                 with opt1:
-                    show_tires = st.toggle("Mostrar pneus", value=True,
+                    show_tires = st.toggle("Show tires", value=True,
                                            key="veh_show_tires")
                 with opt2:
-                    show_chassis = st.toggle("Mostrar wireframe do chassi", value=True,
+                    show_chassis = st.toggle("Show chassis wireframe", value=True,
                                              key="veh_show_chassis")
 
-                with st.spinner("Renderizando..."):
+                with st.spinner("Rendering..."):
                     fig = plot_vehicle_3d(
                         vehicle, tie_rods,
                         show_tires=show_tires,
                         show_chassis_box=show_chassis,
-                        title="Suspensão FSAE — Vista 3D completa",
+                        title="FSAE suspension — Complete 3D view",
                     )
                 st.plotly_chart(fig, width="stretch")
 
                 st.caption(
-                    "💡 **Dica:** clique e arraste para rotacionar, scroll para "
-                    "dar zoom, duplo-clique para resetar a câmera."
+                    "💡 **Tip:** click and drag to rotate, scroll to "
+                    "zoom, double-click to reset the camera."
                 )
             except HardpointValidationError as exc:
                 st.error(f"❌ {exc}")
 
-        # ─── MODO 2: CORNER INDIVIDUAL ───────────────────────────────────────
-        elif view_mode == "🔍 Corner individual":
+        # ─── MODE 2: SINGLE CORNER ───────────────────────────────────────────
+        elif view_mode == "🔍 Single corner":
             col_a, col_b = st.columns([1, 3])
             with col_a:
                 corner_choice = st.selectbox("Corner", VALID_CORNERS,
                                               key="view3d_corner")
-                show_tire = st.checkbox("Mostrar pneu", value=True,
+                show_tire = st.checkbox("Show tire", value=True,
                                          key="corner_show_tire")
 
             built = build_corner_safe(df, corner_choice)
             if built is not None:
                 corner, tie_rod = built
-                with st.spinner("Renderizando..."):
+                with st.spinner("Rendering..."):
                     fig = plot_corner_3d(corner, tie_rod, show_tire=show_tire)
                 st.plotly_chart(fig, width="stretch")
 
-                # KPIs ao lado da visualização para contexto
-                with st.expander("📊 KPIs deste corner"):
+                # KPIs next to the visualization for context
+                with st.expander("📊 KPIs for this corner"):
                     k = st.columns(3)
                     k[0].metric("Caster (°)",    f"{corner.static_caster_deg():+.3f}")
                     k[1].metric("KPI (°)",       f"{corner.static_kpi_deg():+.3f}")
                     k[2].metric("Scrub (mm)",    f"{corner.static_scrub_radius_mm():+.2f}")
 
-        # ─── MODO 3: ANIMAÇÃO DE SWEEP ───────────────────────────────────────
-        else:  # 🎬 Animação de sweep
+        # ─── MODE 3: SWEEP ANIMATION ─────────────────────────────────────────
+        else:  # 🎬 Sweep animation
             ctrl1, ctrl2, ctrl3 = st.columns([1, 1, 2])
             with ctrl1:
                 corner_choice = st.selectbox("Corner", VALID_CORNERS,
                                               key="anim_corner")
             with ctrl2:
-                sweep_axis = st.radio("Eixo do sweep",
+                sweep_axis = st.radio("Sweep axis",
                                       ["heave", "roll", "steer"],
                                       key="anim_axis")
             with ctrl3:
                 if sweep_axis == "heave":
-                    rng = st.slider("Faixa heave (mm)", -50.0, 50.0,
+                    rng = st.slider("Heave range (mm)", -50.0, 50.0,
                                      (-20.0, 20.0), step=2.5, key="anim_h_range")
                 elif sweep_axis == "roll":
-                    rng = st.slider("Faixa roll (°)", -5.0, 5.0,
+                    rng = st.slider("Roll range (°)", -5.0, 5.0,
                                      (-3.0, 3.0), step=0.5, key="anim_r_range")
                 else:
-                    rng = st.slider("Faixa rack (mm)", -50.0, 50.0,
+                    rng = st.slider("Rack range (mm)", -50.0, 50.0,
                                      (-25.0, 25.0), step=2.5, key="anim_s_range")
-                n_frames = st.slider("Número de frames", 5, 30, 15,
+                n_frames = st.slider("Number of frames", 5, 30, 15,
                                       key="anim_n_frames")
 
             built = build_corner_safe(df, corner_choice)
             if built is not None:
                 corner, tie_rod = built
-                with st.spinner(f"Calculando {n_frames} frames..."):
+                with st.spinner(f"Computing {n_frames} frames..."):
                     fig = plot_corner_animated(
                         corner, tie_rod,
                         sweep_axis=sweep_axis,
@@ -141,6 +141,6 @@ def render() -> None:
                     )
                 st.plotly_chart(fig, width="stretch")
                 st.caption(
-                    "💡 **Dica:** arraste o slider para ver a geometria em cada "
-                    "posição, ou clique em ▶ Play para animar automaticamente."
+                    "💡 **Tip:** drag the slider to see the geometry at each "
+                    "position, or click ▶ Play to animate automatically."
                 )

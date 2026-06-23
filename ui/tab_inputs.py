@@ -1,8 +1,8 @@
 """
 ui/tab_inputs.py
 ================
-✏️ Aba Inputs — editor manual de hardpoints com visualização 2D em vistas
-YZ (frontal), XZ (lateral) e XY (superior).
+✏️ Inputs tab — manual hardpoint editor with 2D visualization in the
+YZ (front), XZ (side) and XY (top) views.
 """
 
 from __future__ import annotations
@@ -21,23 +21,23 @@ from ui.shared import load_hardpoints_from_state
 
 
 def render() -> None:
-    st.header("Editor de hardpoints com visualização")
+    st.header("Hardpoint editor with visualization")
     st.markdown(
-        "Insira/edite os hardpoints manualmente e veja as projeções em "
-        "**YZ (frontal)**, **XZ (lateral)** e **XY (superior)** em tempo real. "
-        "Útil para criar geometrias do zero ou inspecionar visualmente."
+        "Enter/edit the hardpoints manually and see the projections in "
+        "**YZ (front)**, **XZ (side)** and **XY (top)** in real time. "
+        "Useful for creating geometries from scratch or inspecting them visually."
     )
 
-    # Inicialização / sincronização do estado manual
+    # Initialization / synchronization of the manual state
     #
-    # O editor mantém seu próprio dict `manual_hardpoints[corner][point] = (x,y,z)`.
-    # Para que o botão "Aplicar arquivo" da sidebar também atualize o editor,
-    # rastreamos qual fonte foi a última carregada. Se mudou, recarregamos.
+    # The editor keeps its own dict `manual_hardpoints[corner][point] = (x,y,z)`.
+    # So that the sidebar's "Apply file" button also updates the editor, we
+    # track which source was loaded last. If it changed, we reload.
     def _empty_corner_dict():
         return {p: (0.0, 0.0, 0.0) for p in REQUIRED_POINTS_PER_CORNER}
 
     def _load_manual_from_df(df_loaded: pl.DataFrame) -> dict:
-        """Converte o DataFrame de hardpoints no formato dict do editor."""
+        """Convert the hardpoints DataFrame into the editor's dict format."""
         result = {}
         for corner_id in VALID_CORNERS:
             sub = df_loaded.filter(pl.col("corner") == corner_id)
@@ -53,8 +53,8 @@ def render() -> None:
     current_source = st.session_state.get("hardpoints_source", None)
     last_synced    = st.session_state.get("manual_synced_source", None)
 
-    # Re-sincroniza se: (a) ainda não tem estado manual, ou
-    # (b) a fonte mudou desde a última sincronização
+    # Re-sync if: (a) there is no manual state yet, or
+    # (b) the source changed since the last sync
     needs_sync = ("manual_hardpoints" not in st.session_state) or \
                  (current_source != last_synced)
 
@@ -68,33 +68,33 @@ def render() -> None:
             }
         st.session_state["manual_synced_source"] = current_source
 
-    # Botão explícito para recarregar do arquivo atual a qualquer momento
+    # Explicit button to reload from the current file at any time
     if current_source is not None:
         bcol1, bcol2 = st.columns([1, 3])
         with bcol1:
-            if st.button("🔁 Recarregar do arquivo",
-                          help=f"Descarta edições manuais e recarrega do arquivo atual ({current_source})",
+            if st.button("🔁 Reload from file",
+                          help=f"Discards manual edits and reloads from the current file ({current_source})",
                           width="stretch"):
                 df_loaded = load_hardpoints_from_state()
                 if df_loaded is not None:
                     st.session_state["manual_hardpoints"] = _load_manual_from_df(df_loaded)
-                    # Limpa as chaves dos data_editors para forçar redesenho
+                    # Clear the data_editor keys to force a redraw
                     for cid in VALID_CORNERS:
                         st.session_state.pop(f"editor_{cid}", None)
                     st.rerun()
         with bcol2:
-            st.caption(f"📊 Sincronizado com: **{current_source}**")
+            st.caption(f"📊 Synced with: **{current_source}**")
 
-    # Controles superiores
+    # Top controls
     ctrl1, ctrl2, ctrl3 = st.columns([1.4, 1.4, 1.8], vertical_alignment="bottom")
     with ctrl1:
-        edit_corner = st.segmented_control("Corner editado", VALID_CORNERS,
+        edit_corner = st.segmented_control("Corner being edited", VALID_CORNERS,
                                            default=VALID_CORNERS[0],
                                            key="edit_corner")
-        if edit_corner is None:  # clicar no item selecionado desseleciona
+        if edit_corner is None:  # clicking the selected item deselects it
             edit_corner = VALID_CORNERS[0]
     with ctrl2:
-        if st.button("📋 Carregar template neste corner",
+        if st.button("📋 Load template into this corner",
                       width="stretch"):
             tmpl = generate_template_dataframe()
             sub = tmpl.filter(pl.col("corner") == edit_corner)
@@ -105,9 +105,9 @@ def render() -> None:
             st.session_state["manual_hardpoints"][edit_corner] = pts
             st.rerun()
     with ctrl3:
-        if st.button("🪞 Espelhar Esquerdo → Direito (Y → −Y)",
+        if st.button("🪞 Mirror Left → Right (Y → −Y)",
                       width="stretch",
-                      help="FL → FR e RL → RR invertendo Y"):
+                      help="FL → FR and RL → RR inverting Y"):
             for left, right in [("FL", "FR"), ("RL", "RR")]:
                 left_pts = st.session_state["manual_hardpoints"][left]
                 st.session_state["manual_hardpoints"][right] = {
@@ -117,12 +117,12 @@ def render() -> None:
 
     st.markdown("---")
 
-    # Layout: tabela à esquerda, plots à direita
+    # Layout: table on the left, plots on the right
     col_inputs, col_plots = st.columns([1, 1])
 
-    # COLUNA ESQUERDA: tabela editável
+    # LEFT COLUMN: editable table
     with col_inputs:
-        st.subheader(f"Coordenadas — corner **{edit_corner}**")
+        st.subheader(f"Coordinates — corner **{edit_corner}**")
 
         current_pts = st.session_state["manual_hardpoints"][edit_corner]
         edit_data = [
@@ -136,7 +136,7 @@ def render() -> None:
             edit_data, num_rows="fixed", hide_index=True,
             width="stretch", disabled=["point"],
             column_config={
-                "point": st.column_config.TextColumn("Ponto", width="medium"),
+                "point": st.column_config.TextColumn("Point", width="medium"),
                 "x_mm": st.column_config.NumberColumn("X (mm)", format="%.2f"),
                 "y_mm": st.column_config.NumberColumn("Y (mm)", format="%.2f"),
                 "z_mm": st.column_config.NumberColumn("Z (mm)", format="%.2f"),
@@ -148,10 +148,10 @@ def render() -> None:
                 float(row["x_mm"]), float(row["y_mm"]), float(row["z_mm"]),
             )
 
-        st.markdown("#### Ações")
+        st.markdown("#### Actions")
         action_col1, action_col2 = st.columns(2)
         with action_col1:
-            if st.button("✅ Aplicar como hardpoints carregados",
+            if st.button("✅ Apply as loaded hardpoints",
                           type="primary", width="stretch"):
                 rows = []
                 for cid in VALID_CORNERS:
@@ -163,12 +163,12 @@ def render() -> None:
                     from analysis.io_hardpoints import _validate_dataframe
                     _validate_dataframe(df_built)
                     st.session_state["hardpoints_df"] = df_built
-                    st.session_state["hardpoints_source"] = "Inputs manuais"
-                    # CRÍTICO: atualizar synced_source também, senão o próximo
-                    # rerun vai descartar os dados manuais por achar que a fonte
-                    # mudou.
-                    st.session_state["manual_synced_source"] = "Inputs manuais"
-                    st.success("✅ Aplicado! Vá em '📊 Análise'.")
+                    st.session_state["hardpoints_source"] = "Manual inputs"
+                    # CRITICAL: also update synced_source, otherwise the next
+                    # rerun would discard the manual data thinking the source
+                    # changed.
+                    st.session_state["manual_synced_source"] = "Manual inputs"
+                    st.success("✅ Applied! Go to '📊 Analysis'.")
                 except HardpointValidationError as exc:
                     st.error(f"❌ {exc}")
 
@@ -180,15 +180,15 @@ def render() -> None:
                                   "x_mm": x, "y_mm": y, "z_mm": z})
             df_out = pl.DataFrame(rows)
             st.download_button(
-                "⬇️ Baixar tudo (CSV)",
+                "⬇️ Download all (CSV)",
                 data=df_out.write_csv().encode(),
                 file_name="hardpoints_manual.csv",
                 mime="text/csv", width="stretch",
             )
 
-    # COLUNA DIREITA: 3 vistas 2D
+    # RIGHT COLUMN: 3 2D views
     with col_plots:
-        st.subheader("Vistas 2D")
+        st.subheader("2D views")
 
         POINT_GROUPS = {
             "UCA":     ["UCA_IN_FRONT", "UCA_IN_REAR", "UCA_OUT"],
@@ -208,7 +208,7 @@ def render() -> None:
             ("LCA_IN_REAR",  "LCA_OUT", "LCA"),
             ("LCA_IN_FRONT", "LCA_IN_REAR", "LCA"),
             ("TIE_ROD_IN",   "TIE_ROD_OUT", "Tie-rod"),
-            ("UCA_OUT",      "LCA_OUT",     "UCA"),  # manga
+            ("UCA_OUT",      "LCA_OUT",     "UCA"),  # upright
             ("WHEEL_CENTER", "CONTACT_PATCH", "Wheel"),
         ]
 
@@ -223,7 +223,7 @@ def render() -> None:
 
             fig = go.Figure()
 
-            # Linhas de conexão
+            # Connection lines
             for p1, p2, group in CONNECTIONS:
                 u1, v1, _, _ = coords(p1)
                 u2, v2, _, _ = coords(p2)
@@ -234,7 +234,7 @@ def render() -> None:
                     hoverinfo="skip",
                 ))
 
-            # Pontos com label
+            # Points with labels
             for group, point_names in POINT_GROUPS.items():
                 xs, ys, labels = [], [], []
                 for pn in point_names:
@@ -250,17 +250,17 @@ def render() -> None:
                     hovertemplate="<b>%{text}</b><br>%{x:.1f}, %{y:.1f}<extra></extra>",
                 ))
 
-            # Linha do chão (YZ e XZ)
+            # Ground line (YZ and XZ)
             if view in ("YZ", "XZ"):
                 fig.add_hline(y=0, line=dict(color="gray", dash="dash", width=1))
 
-            # Plano de simetria (apenas em XY se Y=0 estiver visível)
+            # Symmetry plane (only in XY if Y=0 is visible)
             if view == "XY":
                 fig.add_hline(y=0, line=dict(color="lightgray", dash="dot", width=1))
 
             _, _, lab_u, lab_v = coords(REQUIRED_POINTS_PER_CORNER[0])
             fig.update_layout(
-                title=f"Vista {view} — {edit_corner}",
+                title=f"{view} view — {edit_corner}",
                 xaxis_title=f"{lab_u} (mm)",
                 yaxis_title=f"{lab_v} (mm)",
                 template="plotly_white", height=460,
@@ -271,7 +271,7 @@ def render() -> None:
             fig.update_yaxes(scaleanchor="x", scaleratio=1)
             return fig
 
-        view_tabs = st.tabs(["⬅️ Frontal (YZ)", "↔️ Lateral (XZ)", "⬆️ Superior (XY)"])
+        view_tabs = st.tabs(["⬅️ Front (YZ)", "↔️ Side (XZ)", "⬆️ Top (XY)"])
         with view_tabs[0]:
             st.plotly_chart(make_2d_view("YZ"), width="stretch",
                              key=f"yz_{edit_corner}")

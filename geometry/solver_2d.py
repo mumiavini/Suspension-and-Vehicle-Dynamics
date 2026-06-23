@@ -1,39 +1,39 @@
 """
 geometry/solver_2d.py
 =====================
-Solver cinemático 2D — análise da suspensão na VISTA FRONTAL (plano Y-Z).
+2D kinematic solver — suspension analysis in the FRONT VIEW (Y-Z plane).
 
-CONCEITO FÍSICO
----------------
-Vista de frente, a suspensão é um MECANISMO DE QUATRO BARRAS:
+PHYSICAL CONCEPT
+----------------
+Seen from the front, the suspension is a FOUR-BAR MECHANISM:
 
-       UCA_in ●──────────● UCA_out          (braço superior)
+       UCA_in ●──────────● UCA_out          (upper arm)
                           │
-                          │ manga (upright)
+                          │ upright
                           │
-       LCA_in ●──────────● LCA_out          (braço inferior)
+       LCA_in ●──────────● LCA_out          (lower arm)
 
-    Elo fixo  : chassi (segmento UCA_in → LCA_in)
-    Elo 1     : braço superior (UCA_in → UCA_out)
-    Elo 2     : braço inferior (LCA_in → LCA_out)
-    Acoplador : manga de eixo (UCA_out → LCA_out)
+    Fixed link : chassis (segment UCA_in → LCA_in)
+    Link 1     : upper arm (UCA_in → UCA_out)
+    Link 2     : lower arm (LCA_in → LCA_out)
+    Coupler    : upright (UCA_out → LCA_out)
 
-Em movimento de HEAVE (deslocamento vertical relativo entre chassi e roda),
-os pontos inboard sobem/descem rigidamente. Os outboards (na manga) devem
-satisfazer simultaneamente:
-    |UCA_out − UCA_in| = L_UCA           (UCA rígido)
-    |LCA_out − LCA_in| = L_LCA           (LCA rígido)
-    |UCA_out − LCA_out| = L_upright      (manga rígida)
+During HEAVE motion (relative vertical displacement between chassis and wheel),
+the inboard points rise/fall rigidly. The outboards (on the upright) must
+simultaneously satisfy:
+    |UCA_out − UCA_in| = L_UCA           (rigid UCA)
+    |LCA_out − LCA_in| = L_LCA           (rigid LCA)
+    |UCA_out − LCA_out| = L_upright      (rigid upright)
 
-Resolvemos isso por INTERSEÇÃO DE DOIS CÍRCULOS (uma vez para UCA_out,
-uma para LCA_out), iterando até as três restrições serem satisfeitas.
+We solve this by TWO-CIRCLE INTERSECTION (once for UCA_out,
+once for LCA_out), iterating until the three constraints are satisfied.
 
-SAÍDAS PRINCIPAIS
------------------
-    - Posição da manga em uma dada configuração
-    - Cambagem (camber)
-    - Centro de Rolagem (Roll Center)
-    - Camber Gain (°/mm de heave)
+MAIN OUTPUTS
+------------
+    - Upright position in a given configuration
+    - Camber
+    - Roll Center
+    - Camber Gain (°/mm of heave)
 """
 
 from __future__ import annotations
@@ -52,21 +52,21 @@ from geometry.primitives import (
 
 
 # =============================================================================
-# Estado cinemático (resultado de uma resolução)
+# Kinematic state (result of one solve)
 # =============================================================================
 
 @dataclass
 class KinematicState2D:
     """
-    Resultado da resolução do mecanismo de 4 barras para um dado heave.
+    Result of solving the four-bar mechanism for a given heave.
 
-    Atributos:
-        heave_mm       : deslocamento vertical aplicado (mm); + = bump
-        wheel_center   : posição do centro de roda no plano Y-Z (mm)
-        upright_upper  : posição do outboard do UCA (mm)
-        upright_lower  : posição do outboard do LCA (mm)
-        camber_deg     : ângulo de cambagem (graus); − = topo p/ dentro
-        roll_center    : posição do Roll Center (mm). None se indeterminado.
+    Attributes:
+        heave_mm       : applied vertical displacement (mm); + = bump
+        wheel_center   : wheel-center position in the Y-Z plane (mm)
+        upright_upper  : position of the UCA outboard (mm)
+        upright_lower  : position of the LCA outboard (mm)
+        camber_deg     : camber angle (degrees); − = top inward
+        roll_center    : Roll Center position (mm). None if undetermined.
     """
     heave_mm:      float
     wheel_center:  Point2D
@@ -77,29 +77,29 @@ class KinematicState2D:
 
     @property
     def roll_center_height(self) -> Optional[float]:
-        """Altura do Roll Center (Z, em mm). None se indeterminado."""
+        """Roll Center height (Z, in mm). None if undetermined."""
         return self.roll_center.v if self.roll_center else None
 
 
 # =============================================================================
-# Geometria 2D da suspensão (uma ponta, na vista frontal)
+# 2D suspension geometry (one corner, in the front view)
 # =============================================================================
 
 @dataclass
 class SuspensionGeometry2D:
     """
-    Define a geometria 2D (vista frontal) de UMA ponta de suspensão.
+    Defines the 2D geometry (front view) of ONE suspension corner.
 
-    Convenção: para o LADO ESQUERDO use Y > 0; para o DIREITO, Y < 0.
-    Como esta classe usa (u, v) genéricos: u = Y, v = Z.
+    Convention: for the LEFT SIDE use Y > 0; for the RIGHT, Y < 0.
+    Since this class uses generic (u, v): u = Y, v = Z.
 
-    Atributos:
-        uca_inboard   : ancoragem inboard do braço superior (no chassi)
-        uca_outboard  : ancoragem outboard do braço superior (na manga)
-        lca_inboard   : ancoragem inboard do braço inferior (no chassi)
-        lca_outboard  : ancoragem outboard do braço inferior (na manga)
-        wheel_center  : centro da roda (posição estática)
-        contact_patch : ponto de contato do pneu com o solo
+    Attributes:
+        uca_inboard   : inboard anchor of the upper arm (on the chassis)
+        uca_outboard  : outboard anchor of the upper arm (on the upright)
+        lca_inboard   : inboard anchor of the lower arm (on the chassis)
+        lca_outboard  : outboard anchor of the lower arm (on the upright)
+        wheel_center  : wheel center (static position)
+        contact_patch : tire-to-ground contact point
     """
     uca_inboard:   Point2D
     uca_outboard:  Point2D
@@ -110,22 +110,22 @@ class SuspensionGeometry2D:
 
     def __post_init__(self) -> None:
         """
-        Pré-calcula comprimentos invariantes (rígidos) usados no solver.
-        Esses valores não mudam durante o movimento da suspensão.
+        Pre-computes invariant (rigid) lengths used by the solver.
+        These values do not change during suspension motion.
         """
-        # Comprimentos dos braços (medidos no estado estático e fixos)
+        # Arm lengths (measured in the static state and held fixed)
         self._L_uca:     float = self.uca_inboard.distance_to(self.uca_outboard)
         self._L_lca:     float = self.lca_inboard.distance_to(self.lca_outboard)
         self._L_upright: float = self.uca_outboard.distance_to(self.lca_outboard)
 
-        # Offset (delta) do centro de roda em relação ao LCA outboard, no
-        # referencial GLOBAL ESTÁTICO. Usaremos isso para reconstruir o WC
-        # após a manga se mover — assumindo manga rígida.
+        # Offset (delta) of the wheel center relative to the LCA outboard, in
+        # the GLOBAL STATIC frame. We use this to reconstruct the WC after the
+        # upright moves — assuming a rigid upright.
         self._wc_offset_u: float = self.wheel_center.u - self.lca_outboard.u
         self._wc_offset_v: float = self.wheel_center.v - self.lca_outboard.v
 
     # -------------------------------------------------------------------------
-    # Propriedades convenientes
+    # Convenience properties
     # -------------------------------------------------------------------------
 
     @property
@@ -136,42 +136,43 @@ class SuspensionGeometry2D:
     def upright_length(self) -> float: return self._L_upright
 
     def static_camber_deg(self) -> float:
-        """Cambagem estática (com a suspensão na posição de referência)."""
+        """Static camber (with the suspension in the reference position)."""
         return self._compute_camber(self.uca_outboard, self.lca_outboard)
 
     # =========================================================================
-    # MÉTODO PRINCIPAL: resolver a suspensão para um dado heave
+    # MAIN METHOD: solve the suspension for a given heave
     # =========================================================================
 
     def solve_heave(self, heave_mm: float) -> KinematicState2D:
         """
-        Resolve a posição da manga para um deslocamento de heave.
+        Solve the upright position for a heave displacement.
 
-        MODELO DE HEAVE:
-            Quando a roda sobe (bump) relativo ao chassi, equivale a mover
-            o chassi PARA CIMA enquanto a roda fica fixa. Por isso somamos
-            +heave_mm às coordenadas Z dos pontos inboard.
+        HEAVE MODEL:
+            When the wheel rises (bump) relative to the chassis, it is
+            equivalent to moving the chassis UP while the wheel stays fixed.
+            That is why we add +heave_mm to the Z coordinates of the inboard
+            points.
 
-        Parâmetros:
-            heave_mm : deslocamento vertical (mm). + = bump, − = rebound.
+        Parameters:
+            heave_mm : vertical displacement (mm). + = bump, − = rebound.
 
-        Retorna:
-            KinematicState2D com posições e ângulos resolvidos.
+        Returns:
+            KinematicState2D with the solved positions and angles.
         """
-        # ─── 1. Movimentar os pontos inboard (chassi) ─────────────────────────
-        # Em heave puro, só Z muda (subida/descida vertical)
+        # ─── 1. Move the inboard (chassis) points ────────────────────────────
+        # In pure heave, only Z changes (vertical rise/fall)
         uca_in_moved = Point2D(self.uca_inboard.u, self.uca_inboard.v + heave_mm)
         lca_in_moved = Point2D(self.lca_inboard.u, self.lca_inboard.v + heave_mm)
 
-        # ─── 2. Resolver o mecanismo de 4 barras ──────────────────────────────
-        # Acha as novas posições dos outboards (na manga)
+        # ─── 2. Solve the four-bar mechanism ─────────────────────────────────
+        # Find the new outboard positions (on the upright)
         lca_out, uca_out = self._solve_four_bar(lca_in_moved, uca_in_moved)
 
-        # ─── 3. Reconstruir o centro de roda a partir da manga ────────────────
-        # O WC é solidário à manga; quando a manga gira, o WC acompanha
+        # ─── 3. Reconstruct the wheel center from the upright ────────────────
+        # The WC is rigidly attached to the upright; when it rotates, the WC follows
         wc_new = self._reconstruct_wheel_center(lca_out, uca_out)
 
-        # ─── 4. Calcular ângulos derivados ────────────────────────────────────
+        # ─── 4. Compute derived angles ───────────────────────────────────────
         camber = self._compute_camber(uca_out, lca_out)
         rc     = self._compute_roll_center(lca_in_moved, lca_out,
                                             uca_in_moved, uca_out,
@@ -187,7 +188,7 @@ class SuspensionGeometry2D:
         )
 
     # =========================================================================
-    # PASSO 2: Solver do mecanismo de 4 barras (iterativo)
+    # STEP 2: Four-bar mechanism solver (iterative)
     # =========================================================================
 
     def _solve_four_bar(
@@ -196,47 +197,47 @@ class SuspensionGeometry2D:
         uca_in_moved: Point2D,
     ) -> tuple[Point2D, Point2D]:
         """
-        Encontra (LCA_out, UCA_out) que satisfazem os três comprimentos rígidos.
+        Find (LCA_out, UCA_out) that satisfy the three rigid lengths.
 
-        ALGORITMO (iteração de ponto fixo):
-            1. Inicia com lca_out e uca_out na posição estática (seed)
-            2. Atualiza lca_out = interseção de
-                   círculo(lca_in, r=L_lca) ∩ círculo(uca_out, r=L_upright)
-            3. Atualiza uca_out = interseção de
-                   círculo(uca_in, r=L_uca) ∩ círculo(lca_out, r=L_upright)
-            4. Repete até convergência (delta < tolerância)
+        ALGORITHM (fixed-point iteration):
+            1. Start with lca_out and uca_out at the static position (seed)
+            2. Update lca_out = intersection of
+                   circle(lca_in, r=L_lca) ∩ circle(uca_out, r=L_upright)
+            3. Update uca_out = intersection of
+                   circle(uca_in, r=L_uca) ∩ circle(lca_out, r=L_upright)
+            4. Repeat until convergence (delta < tolerance)
 
-        IMPORTANTE — escolha da solução de interseção:
-            Cada interseção de círculos tem 2 soluções. Para garantir
-            CONTINUIDADE FÍSICA, escolhemos sempre a que está mais próxima
-            da posição anterior (tracking).
+        IMPORTANT — intersection solution choice:
+            Each circle intersection has 2 solutions. To guarantee
+            PHYSICAL CONTINUITY, we always choose the one closest to the
+            previous position (tracking).
         """
         L_lca     = self._L_lca
         L_uca     = self._L_uca
         L_upright = self._L_upright
 
-        # SEED: posição estática conhecida (esta É a solução para heave=0,
-        # e para heave pequeno é uma boa estimativa inicial)
+        # SEED: known static position (this IS the solution for heave=0,
+        # and for small heave it is a good initial estimate)
         uca_out = self.uca_outboard
         lca_out = self.lca_outboard
 
-        # Iteração de ponto fixo
+        # Fixed-point iteration
         for _ in range(30):
-            # Atualiza LCA_out (mantém distâncias para lca_in_moved e uca_out)
+            # Update LCA_out (keep distances to lca_in_moved and uca_out)
             lca_out_new = self._closest_intersection(
                 c1=lca_in_moved, r1=L_lca,
                 c2=uca_out,      r2=L_upright,
                 reference=lca_out,
             )
 
-            # Atualiza UCA_out (mantém distâncias para uca_in_moved e lca_out_new)
+            # Update UCA_out (keep distances to uca_in_moved and lca_out_new)
             uca_out_new = self._closest_intersection(
                 c1=uca_in_moved, r1=L_uca,
                 c2=lca_out_new,  r2=L_upright,
                 reference=uca_out,
             )
 
-            # Critério de convergência
+            # Convergence criterion
             d_lca = lca_out_new.distance_to(lca_out)
             d_uca = uca_out_new.distance_to(uca_out)
 
@@ -254,8 +255,8 @@ class SuspensionGeometry2D:
         reference: Point2D,
     ) -> Point2D:
         """
-        Interseção de dois círculos, retornando a solução mais próxima de
-        `reference`. Usado para tracking de continuidade do mecanismo.
+        Intersection of two circles, returning the solution closest to
+        `reference`. Used for mechanism-continuity tracking.
         """
         p1 = c1.to_array()
         p2 = c2.to_array()
@@ -263,15 +264,15 @@ class SuspensionGeometry2D:
 
         d = float(np.linalg.norm(p2 - p1))
         if d < 1e-12:
-            raise ValueError("Centros coincidentes.")
+            raise ValueError("Coincident centers.")
         if d > r1 + r2 + 1e-6:
             raise ValueError(
-                f"Círculos não se intersectam: d={d:.2f}, r1+r2={r1+r2:.2f}"
+                f"Circles do not intersect: d={d:.2f}, r1+r2={r1+r2:.2f}"
             )
         if d < abs(r1 - r2) - 1e-6:
-            raise ValueError("Um círculo contém o outro.")
+            raise ValueError("One circle contains the other.")
 
-        # Geometria padrão de interseção de círculos
+        # Standard circle-intersection geometry
         a   = (r1**2 - r2**2 + d**2) / (2.0 * d)
         h   = math.sqrt(max(r1**2 - a**2, 0.0))
         mid = p1 + a * (p2 - p1) / d
@@ -280,14 +281,14 @@ class SuspensionGeometry2D:
         sol_a = mid + h * perp
         sol_b = mid - h * perp
 
-        # Escolhe a solução mais próxima da referência (continuidade)
+        # Choose the solution closest to the reference (continuity)
         if np.linalg.norm(sol_a - ref) <= np.linalg.norm(sol_b - ref):
             return Point2D.from_array(sol_a)
         else:
             return Point2D.from_array(sol_b)
 
     # =========================================================================
-    # PASSO 3: Reconstrução do centro de roda
+    # STEP 3: Wheel-center reconstruction
     # =========================================================================
 
     def _reconstruct_wheel_center(
@@ -296,40 +297,41 @@ class SuspensionGeometry2D:
         uca_out: Point2D,
     ) -> Point2D:
         """
-        Reconstrói o centro de roda na nova posição da manga.
+        Reconstruct the wheel center at the new upright position.
 
-        A manga é um corpo rígido: o vetor (LCA_out → WC) tem comprimento e
-        orientação RELATIVA À MANGA constantes. Mas a manga rotacionou, então
-        precisamos rotacionar esse vetor pelo mesmo ângulo que a manga girou.
+        The upright is a rigid body: the vector (LCA_out → WC) has constant
+        length and orientation RELATIVE TO THE UPRIGHT. But the upright has
+        rotated, so we need to rotate that vector by the same angle the
+        upright rotated.
 
-        ALGORITMO:
-            1. Computa o offset estático do WC em relação ao LCA_out, no
-               referencial LOCAL da manga (eixos axial/perpendicular).
-            2. Reconstrói o WC aplicando esse offset no referencial atual
-               (que rotaciona junto com a manga).
+        ALGORITHM:
+            1. Compute the static offset of the WC relative to LCA_out, in
+               the upright's LOCAL frame (axial/perpendicular axes).
+            2. Reconstruct the WC by applying that offset in the current frame
+               (which rotates together with the upright).
         """
-        # --- Referencial LOCAL ATUAL da manga (eixos axial e perpendicular) ---
+        # --- Upright's CURRENT LOCAL frame (axial and perpendicular axes) ---
         dx_now = uca_out.u - lca_out.u
         dz_now = uca_out.v - lca_out.v
         L_now  = math.hypot(dx_now, dz_now)
         if L_now < 1e-12:
-            raise ValueError("Manga de comprimento zero.")
-        e_axial_now = np.array([dx_now / L_now, dz_now / L_now])  # ao longo da manga
-        e_perp_now  = np.array([-e_axial_now[1], e_axial_now[0]])  # 90° anti-horário
+            raise ValueError("Zero-length upright.")
+        e_axial_now = np.array([dx_now / L_now, dz_now / L_now])  # along the upright
+        e_perp_now  = np.array([-e_axial_now[1], e_axial_now[0]])  # 90° counter-clockwise
 
-        # --- Referencial LOCAL ESTÁTICO da manga (para descobrir o offset) ---
+        # --- Upright's STATIC LOCAL frame (to recover the offset) ---
         dx_0 = self.uca_outboard.u - self.lca_outboard.u
         dz_0 = self.uca_outboard.v - self.lca_outboard.v
         L_0  = self._L_upright
         e_axial_0 = np.array([dx_0 / L_0, dz_0 / L_0])
         e_perp_0  = np.array([-e_axial_0[1], e_axial_0[0]])
 
-        # Decomposição do offset estático nos eixos locais
+        # Decompose the static offset onto the local axes
         offset = np.array([self._wc_offset_u, self._wc_offset_v])
-        s_axial = float(np.dot(offset, e_axial_0))  # componente axial
-        s_perp  = float(np.dot(offset, e_perp_0))   # componente perpendicular
+        s_axial = float(np.dot(offset, e_axial_0))  # axial component
+        s_perp  = float(np.dot(offset, e_perp_0))   # perpendicular component
 
-        # Recomposição usando os eixos locais ATUAIS
+        # Recompose using the CURRENT local axes
         wc_new_arr = (
             lca_out.to_array()
             + s_axial * e_axial_now
@@ -338,31 +340,31 @@ class SuspensionGeometry2D:
         return Point2D.from_array(wc_new_arr)
 
     # =========================================================================
-    # PASSO 4a: Cálculo da Cambagem
+    # STEP 4a: Camber computation
     # =========================================================================
 
     @staticmethod
     def _compute_camber(uca_out: Point2D, lca_out: Point2D) -> float:
         """
-        Cambagem: ângulo da MANGA em relação ao eixo Z (vertical), no plano Y-Z.
+        Camber: angle of the UPRIGHT relative to the Z axis (vertical), in the Y-Z plane.
 
-        CONVENÇÃO SAE:
-            - Camber NEGATIVO: topo da roda inclinado PARA DENTRO do veículo
-            - Camber POSITIVO: topo da roda inclinado PARA FORA
+        SAE CONVENTION:
+            - NEGATIVE camber: top of the wheel tilted INWARD
+            - POSITIVE camber: top of the wheel tilted OUTWARD
 
-        Para o LADO ESQUERDO (Y > 0):
-            Se UCA_out.u < LCA_out.u → topo para dentro → camber NEGATIVO
-            (porque "dentro" = Y menor para o lado esquerdo)
+        For the LEFT SIDE (Y > 0):
+            If UCA_out.u < LCA_out.u → top inward → NEGATIVE camber
+            (because "inward" = smaller Y for the left side)
         """
-        dy = uca_out.u - lca_out.u   # componente lateral
-        dz = uca_out.v - lca_out.v   # componente vertical
+        dy = uca_out.u - lca_out.u   # lateral component
+        dz = uca_out.v - lca_out.v   # vertical component
 
-        # atan2(dy, dz) é o ângulo entre o eixo da manga e o eixo Z
-        # Com sinal invertido para seguir a convenção SAE (− = para dentro)
+        # atan2(dy, dz) is the angle between the upright axis and the Z axis
+        # With sign inverted to follow the SAE convention (− = inward)
         return -math.degrees(math.atan2(dy, dz))
 
     # =========================================================================
-    # PASSO 4b: Cálculo do Roll Center (Centro de Rolagem)
+    # STEP 4b: Roll Center computation
     # =========================================================================
 
     @staticmethod
@@ -374,36 +376,36 @@ class SuspensionGeometry2D:
         wheel_center: Point2D,
     ) -> Optional[Point2D]:
         """
-        Calcula o Roll Center pelo método do CENTRO INSTANTÂNEO (IC).
+        Compute the Roll Center via the INSTANT CENTER (IC) method.
 
-        REFERÊNCIA: Milliken & Milliken, "Race Car Vehicle Dynamics", Cap. 17.
+        REFERENCE: Milliken & Milliken, "Race Car Vehicle Dynamics", Ch. 17.
 
-        ALGORITMO:
-            1. IC = interseção das prolongações das retas dos braços
-               (linha LCA_in→LCA_out × linha UCA_in→UCA_out)
-            2. Liga IC ao centro de contato do pneu (CP)
-            3. RC = interseção dessa reta com o plano de simetria (u = 0)
+        ALGORITHM:
+            1. IC = intersection of the extended arm lines
+               (line LCA_in→LCA_out × line UCA_in→UCA_out)
+            2. Connect IC to the tire contact patch (CP)
+            3. RC = intersection of that line with the symmetry plane (u = 0)
 
-        Casos degenerados:
-            - Braços paralelos: IC vai para o infinito; RC fica no solo (Z=0)
-            - Linha IC→CP vertical: RC é o próprio CP refletido no eixo
+        Degenerate cases:
+            - Parallel arms: IC goes to infinity; RC stays at ground (Z=0)
+            - Vertical IC→CP line: RC is the CP itself reflected onto the axis
         """
-        # CP: ponto de contato no plano de simetria (u=Y do WC, v=0)
+        # CP: contact point on the symmetry plane (u=Y of the WC, v=0)
         contact_patch = Point2D(wheel_center.u, 0.0)
 
-        # PASSO 1: Centro Instantâneo das prolongações dos braços
+        # STEP 1: Instant Center of the extended arm lines
         try:
             ic = line_intersection_2d(lca_in, lca_out, uca_in, uca_out)
         except ValueError:
-            # Braços paralelos: IC no infinito → RC no nível do solo
+            # Parallel arms: IC at infinity → RC at ground level
             return Point2D(0.0, 0.0)
 
-        # PASSO 2-3: linha IC→CP, intersectada com u=0 (plano de simetria)
-        # Parametrização: P(t) = IC + t · (CP - IC)
-        # Queremos t tal que P.u = 0 → t = -IC.u / (CP.u - IC.u)
+        # STEP 2-3: line IC→CP, intersected with u=0 (symmetry plane)
+        # Parametrization: P(t) = IC + t · (CP - IC)
+        # We want t such that P.u = 0 → t = -IC.u / (CP.u - IC.u)
         delta_u = contact_patch.u - ic.u
         if abs(delta_u) < 1e-12:
-            # Linha vertical → RC à altura do IC, projetado em u=0
+            # Vertical line → RC at the IC height, projected onto u=0
             return Point2D(0.0, ic.v)
 
         t = -ic.u / delta_u
@@ -412,18 +414,18 @@ class SuspensionGeometry2D:
 
 
 # =============================================================================
-# Função utilitária: análise de camber gain por varredura de heave
+# Utility function: camber-gain analysis via heave sweep
 # =============================================================================
 
 @dataclass
 class CamberAnalysis:
     """
-    Resultado de uma varredura paramétrica de heave.
+    Result of a parametric heave sweep.
 
-    Atributos:
-        heave_range_mm        : lista dos valores de heave testados
-        camber_deg            : cambagem em cada ponto
-        roll_center_height_mm : altura do Roll Center em cada ponto
+    Attributes:
+        heave_range_mm        : list of heave values tested
+        camber_deg            : camber at each point
+        roll_center_height_mm : Roll Center height at each point
     """
     heave_range_mm:        list[float]
     camber_deg:            list[float]
@@ -431,11 +433,11 @@ class CamberAnalysis:
 
     def camber_gain_deg_per_mm(self) -> float:
         """
-        Taxa de variação da cambagem com o heave (°/mm), via regressão linear.
+        Rate of camber change with heave (°/mm), via linear regression.
         """
         if len(self.heave_range_mm) < 2:
             return 0.0
-        # polyfit grau 1: coef. angular = camber gain
+        # degree-1 polyfit: slope = camber gain
         coef = np.polyfit(self.heave_range_mm, self.camber_deg, 1)
         return float(coef[0])
 
@@ -446,15 +448,15 @@ def analyze_heave(
     steps: int = 21,
 ) -> CamberAnalysis:
     """
-    Executa varredura simétrica de heave (de −range/2 a +range/2).
+    Run a symmetric heave sweep (from −range/2 to +range/2).
 
-    Parâmetros:
-        geometry       : geometria 2D da suspensão
-        heave_range_mm : amplitude total da varredura (mm)
-        steps          : número de pontos amostrados (preferir ímpar p/ incluir 0)
+    Parameters:
+        geometry       : 2D suspension geometry
+        heave_range_mm : total sweep amplitude (mm)
+        steps          : number of sampled points (prefer odd to include 0)
 
-    Retorna:
-        CamberAnalysis com os arrays de resultado.
+    Returns:
+        CamberAnalysis with the result arrays.
     """
     half = heave_range_mm / 2.0
     heave_values = list(np.linspace(-half, half, steps))

@@ -1,89 +1,89 @@
 # 🏎️ FSAE Suspension Geometry Engine
 
-Software em Python para **projetar, analisar e otimizar** a geometria de suspensão de um carro de Fórmula SAE.
+Python software to **design, analyze and optimize** the suspension geometry of a Formula SAE car.
 
-Funciona em dois modos:
+It works in two modes:
 
-- **Análise** — você tem um carro (ou montagem CAD) e quer entender como ele se comporta
-- **Síntese** — você define metas de comportamento e o software encontra os hardpoints que as atendem
+- **Analysis** — you have a car (or CAD assembly) and want to understand how it behaves
+- **Synthesis** — you define behavior targets and the software finds the hardpoints that meet them
 
-Interface via **Streamlit** (recomendado) ou **scripts Python** (para automação).
+Interface via **Streamlit** (recommended) or **Python scripts** (for automation).
 
 ---
 
-## 📑 Índice
+## 📑 Table of contents
 
-1. [Para quem é](#1-para-quem-é)
-2. [O que o software FAZ e o que NÃO faz](#2-o-que-o-software-faz-e-o-que-não-faz)
-3. [Por que peso/motor/mola NÃO são necessários para a maioria dos KPIs](#3-por-que-pesomotormola-não-são-necessários-para-a-maioria-dos-kpis)
-4. [Conceitos físicos](#4-conceitos-físicos)
-5. [Convenções e unidades](#5-convenções-e-unidades)
-6. [Instalação](#6-instalação)20 NOMES PRO MEU SOFTWARE DE SIMULAÇÃO DE SUSPENSÃOA
-7. [Primeiros passos (5 min)](#7-primeiros-passos-5-min)
-8. [Tour das abas do app](#8-tour-das-abas-do-app)
-9. [Tutorial completo: do CAD ao otimizado](#9-tutorial-completo-do-cad-ao-otimizado)
-10. [Formato do arquivo de hardpoints](#10-formato-do-arquivo-de-hardpoints)
-11. [Estrutura do projeto](#11-estrutura-do-projeto)
-12. [Uso via Python (scripts)](#12-uso-via-python-scripts)
-13. [Lista completa de KPIs](#13-lista-completa-de-kpis)
+1. [Who it's for](#1-who-its-for)
+2. [What the software DOES and DOESN'T do](#2-what-the-software-does-and-doesnt-do)
+3. [Why weight/engine/spring are NOT needed for most KPIs](#3-why-weightenginespring-are-not-needed-for-most-kpis)
+4. [Physics concepts](#4-physics-concepts)
+5. [Conventions and units](#5-conventions-and-units)
+6. [Installation](#6-installation)
+7. [Getting started (5 min)](#7-getting-started-5-min)
+8. [App tabs tour](#8-app-tabs-tour)
+9. [Complete tutorial: from CAD to optimized](#9-complete-tutorial-from-cad-to-optimized)
+10. [Hardpoints file format](#10-hardpoints-file-format)
+11. [Project structure](#11-project-structure)
+12. [Python usage (scripts)](#12-python-usage-scripts)
+13. [Complete KPI list](#13-complete-kpi-list)
 14. [Troubleshooting](#14-troubleshooting)
-15. [Limitações](#15-limitações)
-16. [Glossário](#16-glossário)
+15. [Limitations](#15-limitations)
+16. [Glossary](#16-glossary)
 
 ---
 
-## 1. Para quem é
+## 1. Who it's for
 
-Foi pensado para:
+It was designed for:
 
-- **Engenheiro de suspensão de FSAE** que precisa iterar geometrias rápido
-- **Estudante** querendo entender o efeito de cada hardpoint
-- **Time de Fórmula SAE** que quer documentar/versionar as escolhas
-- **Quem usa SolidWorks** e quer um motor de cálculo desacoplado do CAD
+- **FSAE suspension engineer** who needs to iterate geometries fast
+- **Student** wanting to understand the effect of each hardpoint
+- **Formula SAE team** that wants to document/version their choices
+- **SolidWorks users** who want a calculation engine decoupled from the CAD
 
-**NÃO substitui:**
-- Análise estrutural (precisa de FEA)
-- Simulação de dinâmica veicular completa (use OptimumLap, CarMaker)
-- Validação experimental (k-rig, testes em pista)
+**It does NOT replace:**
+- Structural analysis (needs FEA)
+- Full vehicle-dynamics simulation (use OptimumLap, CarMaker)
+- Experimental validation (k-rig, track testing)
 
 ---
 
-## 2. O que o software FAZ e o que NÃO faz
+## 2. What the software DOES and DOESN'T do
 
-### ✅ FAZ — Cinemática e geometria
+### ✅ DOES — Kinematics and geometry
 
-| Categoria | KPIs calculados |
+| Category | Computed KPIs |
 |---|---|
-| **Estáticos** | Caster, KPI, Camber, Scrub Radius, Mechanical Trail, RC Height, Kingpin Offset @ WC |
-| **Dimensões** | Wheelbase, Track Width F/R |
-| **Direção** | Steer Arm Length, Ackermann %, Rack/grau, Steer Ratio (com input de c-factor) |
-| **Dinâmicos** | Camber Gain (°/mm), Ride Camber (°/m), Roll Camber (°/°), Bump Steer (°/mm) |
-| **Roll Center** | Migração ΔY/ΔZ durante sweeps, RC @ 1g lateral (aproximação) |
-| **Vista lateral** | Anti-dive %, Anti-squat % (versão simplificada) |
-| **Estado** | Static Sum Toe |
-| **Síntese** | Otimização global com targets estáticos + dinâmicos, bounding boxes, validação |
+| **Static** | Caster, KPI, Camber, Scrub Radius, Mechanical Trail, RC Height, Kingpin Offset @ WC |
+| **Dimensions** | Wheelbase, Track Width F/R |
+| **Steering** | Steer Arm Length, Ackermann %, Rack/degree, Steer Ratio (with c-factor input) |
+| **Dynamic** | Camber Gain (°/mm), Ride Camber (°/m), Roll Camber (°/°), Bump Steer (°/mm) |
+| **Roll Center** | ΔY/ΔZ migration during sweeps, RC @ 1g lateral (approximation) |
+| **Side view** | Anti-dive %, Anti-squat % (simplified version) |
+| **State** | Static Sum Toe |
+| **Synthesis** | Global optimization with static + dynamic targets, bounding boxes, validation |
 
-### ❌ NÃO FAZ (atualmente) — Dinâmica e estrutura
+### ❌ DOESN'T DO (currently) — Dynamics and structure
 
-| Categoria | Por que falta |
+| Category | Why it's missing |
 |---|---|
-| **Wheel Rate** (N/mm) | Precisa de **rigidez de mola** + motion ratio |
-| **Roll Rate** (Nm/°) | Wheel rate + ARB + bitola |
-| **Sprung Mass Frequency** (Hz) | Wheel rate + **massa suspensa** |
-| **Motion Ratio** | Precisa modelar **pushrod/pullrod/rocker** |
-| **Jounce/Rebound Damping** | Curva F×v do **amortecedor** |
-| **FEA dos braços** | Outro tipo de software (Ansys, etc.) |
-| **Simulação de lap time** | Outro tipo de software (OptimumLap) |
+| **Wheel Rate** (N/mm) | Needs **spring stiffness** + motion ratio |
+| **Roll Rate** (Nm/°) | Wheel rate + ARB + track |
+| **Sprung Mass Frequency** (Hz) | Wheel rate + **sprung mass** |
+| **Motion Ratio** | Needs to model the **pushrod/pullrod/rocker** |
+| **Jounce/Rebound Damping** | F×v curve of the **damper** |
+| **FEA of the arms** | A different kind of software (Ansys, etc.) |
+| **Lap time simulation** | A different kind of software (OptimumLap) |
 
 ---
 
-## 3. Por que peso/motor/mola NÃO são necessários para a maioria dos KPIs
+## 3. Why weight/engine/spring are NOT needed for most KPIs
 
-Esta é uma dúvida comum, e a resposta é importante:
+This is a common question, and the answer is important:
 
-### 🟢 Cinemática pura — só geometria
+### 🟢 Pure kinematics — geometry only
 
-A maior parte dos KPIs depende **apenas das posições dos hardpoints** e de **como eles se movem**:
+Most KPIs depend **only on the hardpoint positions** and on **how they move**:
 
 ```
 Caster, KPI, Camber, Scrub, Trail, Roll Center
@@ -91,174 +91,174 @@ Camber Gain, Bump Steer, Ride/Roll Camber
 Ackermann %, Steer Arm Length
 ```
 
-Esses parâmetros são **invariantes em relação à massa**. Um carro de 200 kg e outro de 300 kg com a mesma geometria de hardpoints terão o mesmo Caster, mesmo Camber, mesmo Ackermann.
+These parameters are **invariant with respect to mass**. A 200 kg car and a 300 kg car with the same hardpoint geometry will have the same Caster, same Camber, same Ackermann.
 
-A massa só importa para:
-- Calcular **frequência natural** (precisa de wheel rate × massa)
-- Calcular **cargas absolutas** (para FEA)
-- Calcular **transferência de carga**
+Mass only matters to:
+- Compute the **natural frequency** (needs wheel rate × mass)
+- Compute **absolute loads** (for FEA)
+- Compute **load transfer**
 
-Nenhum desses três o software calcula.
+The software computes none of these three.
 
-### 🟡 Aproximações que usam parâmetros externos (com defaults razoáveis)
+### 🟡 Approximations that use external parameters (with reasonable defaults)
 
 **Anti-dive / Anti-squat:**
-- Fórmula: `tan(θ_SVIC) × wheelbase/cg_height × brake_bias × 100`
-- Precisa de **altura do CG** e **brake bias** → você informa no setup do veículo na sidebar
-- **NÃO precisa do peso absoluto** — só da posição relativa do CG
+- Formula: `tan(θ_SVIC) × wheelbase/cg_height × brake_bias × 100`
+- Needs the **CG height** and **brake bias** → you provide them in the vehicle setup in the sidebar
+- **Does NOT need the absolute weight** — only the relative CG position
 
 **Roll Center @ 1g lateral:**
-- Fórmula: aplica roll equivalente a 1g e mede onde o RC fica
-- Precisa de **roll stiffness** (graus por g) → input do usuário, default 1.5 °/g
-- Esse valor depende de mola+ARB+bitola, mas como aproximação aceita-se o típico de FSAE
+- Formula: applies an equivalent 1g roll and measures where the RC ends up
+- Needs the **roll stiffness** (degrees per g) → user input, default 1.5 °/g
+- This value depends on spring+ARB+track, but as an approximation the typical FSAE value is accepted
 
-### 🔴 KPIs que requerem dados externos (futuro)
+### 🔴 KPIs that require external data (future)
 
-Se você quiser **wheel rate, roll rate, motion ratio, frequência natural, damping** — preciso adicionar:
+If you want **wheel rate, roll rate, motion ratio, natural frequency, damping** — I need to add:
 
-1. Modelo de **pushrod/rocker** (motion ratio)
-2. **Rigidez de mola** como input
-3. **Massa suspensa** como input
-4. **Curvas do amortecedor** como input
+1. **Pushrod/rocker** model (motion ratio)
+2. **Spring stiffness** as input
+3. **Sprung mass** as input
+4. **Damper curves** as input
 
-Isso multiplicaria o tamanho do projeto. Por isso o escopo atual está **só na cinemática** — o que já cobre cerca de 70% dos KPIs da ficha de setup típica de FSAE.
+That would multiply the size of the project. That is why the current scope is **only kinematics** — which already covers roughly 70% of the KPIs on a typical FSAE setup sheet.
 
-### Resumo da tabela
+### Table summary
 
-| Você precisa para... | O software calcula HOJE? |
+| You need to... | Does the software compute it TODAY? |
 |---|---|
-| Mexer em hardpoints e ver Caster/KPI/Camber/etc. | ✅ Sim |
-| Otimizar geometria para targets | ✅ Sim |
-| Ver Ackermann, Steer Ratio | ✅ Sim |
-| Anti-dive/squat (precisa CG e brake bias) | ✅ Sim, com inputs |
-| RC @ 1g (precisa roll stiffness) | ✅ Sim, aproximado |
-| Frequência natural, wheel rate, damping | ❌ Não |
-| FEA, análise de estresse | ❌ Não |
-| Simulação de lap time | ❌ Não |
+| Move hardpoints and see Caster/KPI/Camber/etc. | ✅ Yes |
+| Optimize geometry for targets | ✅ Yes |
+| See Ackermann, Steer Ratio | ✅ Yes |
+| Anti-dive/squat (needs CG and brake bias) | ✅ Yes, with inputs |
+| RC @ 1g (needs roll stiffness) | ✅ Yes, approximate |
+| Natural frequency, wheel rate, damping | ❌ No |
+| FEA, stress analysis | ❌ No |
+| Lap time simulation | ❌ No |
 
 ---
 
-## 4. Conceitos físicos
+## 4. Physics concepts
 
 ### 4.1 Hardpoints
 
-**Hardpoints** são os pontos de pivô/fixação da suspensão. Definir os hardpoints é definir como o carro se comporta.
+**Hardpoints** are the suspension's pivot/attachment points. Defining the hardpoints is defining how the car behaves.
 
 ```
-┌─────── CHASSI ───────┐
+┌─────── CHASSIS ───────┐
 │                       │
-│  UCA_IN_FRONT  ●─────────●  UCA_OUT (na manga)
+│  UCA_IN_FRONT  ●─────────●  UCA_OUT (on the upright)
 │  UCA_IN_REAR   ●──────╱
 │                       │ ╲
-│  LCA_IN_FRONT  ●──────╲    ● (manga de eixo)
+│  LCA_IN_FRONT  ●──────╲    ● (upright)
 │  LCA_IN_REAR   ●─────────●  LCA_OUT
 │                       │
 │  TIE_ROD_IN    ●─────────●  TIE_ROD_OUT
 └───────────────────────┘
-                            ●  WHEEL_CENTER (centro de roda)
+                            ●  WHEEL_CENTER (wheel center)
                             │
-                            ●  CONTACT_PATCH (contato pneu-solo)
+                            ●  CONTACT_PATCH (tire-ground contact)
 ```
 
-Cada **corner** (FL, FR, RL, RR) tem **10 hardpoints**.
+Each **corner** (FL, FR, RL, RR) has **10 hardpoints**.
 
-### 4.2 Valores típicos FSAE
+### 4.2 Typical FSAE values
 
-**Estáticos:**
+**Static:**
 
-| Parâmetro | Valor típico | O que afeta |
+| Parameter | Typical value | What it affects |
 |---|---|---|
-| **Caster** | 3° a 7° | Auto-centragem do volante |
-| **KPI** | 5° a 10° | Variação de camber em steer |
-| **Camber** | −1° a −3° | Grip em curva |
-| **Scrub Radius** | −10 a +30 mm | Esforço no volante |
-| **Trail Mecânico** | 5 a 25 mm | Sensibilidade de direção |
-| **RC Height** | 20 a 80 mm | Rolagem do chassi |
+| **Caster** | 3° to 7° | Steering self-centering |
+| **KPI** | 5° to 10° | Camber variation during steer |
+| **Camber** | −1° to −3° | Cornering grip |
+| **Scrub Radius** | −10 to +30 mm | Steering effort |
+| **Mechanical Trail** | 5 to 25 mm | Steering sensitivity |
+| **RC Height** | 20 to 80 mm | Chassis roll |
 
-**Dinâmicos:**
+**Dynamic:**
 
-| Parâmetro | Meta típica |
+| Parameter | Typical target |
 |---|---|
-| **Camber Gain** | −0.015 a −0.025 °/mm |
-| **Bump Steer** | < 0.005 °/mm em módulo |
-| **RC ΔY** | < 30 mm de migração lateral |
-| **Roll Camber** | −0.5 a −1.5 °/° |
-| **Anti-dive** | 0 a 30% |
-| **Ackermann** | 30% a 100% |
+| **Camber Gain** | −0.015 to −0.025 °/mm |
+| **Bump Steer** | < 0.005 °/mm in magnitude |
+| **RC ΔY** | < 30 mm of lateral migration |
+| **Roll Camber** | −0.5 to −1.5 °/° |
+| **Anti-dive** | 0 to 30% |
+| **Ackermann** | 30% to 100% |
 
-### 4.3 Acoplamento dos parâmetros
+### 4.3 Coupling of the parameters
 
-⚠️ Todos esses parâmetros são **acoplados geometricamente** — não dá pra mexer em um sem afetar os outros:
+⚠️ All these parameters are **geometrically coupled** — you cannot change one without affecting the others:
 
-- Aumentar Caster → tende a aumentar Trail
-- Aumentar KPI → reduz Scrub Radius
-- Subir o LCA inboard → afeta Camber Gain E RC ao mesmo tempo
+- Increasing Caster → tends to increase Trail
+- Increasing KPI → reduces Scrub Radius
+- Raising the LCA inboard → affects Camber Gain AND RC at the same time
 
-Por isso a **otimização global** (aba Síntese) é mais eficaz que tentativa-e-erro.
+That is why **global optimization** (Synthesis tab) is more effective than trial-and-error.
 
 ---
 
-## 5. Convenções e unidades
+## 5. Conventions and units
 
-### 5.1 Sistema de eixos (SAE J670)
+### 5.1 Axis system (SAE J670)
 
 ```
-                 Z (cima, positivo)
+                 Z (up, positive)
                  ▲
                  │
                  │
-                 ●─────────► Y (esquerda do veículo, positivo)
+                 ●─────────► Y (vehicle left, positive)
                 /
                /
               ▼
-              X (frente do veículo, positivo)
+              X (vehicle front, positive)
 ```
 
-- **Origem:** centro do eixo dianteiro, no nível do solo
-- **X+** = frente · **Y+** = esquerda · **Z+** = cima
+- **Origin:** center of the front axle, at ground level
+- **X+** = front · **Y+** = left · **Z+** = up
 
-> ⚠️ Se sua origem do CAD não for SAE, **transforme** as coordenadas antes de inserir.
-> Sinais comuns de problema:
-> - `WHEEL_CENTER.z` ≈ 0 → seu Z não é "altura do solo" (deveria ser o raio do pneu)
-> - `LCA_IN.z > UCA_IN.z` → seu Z aponta pra baixo
+> ⚠️ If your CAD origin is not SAE, **transform** the coordinates before entering them.
+> Common signs of a problem:
+> - `WHEEL_CENTER.z` ≈ 0 → your Z is not "height above ground" (it should be the tire radius)
+> - `LCA_IN.z > UCA_IN.z` → your Z points downward
 
-### 5.2 Sinais
+### 5.2 Signs
 
-| Parâmetro | + significa |
+| Parameter | + means |
 |---|---|
-| **Camber** | Topo da roda PARA FORA (negativo = corrida) |
-| **Caster** | Topo do pino ATRÁS da base |
-| **KPI** | Topo do pino PARA DENTRO do veículo |
-| **Scrub** | Pino cruza o solo PARA DENTRO do contato |
-| **Heave** | Bump (roda sobe relativa ao chassi) |
-| **Roll** | Chassi rola para a DIREITA |
-| **Rack** | Rack desloca para a ESQUERDA |
+| **Camber** | Top of the wheel OUTWARD (negative = racing) |
+| **Caster** | Top of the kingpin BEHIND the base |
+| **KPI** | Top of the kingpin INWARD |
+| **Scrub** | Kingpin crosses the ground INWARD of the contact |
+| **Heave** | Bump (wheel rises relative to the chassis) |
+| **Roll** | Chassis rolls to the RIGHT |
+| **Rack** | Rack moves to the LEFT |
 
-### 5.3 Unidades
+### 5.3 Units
 
-- Comprimentos: **mm**
-- Ângulos: **graus (°)**
+- Lengths: **mm**
+- Angles: **degrees (°)**
 - Camber gain: **°/mm**
 - Ride camber: **°/m**
 
-Nada de polegadas ou radianos. Converta antes (1 in = 25.4 mm).
+No inches or radians. Convert beforehand (1 in = 25.4 mm).
 
 ---
 
-## 6. Instalação
+## 6. Installation
 
-### 6.1 Pré-requisitos
+### 6.1 Prerequisites
 
 - Python 3.10+ ([download](https://www.python.org/downloads/))
-- ~500 MB livres
+- ~500 MB free
 
-### 6.2 Passo-a-passo
+### 6.2 Step by step
 
-**1. Baixe os arquivos** (pasta `fsae_suspension_clean/`)
+**1. Download the files** (folder `fsae_suspension_clean/`)
 
-**2. Terminal na pasta do projeto**
+**2. Open a terminal in the project folder**
 
-**3. Ambiente virtual (recomendado):**
+**3. Virtual environment (recommended):**
 ```bash
 python -m venv venv
 # Windows:
@@ -267,7 +267,7 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-**4. Instale dependências:**
+**4. Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
@@ -283,88 +283,88 @@ fastexcel>=0.10
 streamlit>=1.30
 ```
 
-**5. Teste:**
+**5. Test:**
 ```bash
 python -c "from geometry import Point3D; print(Point3D(1,2,3))"
 ```
 
-### 6.3 Rodando o app
+### 6.3 Running the app
 
 ```bash
 streamlit run app.py
 ```
-Abre no navegador em `http://localhost:8501`.
+Opens in the browser at `http://localhost:8501`.
 
 ---
 
-## 7. Primeiros passos (5 min)
+## 7. Getting started (5 min)
 
 ```
 1. Terminal:                    streamlit run app.py
 2. Sidebar → "📋 Demo"
-3. Aba "📊 Análise"
-4. Veja KPIs do FL aparecerem
-5. "Tipo de sweep" → "Heave"
-6. Gráficos aparecem automaticamente
+3. "📊 Analysis" tab
+4. See the FL KPIs appear
+5. "Sweep type" → "Heave"
+6. Charts appear automatically
 ```
 
 ---
 
-## 8. Tour das abas do app
+## 8. App tabs tour
 
-O app tem **5 áreas**:
+The app has **5 areas**:
 
-### 📂 Sidebar — Hardpoints e Setup
+### 📂 Sidebar — Hardpoints and Setup
 
 ```
 ┌─ Hardpoints ─────────────────┐
-│ 1. Carregue arquivo          │  ← upload de .csv/.xlsx/.json
-│ [arquivo.csv mostrado aqui]  │
-│ ✅ '...' — 40 pontos        │  ← preview
-│ [🔄 Aplicar arquivo]         │  ← clica aqui pra aplicar
+│ 1. Load file                 │  ← upload of .csv/.xlsx/.json
+│ [file.csv shown here]        │
+│ ✅ '...' — 40 points        │  ← preview
+│ [🔄 Apply file]              │  ← click here to apply
 │                              │
-│ Ou use:                      │
+│ Or use:                      │
 │ [📋 Demo] [⬇️ Template]      │
 │                              │
 │ ─────────────                │
-│ 📊 Em uso: arquivo.csv       │
-│ [🗑️ Limpar]                 │
+│ 📊 In use: file.csv          │
+│ [🗑️ Clear]                  │
 │                              │
 │ ─────────────                │
-│ ⚙️ Setup do veículo          │
-│ Brake bias front:    0.60    │  ← afeta anti-dive
-│ ▼ Direção                    │
-│   c-factor:          100 mm  │  ← afeta steer ratio
-│   Volante lock:      270°    │
+│ ⚙️ Vehicle setup             │
+│ Brake bias front:    0.60    │  ← affects anti-dive
+│ ▼ Steering                   │
+│   c-factor:          100 mm  │  ← affects steer ratio
+│   Steering lock:     270°    │
 └──────────────────────────────┘
 ```
 
-**Fluxo recomendado:**
+**Recommended flow:**
 
-1. **Carregue arquivo** OU clica em **Demo** OU edita manualmente (aba 5)
-2. Veja o preview, clica em **🔄 Aplicar arquivo**
-3. Ajuste **Setup do veículo** se quiser anti-dive/steer ratio corretos
-4. Vá para as abas
+1. **Load a file** OR click **Demo** OR edit manually (tab 5)
+2. Check the preview, click **🔄 Apply file**
+3. Adjust the **Vehicle setup** if you want correct anti-dive/steer ratio
+4. Go to the tabs
 
-### 📊 Aba 1: Análise
+### 📊 Tab 1: Analysis
 
-Mostra os KPIs e gráficos do corner selecionado.
+Shows the KPIs and charts of the selected corner.
 
-- **6 cards no topo:** Caster, KPI, Camber, Scrub, Trail, RC Height
-- **Seleção de sweep:** Heave / Roll / Steer com configuração inline
-- **KPIs dinâmicos:** Camber Gain, Bump Steer, RC ΔY/ΔZ
-- **Gráficos Plotly:** Camber vs Heave, Δ Toe vs Heave, trajetória do RC
-- **Expander "Dados completos":** tabela com todos os pontos do sweep
+- **6 cards at the top:** Caster, KPI, Camber, Scrub, Trail, RC Height
+- **Sweep selection:** Heave / Roll / Steer with inline configuration
+- **Dynamic KPIs:** Camber Gain, Bump Steer, RC ΔY/ΔZ
+- **Plotly charts:** Camber vs Heave, Δ Toe vs Heave, RC trajectory
+- **"Full data" expander:** table with all the sweep points
 
-### 🎯 Aba 2: Síntese / Otimização
+### 🎯 Tab 2: Synthesis / Optimization
 
-Engenharia reversa — você define metas e o software encontra os hardpoints.
+Reverse engineering — you define goals and the software finds the hardpoints.
 
-**Estrutura:**
+**Structure:**
 
 ```
-┌─ Definição dos Targets ─────────────────────┐
-│ ESTÁTICOS                   DINÂMICOS       │
+┌─ Target definition ─────────────────────────┐
+│ STATIC                      DYNAMIC         │
 │ ☑ Caster        4°          Camber Gain     │
 │ ☑ KPI           7°          Bump Steer max  │
 │ ☑ Camber       -1.5°        RC Height       │
@@ -372,208 +372,208 @@ Engenharia reversa — você define metas e o software encontra os hardpoints.
 │ ☐ Trail                                     │
 └─────────────────────────────────────────────┘
 
-▼ ⚙️ Pesos da função objetivo (avançado)
+▼ ⚙️ Objective-function weights (advanced)
 ▼ 📦 Bounding Boxes / Keep-out zones
-▼ 🔧 Configuração do solver evolutivo
+▼ 🔧 Evolutionary solver configuration
 
-[🚀 Rodar Otimização]
+[🚀 Run Optimization]
 
 ────────────────────────────────────────
-Tabela: Target × Seed × Otimizado
-Tabela: hardpoints otimizados
-[⬇️ Baixar CSV]
+Table: Target × Seed × Optimized
+Table: optimized hardpoints
+[⬇️ Download CSV]
 ```
 
-### 🔄 Aba 3: Comparação
+### 🔄 Tab 3: Comparison
 
-Compara duas geometrias (A vs B) lado a lado.
+Compares two geometries (A vs B) side by side.
 
-- Fontes: arquivo / seed / última otimização
-- Tabela com KPIs estáticos e Δ
-- Gráficos sobrepostos
+- Sources: file / seed / last optimization
+- Table with static KPIs and Δ
+- Overlaid charts
 
-### ✏️ Aba 4: Editor Manual
+### ✏️ Tab 4: Manual Editor
 
-Edição manual dos hardpoints com visualização 2D ao vivo.
+Manual editing of the hardpoints with live 2D visualization.
 
 ```
 ┌─────────────────────┬─────────────────────┐
-│ Tabela editável     │ 3 vistas 2D:        │
-│ (10 pts por corner) │  - YZ (frontal)     │
-│                     │  - XZ (lateral)     │
-│                     │  - XY (topo)        │
-│                     │ Atualiza em tempo   │
-│                     │ real ao digitar     │
+│ Editable table      │ 3 2D views:         │
+│ (10 pts per corner) │  - YZ (front)       │
+│                     │  - XZ (side)        │
+│                     │  - XY (top)         │
+│                     │ Updates in real     │
+│                     │ time as you type    │
 └─────────────────────┴─────────────────────┘
-[✅ Aplicar como hardpoints]  [⬇️ Baixar CSV]
-[🪞 Espelhar FL→FR]
-[📋 Carregar template neste corner]
-[🔁 Recarregar do arquivo]
+[✅ Apply as hardpoints]  [⬇️ Download CSV]
+[🪞 Mirror FL→FR]
+[📋 Load template into this corner]
+[🔁 Reload from file]
 ```
 
-### 📋 Aba 5: KPIs Completos
+### 📋 Tab 5: Complete KPIs
 
-Relatório completo no formato da ficha de setup do carro.
+Complete report in the car's setup-sheet format.
 
 ```
-DIMENSÕES        | Wheelbase, Track F, Track R
-DIANTEIRO        | Camber L/R, Sum Toe, Caster L/R, KPI L/R,
+DIMENSIONS       | Wheelbase, Track F, Track R
+FRONT            | Camber L/R, Sum Toe, Caster L/R, KPI L/R,
                  | Scrub L/R, Trail L/R
                  | RC static / @ 1g (Y, Z)
                  | Ride Camber, Roll Camber, Anti-dive
                  | Ackermann, Steer Arm, Steer Ratio
-TRASEIRO         | (mesma estrutura, sem caster/ackermann)
-NÃO CALCULADO    | Lista do que precisaria de mola/amortecedor
+REAR             | (same structure, without caster/ackermann)
+NOT COMPUTED     | List of what would need a spring/damper
 ```
 
 ---
 
-## 9. Tutorial completo: do CAD ao otimizado
+## 9. Complete tutorial: from CAD to optimized
 
-### Cenário 1: tenho um carro pronto, quero analisar
+### Scenario 1: I have a finished car, I want to analyze it
 
-**Passo 1 — Extrair hardpoints do SolidWorks**
+**Step 1 — Extract hardpoints from SolidWorks**
 
-Para cada um dos 10 hardpoints de cada corner:
-1. Clique no ponto/sketch
-2. "Propriedades de Massa" ou "Medir" → leia X, Y, Z
-3. Anote em planilha
+For each of the 10 hardpoints of each corner:
+1. Click on the point/sketch
+2. "Mass Properties" or "Measure" → read X, Y, Z
+3. Record them in a spreadsheet
 
-> 💡 **Verificação de origem:** antes de gastar tempo, confira que:
-> - `WHEEL_CENTER.z ≈ raio do pneu` (positivo, 220-260 mm típico)
+> 💡 **Origin check:** before spending time, confirm that:
+> - `WHEEL_CENTER.z ≈ tire radius` (positive, 220-260 mm typical)
 > - `CONTACT_PATCH.z = 0`
-> - `UCA_IN.z > LCA_IN.z` (UCA está mais alto)
-> Se essas não baterem, sua origem do CAD não é SAE — transforme.
+> - `UCA_IN.z > LCA_IN.z` (the UCA is higher)
+> If these do not match, your CAD origin is not SAE — transform it.
 
-**Passo 2 — Preencher template**
+**Step 2 — Fill in the template**
 
-1. Sidebar → **"⬇️ Template"** baixa `hardpoints_template.csv`
-2. Abra no Excel, substitua os valores
-3. Salve como `meu_carro.csv`
+1. Sidebar → **"⬇️ Template"** downloads `hardpoints_template.csv`
+2. Open it in Excel, replace the values
+3. Save as `my_car.csv`
 
-**Passo 3 — Carregar e analisar**
+**Step 3 — Load and analyze**
 
-1. Sidebar → upload do `meu_carro.csv`
-2. Confira o preview
-3. Clica em **"🔄 Aplicar arquivo"**
-4. Vai para **Aba 1 (Análise)**
-5. Veja os 6 KPIs nos cards — se algum estiver MUITO fora, revise
+1. Sidebar → upload `my_car.csv`
+2. Check the preview
+3. Click **"🔄 Apply file"**
+4. Go to **Tab 1 (Analysis)**
+5. See the 6 KPIs in the cards — if any is WAY off, review it
 
-**Passo 4 — Sweep dinâmico**
+**Step 4 — Dynamic sweep**
 
-1. "Tipo de sweep" → **"Heave"**
+1. "Sweep type" → **"Heave"**
 2. Min: −25 mm, Max: +25 mm, Step: 1 mm
-3. Aguarde ~2s. Aparecem:
- - **Camber Gain** (°/mm) — meta −0.015 a −0.025
- - **Bump Steer** (°/mm) — meta < 0.005
- - **RC ΔY, ΔZ** — meta ΔY < 30 mm
+3. Wait ~2s. These appear:
+ - **Camber Gain** (°/mm) — target −0.015 to −0.025
+ - **Bump Steer** (°/mm) — target < 0.005
+ - **RC ΔY, ΔZ** — target ΔY < 30 mm
 
-**Passo 5 — Ver tudo na ficha de setup**
+**Step 5 — See everything on the setup sheet**
 
-Aba **"📋 KPIs Completos"** mostra todos os parâmetros do veículo numa tabela.
+The **"📋 Complete KPIs"** tab shows all the vehicle parameters in a table.
 
-### Cenário 2: vou projetar carro novo, quero descobrir hardpoints ideais
+### Scenario 2: I'm going to design a new car, I want to find the ideal hardpoints
 
-**Passo 1 — Geometria seed**
+**Step 1 — Seed geometry**
 
-Carregue um ponto de partida (Demo, carro do ano passado, etc.).
+Load a starting point (Demo, last year's car, etc.).
 
-**Passo 2 — Aba 🎯 Síntese**
+**Step 2 — 🎯 Synthesis tab**
 
-1. Escolha **corner-seed** (FL)
-2. **Marque os checkboxes** dos targets que importam:
+1. Choose the **seed corner** (FL)
+2. **Check the boxes** of the targets that matter:
  - ☑ Caster = 4.5°
  - ☑ KPI = 7°
- - ☑ Camber estático = −1.5°
-3. Ajuste targets dinâmicos:
+ - ☑ Static camber = −1.5°
+3. Adjust the dynamic targets:
  - Camber Gain = −0.020 °/mm
  - RC Height = 50 mm
 
-**Passo 3 — (Opcional) Bounding boxes**
+**Step 3 — (Optional) Bounding boxes**
 
-Expanda **"📦 Bounding Boxes"**. Margens típicas:
+Expand **"📦 Bounding Boxes"**. Typical margins:
 - UCA out / LCA out: ±50 mm
 - TR in/out: ±25 mm
 
-Comece largo (±50-100), depois aperta.
+Start wide (±50-100), then tighten.
 
-**Passo 4 — Rodar**
+**Step 4 — Run**
 
-Clica em **"🚀 Rodar Otimização"**. Tempo:
-- 40 iter × 12 pop = ~6000 avaliações → 30s-2min
+Click **"🚀 Run Optimization"**. Time:
+- 40 iter × 12 pop = ~6000 evaluations → 30s-2min
 - 100 iter = 3-5 min
 
-**Passo 5 — Interpretar**
+**Step 5 — Interpret**
 
-Aparece tabela:
+A table appears:
 ```
-Parâmetro          Target   Seed    Otimizado  OK Seed  OK Opt
+Parameter          Target   Seed    Optimized  Seed OK  Opt OK
 Caster (°)         +4.50    +8.88   +4.49      ❌       ✅
 KPI (°)            +7.00    +4.47   +6.82      ❌       ✅
 Camber (°)         -1.50    +0.00   -1.51      ❌       ✅
 ...
 ```
 
-- ❌ Seed = não atendia
-- ✅ Opt = atendido após otimização
-- Se algum continua ❌ → trade-off; aumente o peso ou afrouxe
+- ❌ Seed = did not meet it
+- ✅ Opt = met after optimization
+- If any stays ❌ → trade-off; increase the weight or loosen it
 
-**Passo 6 — Baixar CSV e aplicar no CAD**
+**Step 6 — Download the CSV and apply it in CAD**
 
-1. Botão **"⬇️ Baixar hardpoints otimizados"**
-2. Abra o CSV
-3. No SolidWorks, edite cada sketch com os novos X, Y, Z
+1. **"⬇️ Download optimized hardpoints"** button
+2. Open the CSV
+3. In SolidWorks, edit each sketch with the new X, Y, Z
 
-**Passo 7 — Validar**
+**Step 7 — Validate**
 
-Aba **🔄 Comparação**:
-- A = "Última geometria SEED"
-- B = "Última geometria OTIMIZADA"
-- Vê gráficos sobrepostos confirmando o ganho
+**🔄 Comparison** tab:
+- A = "Last SEED geometry"
+- B = "Last OPTIMIZED geometry"
+- See overlaid charts confirming the gain
 
-### Cenário 3: quero brincar com hardpoints manualmente
+### Scenario 3: I want to play with hardpoints manually
 
-**Aba ✏️ Editor Manual:**
+**✏️ Manual Editor tab:**
 
-1. Escolha um corner para editar
-2. Edite os valores X, Y, Z direto na tabela
-3. As 3 vistas 2D atualizam ao vivo
-4. Botão "🪞 Espelhar Esquerdo → Direito" se quiser simetria
-5. Clica em **"✅ Aplicar como hardpoints carregados"** quando terminar
-6. Vá para Aba 1 e veja os KPIs resultantes
+1. Choose a corner to edit
+2. Edit the X, Y, Z values directly in the table
+3. The 3 2D views update live
+4. "🪞 Mirror Left → Right" button if you want symmetry
+5. Click **"✅ Apply as loaded hardpoints"** when finished
+6. Go to Tab 1 and see the resulting KPIs
 
 ---
 
-## 10. Formato do arquivo de hardpoints
+## 10. Hardpoints file format
 
-### 10.1 Estrutura
+### 10.1 Structure
 
-5 colunas, 40 linhas (4 corners × 10 pontos):
+5 columns, 40 rows (4 corners × 10 points):
 
-| Coluna | Tipo | Descrição |
+| Column | Type | Description |
 |---|---|---|
-| `corner` | texto | "FL", "FR", "RL", "RR" |
-| `point` | texto | nome do ponto |
-| `x_mm` | número | coordenada X em mm |
-| `y_mm` | número | coordenada Y em mm |
-| `z_mm` | número | coordenada Z em mm |
+| `corner` | text | "FL", "FR", "RL", "RR" |
+| `point` | text | point name |
+| `x_mm` | number | X coordinate in mm |
+| `y_mm` | number | Y coordinate in mm |
+| `z_mm` | number | Z coordinate in mm |
 
-### 10.2 Os 10 pontos por corner
+### 10.2 The 10 points per corner
 
-| Nome | O que é |
+| Name | What it is |
 |---|---|
-| `UCA_IN_FRONT` | Inboard frontal do braço superior |
-| `UCA_IN_REAR` | Inboard traseiro do braço superior |
-| `UCA_OUT` | Outboard do braço superior (= UBJ) |
-| `LCA_IN_FRONT` | Inboard frontal do braço inferior |
-| `LCA_IN_REAR` | Inboard traseiro do braço inferior |
-| `LCA_OUT` | Outboard do braço inferior (= LBJ) |
-| `TIE_ROD_IN` | Inboard do tie-rod (no rack) |
-| `TIE_ROD_OUT` | Outboard do tie-rod (na manga) |
-| `WHEEL_CENTER` | Centro de roda |
-| `CONTACT_PATCH` | Contato pneu-solo (sempre Z=0) |
+| `UCA_IN_FRONT` | Front inboard of the upper arm |
+| `UCA_IN_REAR` | Rear inboard of the upper arm |
+| `UCA_OUT` | Outboard of the upper arm (= UBJ) |
+| `LCA_IN_FRONT` | Front inboard of the lower arm |
+| `LCA_IN_REAR` | Rear inboard of the lower arm |
+| `LCA_OUT` | Outboard of the lower arm (= LBJ) |
+| `TIE_ROD_IN` | Inboard of the tie-rod (on the rack) |
+| `TIE_ROD_OUT` | Outboard of the tie-rod (on the upright) |
+| `WHEEL_CENTER` | Wheel center |
+| `CONTACT_PATCH` | Tire-ground contact (always Z=0) |
 
-### 10.3 Exemplo CSV
+### 10.3 CSV example
 
 ```csv
 corner,point,x_mm,y_mm,z_mm
@@ -587,79 +587,79 @@ FL,TIE_ROD_IN,-50,180,200
 FL,TIE_ROD_OUT,-60,580,195
 FL,WHEEL_CENTER,5,610,220
 FL,CONTACT_PATCH,5,610,0
-... (repetir para FR, RL, RR)
+... (repeat for FR, RL, RR)
 ```
 
-### 10.4 Erros de validação
+### 10.4 Validation errors
 
-| Mensagem | Causa | Correção |
+| Message | Cause | Fix |
 |---|---|---|
-| `Corners inválidos: ['fl']` | Minúsculo | Use FL maiúsculo |
-| `Pontos desconhecidos: ['UCA_INBOARD']` | Nome errado | Use `UCA_IN_FRONT` |
-| `Corner 'FL' faltando pontos: ['...']` | Linha faltante | Adicione |
-| `Coluna 'x_mm' contém nulos` | Célula vazia | Preencha |
-| `Coluna 'x_mm' deve ser numérica` | Texto | Use ponto decimal, não vírgula |
+| `Invalid corners: ['fl']` | Lowercase | Use uppercase FL |
+| `Unknown points: ['UCA_INBOARD']` | Wrong name | Use `UCA_IN_FRONT` |
+| `Corner 'FL' missing points: ['...']` | Missing row | Add it |
+| `Column 'x_mm' contains nulls` | Empty cell | Fill it in |
+| `Column 'x_mm' must be numeric` | Text | Use a decimal point, not a comma |
 
 ---
 
-## 11. Estrutura do projeto
+## 11. Project structure
 
 ```
 fsae_suspension_clean/
 │
-├── geometry/                       # Motor matemático puro
+├── geometry/                       # Pure mathematical engine
 │   ├── __init__.py
-│   ├── primitives.py               # Point3D, Vector3D, Point2D, interseções
-│   ├── solver_2d.py                # Mecanismo 4 barras (vista frontal Y-Z)
+│   ├── primitives.py               # Point3D, Vector3D, Point2D, intersections
+│   ├── solver_2d.py                # Four-bar mechanism (front view Y-Z)
 │   ├── model_3d.py                 # ControlArm, KingpinGeometry,
 │   │                                 SuspensionCorner, Vehicle
-│   └── solver_3d.py                # Solver 3D cinemático (3 esferas + LM)
+│   └── solver_3d.py                # 3D kinematic solver (3 spheres + LM)
 │
-├── analysis/                       # Análise + I/O + KPIs + Otimização
+├── analysis/                       # Analysis + I/O + KPIs + Optimization
 │   ├── __init__.py
-│   ├── sweeps.py                   # SweepRunner + plots Plotly
+│   ├── sweeps.py                   # SweepRunner + Plotly plots
 │   ├── optimizer.py                # DesignTargets, SuspensionOptimizer
 │   ├── io_hardpoints.py            # read/write csv/xlsx/json
 │   └── kpis.py                     # Ackermann, Steer Ratio, Ride/Roll Camber,
 │                                     RC@1g, Anti-dive, build_full_report
 │
-├── app.py                          # 🌐 Streamlit (5 áreas)
-├── README.md                       # Este arquivo
+├── app.py                          # 🌐 Streamlit (5 areas)
+├── README.md                       # This file
 └── requirements.txt
 ```
 
-### O que cada módulo faz
+### What each module does
 
-**`geometry/primitives.py`** — Tipos base (`Point3D`, `Vector3D`, `Point2D`) e funções de interseção (círculo-círculo, reta-reta). Pura matemática.
+**`geometry/primitives.py`** — Base types (`Point3D`, `Vector3D`, `Point2D`) and intersection functions (circle-circle, line-line). Pure math.
 
-**`geometry/solver_2d.py`** — Resolve a suspensão como mecanismo de 4 barras na vista frontal (plano Y-Z). Usado para Roll Center.
+**`geometry/solver_2d.py`** — Solves the suspension as a four-bar mechanism in the front view (Y-Z plane). Used for the Roll Center.
 
-**`geometry/model_3d.py`** — Classes OOP: `ControlArm`, `KingpinGeometry`, `SuspensionCorner`, `Vehicle`. Calcula KPIs estáticos.
+**`geometry/model_3d.py`** — OOP classes: `ControlArm`, `KingpinGeometry`, `SuspensionCorner`, `Vehicle`. Computes static KPIs.
 
-**`geometry/solver_3d.py`** — Solver cinemático 3D. Trata a manga como corpo rígido. Resolve a posição em (heave, roll, rack) via interseção de 3 esferas + `least_squares` (Levenberg-Marquardt).
+**`geometry/solver_3d.py`** — 3D kinematic solver. Treats the upright as a rigid body. Solves the position at (heave, roll, rack) via 3-sphere intersection + `least_squares` (Levenberg-Marquardt).
 
-**`analysis/sweeps.py`** — Roda varreduras (`SweepRunner`). Calcula camber gain, bump steer, migração do RC. Gera plots Plotly.
+**`analysis/sweeps.py`** — Runs sweeps (`SweepRunner`). Computes camber gain, bump steer, RC migration. Generates Plotly plots.
 
-**`analysis/optimizer.py`** — Otimização global (`differential_evolution`). `DesignTargets` com targets estáticos + dinâmicos, `HardpointBounds` para keep-out zones, `validate_against_targets()` para relatório.
+**`analysis/optimizer.py`** — Global optimization (`differential_evolution`). `DesignTargets` with static + dynamic targets, `HardpointBounds` for keep-out zones, `validate_against_targets()` for a report.
 
-**`analysis/io_hardpoints.py`** — Leitura, validação, escrita. Constrói `SuspensionCorner` e `Vehicle` a partir de DataFrames.
+**`analysis/io_hardpoints.py`** — Reading, validation, writing. Builds `SuspensionCorner` and `Vehicle` from DataFrames.
 
-**`analysis/kpis.py`** — KPIs avançados (Ackermann, Steer Ratio, Ride/Roll Camber, RC@1g, Anti-dive). `build_full_report()` gera relatório completo.
+**`analysis/kpis.py`** — Advanced KPIs (Ackermann, Steer Ratio, Ride/Roll Camber, RC@1g, Anti-dive). `build_full_report()` generates a complete report.
 
-**`app.py`** — Streamlit com 5 áreas: Sidebar + 4 abas + Editor Manual.
+**`app.py`** — Streamlit with 5 areas: Sidebar + 4 tabs + Manual Editor.
 
 ---
 
-## 12. Uso via Python (scripts)
+## 12. Python usage (scripts)
 
-### 12.1 Carregar e analisar
+### 12.1 Load and analyze
 
 ```python
 from analysis.io_hardpoints import read_hardpoints, build_corner_from_dataframe
 from geometry import KinematicSolver3D
 from analysis.sweeps import SweepRunner, camber_gain_per_mm, bump_steer_per_mm
 
-df = read_hardpoints("meu_carro.xlsx")
+df = read_hardpoints("my_car.xlsx")
 corner, tie_rod = build_corner_from_dataframe(df, "FL")
 
 print(f"Caster: {corner.static_caster_deg():+.3f}°")
@@ -673,7 +673,7 @@ print(f"Camber gain: {camber_gain_per_mm(sweep):+.5f} °/mm")
 print(f"Bump steer:  {bump_steer_per_mm(sweep):+.5f} °/mm")
 ```
 
-### 12.2 Otimização
+### 12.2 Optimization
 
 ```python
 from analysis.optimizer import (
@@ -702,7 +702,7 @@ report = validate_against_targets(
 print(report.summary())
 ```
 
-### 12.3 Relatório completo
+### 12.3 Complete report
 
 ```python
 from analysis.io_hardpoints import build_vehicle_from_dataframe
@@ -723,59 +723,59 @@ print(f"Track F:   {report.track_front_mm:.1f} mm")
 print(f"Front:     {report.front}")
 ```
 
-### 12.4 Exportar
+### 12.4 Export
 
 ```python
 from analysis.io_hardpoints import dataframe_from_corner, save_dataframe
 
 df_out = dataframe_from_corner(result.optimal_corner, result.optimal_tie_rod)
-save_dataframe(df_out, "geometria_otimizada.xlsx")
+save_dataframe(df_out, "optimized_geometry.xlsx")
 ```
 
 ---
 
-## 13. Lista completa de KPIs
+## 13. Complete KPI list
 
-### 13.1 Por corner (`SuspensionCorner`)
+### 13.1 Per corner (`SuspensionCorner`)
 
-| Método | Retorna | Unidade |
+| Method | Returns | Unit |
 |---|---|---|
 | `static_caster_deg()` | Caster | ° |
 | `static_kpi_deg()` | Kingpin Inclination | ° |
-| `static_camber_deg()` | Camber estático (input construtivo) | ° |
+| `static_camber_deg()` | Static camber (constructive input) | ° |
 | `static_scrub_radius_mm()` | Scrub Radius | mm |
-| `static_mechanical_trail_mm()` | Trail mecânico | mm |
-| `static_kingpin_offset_mm()` | Offset do pino na altura WC | mm |
-| `roll_center_height_mm()` | RC Height estático | mm |
+| `static_mechanical_trail_mm()` | Mechanical trail | mm |
+| `static_kingpin_offset_mm()` | Kingpin offset at WC height | mm |
+| `roll_center_height_mm()` | Static RC Height | mm |
 | `steer_arm_length_mm(tro)` | Steering arm length | mm |
-| `anti_dive_percent(...)` | Anti-dive simplificado | % |
-| `anti_squat_percent(...)` | Anti-squat simplificado | % |
+| `anti_dive_percent(...)` | Simplified anti-dive | % |
+| `anti_squat_percent(...)` | Simplified anti-squat | % |
 
-### 13.2 Avançados (`analysis/kpis.py`)
+### 13.2 Advanced (`analysis/kpis.py`)
 
-| Função | Retorna |
+| Function | Returns |
 |---|---|
 | `wheelbase_mm(front, rear)` | Wheelbase |
-| `track_width_mm(left, right)` | Bitola |
+| `track_width_mm(left, right)` | Track width |
 | `ride_camber_deg_per_m(corner, tr)` | Ride Camber (°/m) |
 | `roll_camber_deg_per_deg(corner, tr)` | Roll Camber (°/°) |
-| `static_toe_deg(corner, tr)` | Toe estático |
+| `static_toe_deg(corner, tr)` | Static toe |
 | `static_sum_toe_deg(L, R, ...)` | Sum Toe |
-| `ackermann_geometry(...)` | Dict com Ackermann %, steer arms |
-| `steer_ratio_and_cfactor(...)` | Dict com rack/wheel° e wheel°/rack |
+| `ackermann_geometry(...)` | Dict with Ackermann %, steer arms |
+| `steer_ratio_and_cfactor(...)` | Dict with rack/wheel° and wheel°/rack |
 | `steer_ratio_from_pinion(...)` | Steer Ratio (x:1) |
-| `roll_center_at_1g_lat(...)` | RC sob 1g lateral |
+| `roll_center_at_1g_lat(...)` | RC under 1g lateral |
 | `anti_dive_percent(...)` | Anti-dive |
 | `anti_squat_percent(...)` | Anti-squat |
-| `build_full_report(...)` | `FullKPIReport` completo |
+| `build_full_report(...)` | Complete `FullKPIReport` |
 
-### 13.3 Dinâmicos (de sweeps)
+### 13.3 Dynamic (from sweeps)
 
-| Função | Calcula |
+| Function | Computes |
 |---|---|
-| `camber_gain_per_mm(sweep)` | Inclinação de camber vs heave |
-| `bump_steer_per_mm(sweep)` | Inclinação de toe vs heave |
-| `rc_migration_range(sweep)` | (ΔY, ΔZ) do RC durante sweep |
+| `camber_gain_per_mm(sweep)` | Slope of camber vs heave |
+| `bump_steer_per_mm(sweep)` | Slope of toe vs heave |
+| `rc_migration_range(sweep)` | (ΔY, ΔZ) of the RC during a sweep |
 
 ---
 
@@ -783,171 +783,171 @@ save_dataframe(df_out, "geometria_otimizada.xlsx")
 
 ### 14.1 Streamlit
 
-| Problema | Solução |
+| Problem | Solution |
 |---|---|
-| `command not found: streamlit` | Ative venv e `pip install streamlit` |
-| Página em branco | `streamlit run app.py --server.port 8502` |
-| Erro import polars | `pip install polars openpyxl fastexcel` |
-| `[Errno 2] No such file or directory: '/tmp/...'` | Bug do Windows — atualize para versão mais recente do app.py |
+| `command not found: streamlit` | Activate the venv and `pip install streamlit` |
+| Blank page | `streamlit run app.py --server.port 8502` |
+| polars import error | `pip install polars openpyxl fastexcel` |
+| `[Errno 2] No such file or directory: '/tmp/...'` | Windows bug — update to the latest app.py version |
 
-### 14.2 Upload de arquivo
+### 14.2 File upload
 
-| Mensagem | Solução |
+| Message | Solution |
 |---|---|
-| `Corners inválidos` | Use FL/FR/RL/RR maiúsculo |
-| `Coluna x_mm contém nulos` | Preencha as 40 linhas |
+| `Invalid corners` | Use uppercase FL/FR/RL/RR |
+| `Column x_mm contains nulls` | Fill in all 40 rows |
 | `ModuleNotFoundError: openpyxl` | `pip install openpyxl` |
 
-### 14.3 Valores absurdos nos KPIs
+### 14.3 Absurd KPI values
 
-| Resultado | Causa | Verificação |
+| Result | Cause | Check |
 |---|---|---|
-| Caster = 0° | Outboards com mesmo X | Diferença X UCA_OUT vs LCA_OUT |
-| KPI = 0° | Outboards com mesmo Y | Diferença Y UCA_OUT vs LCA_OUT |
-| Camber/KPI = ±70° | Manga estreita (Z UBJ ≈ Z LBJ) | Distância vertical 80-180 mm |
-| RC Height < 0 | RC abaixo do solo | UCA inboard mais baixo que outboard? Z trocado? |
-| Scrub > 100 mm | WC em Y errado | Verifique WHEEL_CENTER.y |
+| Caster = 0° | Outboards at the same X | Difference of X between UCA_OUT and LCA_OUT |
+| KPI = 0° | Outboards at the same Y | Difference of Y between UCA_OUT and LCA_OUT |
+| Camber/KPI = ±70° | Narrow upright (Z UBJ ≈ Z LBJ) | Vertical distance 80-180 mm |
+| RC Height < 0 | RC below the ground | UCA inboard lower than outboard? Z swapped? |
+| Scrub > 100 mm | WC at the wrong Y | Check WHEEL_CENTER.y |
 
-### 14.4 Diagnóstico da manga
+### 14.4 Upright diagnostics
 
-A manga (UBJ-LBJ) deve ter:
-- **Altura vertical (Z)**: 80-180 mm
-- **Distância total**: 100-200 mm
+The upright (UBJ-LBJ) should have:
+- **Vertical height (Z)**: 80-180 mm
+- **Total distance**: 100-200 mm
 
 ```python
-manga = corner.upper_arm.outboard.distance_to(corner.lower_arm.outboard)
-altura_z = abs(corner.upper_arm.outboard.z - corner.lower_arm.outboard.z)
-print(f"Manga: {manga:.1f} mm, altura Z: {altura_z:.1f} mm")
+upright = corner.upper_arm.outboard.distance_to(corner.lower_arm.outboard)
+height_z = abs(corner.upper_arm.outboard.z - corner.lower_arm.outboard.z)
+print(f"Upright: {upright:.1f} mm, Z height: {height_z:.1f} mm")
 ```
 
-Se manga < 60 mm ou altura Z < 50 mm → revise hardpoints.
+If the upright < 60 mm or Z height < 50 mm → review the hardpoints.
 
-### 14.5 Origem do CAD diferente do SAE
+### 14.5 CAD origin different from SAE
 
-Sinais óbvios:
-- `WHEEL_CENTER.z` deveria ser **raio do pneu** (~220-260 mm, positivo)
-- `CONTACT_PATCH.z` deveria ser **0**
+Obvious signs:
+- `WHEEL_CENTER.z` should be the **tire radius** (~220-260 mm, positive)
+- `CONTACT_PATCH.z` should be **0**
 
-Conversão típica:
+Typical conversion:
 ```python
-# Se Z do CAD aponta para baixo com origem no centro de roda:
+# If the CAD Z points downward with the origin at the wheel center:
 Z_sae = TIRE_RADIUS - Z_user
 
-# Se Y é negativo para o lado esquerdo:
+# If Y is negative for the left side:
 Y_sae = -Y_user
 ```
 
-### 14.6 Otimização
+### 14.6 Optimization
 
-| Sintoma | Solução |
+| Symptom | Solution |
 |---|---|
-| Custo > 100 após muitas iterações | Targets impossíveis simultaneamente; afrouxe um |
-| Hardpoints sem variação | Bounds apertados; aumente |
-| Resultado pior que seed | Aumente iterações (≥100) |
-| Demora > 10 min | `heave_step_mm=5` ou reduza pop |
-| "Mecanismo fora de alcance" | Bounds geram geometria impossível |
+| Cost > 100 after many iterations | Targets impossible simultaneously; loosen one |
+| Hardpoints with no variation | Bounds too tight; increase them |
+| Result worse than the seed | Increase iterations (≥100) |
+| Takes > 10 min | `heave_step_mm=5` or reduce the population |
+| "Mechanism out of reach" | Bounds generate an impossible geometry |
 
-### 14.7 Editor manual perde dados
+### 14.7 Manual editor loses data
 
-Se ao clicar em "🔄 Aplicar arquivo" o editor manual descarta suas edições:
-- É o comportamento correto: aplicar arquivo **sobrescreve** o estado do editor
-- Para manter suas edições: clique em "✅ Aplicar como hardpoints" no editor ANTES de carregar outro arquivo
+If clicking "🔄 Apply file" makes the manual editor discard your edits:
+- This is the correct behavior: applying a file **overwrites** the editor state
+- To keep your edits: click "✅ Apply as hardpoints" in the editor BEFORE loading another file
 
 ---
 
-## 15. Limitações
+## 15. Limitations
 
-### 15.1 O que FAZ ✅
+### 15.1 What it DOES ✅
 
-- Cinemática 3D em (heave, roll, steer)
-- 6+ KPIs estáticos
-- 10+ KPIs dinâmicos
-- Otimização global com targets misturados
+- 3D kinematics in (heave, roll, steer)
+- 6+ static KPIs
+- 10+ dynamic KPIs
+- Global optimization with mixed targets
 - Bounding boxes
-- Validação
-- Export CSV/Excel/JSON
+- Validation
+- CSV/Excel/JSON export
 
-### 15.2 O que NÃO FAZ ❌
+### 15.2 What it DOESN'T do ❌
 
-- **Dinâmica vertical** (massa-mola-amortecedor)
-- **Compliance dos braços**
-- **Pushrod/pullrod/rocker** (sem motion ratio)
-- **Visualização 3D dos hardpoints** (só 2D)
-- **Otimização das 4 pontas juntas**
-- **Detecção de interferências físicas**
-- **Tire load** (transferência de carga)
-- **Wheel rate, roll rate, frequência natural, damping**
+- **Vertical dynamics** (mass-spring-damper)
+- **Arm compliance**
+- **Pushrod/pullrod/rocker** (no motion ratio)
+- **3D visualization of the hardpoints** (2D only)
+- **Optimization of all 4 corners together**
+- **Physical interference detection**
+- **Tire load** (load transfer)
+- **Wheel rate, roll rate, natural frequency, damping**
 
-### 15.3 Aproximações importantes
+### 15.3 Important approximations
 
-- **Roll axis na origem** — rotação em torno de X passando por (0,0,0). Para roll < 3°, erro < 1 mm
-- **Toe absoluto não-interpretável** — reporta **Δ toe** relativo ao estático
-- **Manga rígida** — sem compliance
-- **Camber estático = input** — não inferido dos hardpoints
-- **Anti-dive simplificado** — assume freio outboard
-- **RC @ 1g aproximado** — usa roll stiffness fixo (default 1.5 °/g)
+- **Roll axis at the origin** — rotation about X passing through (0,0,0). For roll < 3°, error < 1 mm
+- **Non-interpretable absolute toe** — reports **Δ toe** relative to static
+- **Rigid upright** — no compliance
+- **Static camber = input** — not inferred from the hardpoints
+- **Simplified anti-dive** — assumes an outboard brake
+- **Approximate RC @ 1g** — uses a fixed roll stiffness (default 1.5 °/g)
 
 ---
 
-## 16. Glossário
+## 16. Glossary
 
-| Termo | Significado |
+| Term | Meaning |
 |---|---|
-| **A-arm / Wishbone** | Braço em formato de "A", padrão FSAE |
-| **Anti-dive / Anti-squat** | Geometrias na vista lateral que reduzem mergulho/agachamento |
-| **Ball joint** | Junta esférica (rótula) braço↔manga |
-| **Bounding box** | Caixa 3D para keep-out zones |
-| **Bump** | Roda subindo relativa ao chassi (heave +) |
-| **Bump steer** | Variação INVOLUNTÁRIA do toe com heave |
-| **Camber** | Inclinação da roda vs vertical |
-| **Camber Gain** | d(camber)/d(heave) em °/mm |
-| **Caster** | Inclinação do pino mestre na vista lateral |
-| **Compliance** | Deformação elástica (bushings, braços) |
-| **Contact patch (CP)** | Área de contato pneu-solo |
-| **Differential evolution** | Algoritmo evolutivo do otimizador |
+| **A-arm / Wishbone** | "A"-shaped arm, FSAE standard |
+| **Anti-dive / Anti-squat** | Side-view geometries that reduce dive/squat |
+| **Ball joint** | Spherical joint (rod end) arm↔upright |
+| **Bounding box** | 3D box for keep-out zones |
+| **Bump** | Wheel rising relative to the chassis (heave +) |
+| **Bump steer** | INVOLUNTARY toe variation with heave |
+| **Camber** | Wheel inclination vs vertical |
+| **Camber Gain** | d(camber)/d(heave) in °/mm |
+| **Caster** | Kingpin inclination in the side view |
+| **Compliance** | Elastic deformation (bushings, arms) |
+| **Contact patch (CP)** | Tire-ground contact area |
+| **Differential evolution** | Evolutionary algorithm of the optimizer |
 | **DOF** | Degree of Freedom |
-| **FSAE** | Formula SAE — competição estudantil |
-| **Hardpoint** | Ponto de pivô/fixação |
-| **Heave** | Deslocamento vertical chassi-roda |
-| **Inboard / Outboard** | Lado do chassi / lado da roda |
-| **Instant Center (IC)** | Centro instantâneo de rotação da manga |
-| **Jounce** | Sinônimo de bump |
+| **FSAE** | Formula SAE — student competition |
+| **Hardpoint** | Pivot/attachment point |
+| **Heave** | Vertical chassis-wheel displacement |
+| **Inboard / Outboard** | Chassis side / wheel side |
+| **Instant Center (IC)** | Instant center of rotation of the upright |
+| **Jounce** | Synonym of bump |
 | **KPI** | Kingpin Inclination |
 | **LBJ / UBJ** | Lower / Upper Ball Joint |
 | **LCA / UCA** | Lower / Upper Control Arm |
-| **Levenberg-Marquardt (LM)** | Algoritmo de least_squares |
-| **Mechanical Trail** | Distância long. pino-solo até CP |
-| **Motion Ratio** | Razão deslocamento roda / mola |
-| **Pickup point** | Sinônimo de hardpoint |
-| **Pushrod / Pullrod** | Barra manga → rocker |
-| **Rack** | Cremalheira de direção |
-| **Rebound** | Roda descendo (heave −) |
-| **Rocker / Bell-crank** | Alavanca pushrod → mola |
-| **Roll** | Rotação do chassi em X |
-| **Roll Axis** | Linha unindo RC F e RC R |
-| **Roll Center (RC)** | Pivô instantâneo de rolagem (vista frontal) |
-| **Scrub Radius** | Distância lat. pino-solo até CP |
-| **Seed** | Geometria inicial da otimização |
-| **Steer** | Esterçamento |
-| **Sweep** | Varredura paramétrica |
+| **Levenberg-Marquardt (LM)** | least_squares algorithm |
+| **Mechanical Trail** | Longitudinal distance kingpin-ground to CP |
+| **Motion Ratio** | Wheel displacement / spring ratio |
+| **Pickup point** | Synonym of hardpoint |
+| **Pushrod / Pullrod** | Upright → rocker bar |
+| **Rack** | Steering rack |
+| **Rebound** | Wheel dropping (heave −) |
+| **Rocker / Bell-crank** | Pushrod → spring lever |
+| **Roll** | Chassis rotation about X |
+| **Roll Axis** | Line joining RC F and RC R |
+| **Roll Center (RC)** | Instant roll pivot (front view) |
+| **Scrub Radius** | Lateral distance kingpin-ground to CP |
+| **Seed** | Initial geometry of the optimization |
+| **Steer** | Steering |
+| **Sweep** | Parametric sweep |
 | **SVIC** | Side View Instant Center |
-| **Tie-rod** | Barra de direção rack→manga |
-| **Toe** | Convergência/divergência |
+| **Tie-rod** | Steering bar rack→upright |
+| **Toe** | Convergence/divergence |
 | **TRO / TRI** | Tie Rod Outboard / Inboard |
-| **Upright** | Manga de eixo |
-| **Wheel Center (WC)** | Centro de roda |
+| **Upright** | Steering upright |
+| **Wheel Center (WC)** | Wheel center |
 
 ---
 
-## 📞 Sobre
+## 📞 About
 
-Software desenvolvido como projeto educacional para times de Fórmula SAE. Não é produto comercial.
+Software developed as an educational project for Formula SAE teams. It is not a commercial product.
 
-A estrutura modular permite extensão:
-- Pushrod/pullrod → estenda `SuspensionCorner` e solver 3D
-- Visualização 3D → use `plotly.graph_objects.Scatter3d`
-- Vista lateral completa (anti-dive) → crie `solver_xz.py`
-- Wheel rate / frequência natural → módulo novo + inputs de mola
-- Integração SolidWorks → use a API COM (Windows)
+The modular structure allows extension:
+- Pushrod/pullrod → extend `SuspensionCorner` and the 3D solver
+- 3D visualization → use `plotly.graph_objects.Scatter3d`
+- Full side view (anti-dive) → create `solver_xz.py`
+- Wheel rate / natural frequency → new module + spring inputs
+- SolidWorks integration → use the COM API (Windows)
 
-**Versão:** 2026
+**Version:** 2026

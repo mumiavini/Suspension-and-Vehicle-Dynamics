@@ -1,8 +1,8 @@
 """
 ui/shared.py
 ============
-Helpers compartilhados entre as abas: acesso aos hardpoints da sessão,
-empty-state padrão, construção segura de corners/veículo e cache de sweeps.
+Helpers shared across the tabs: access to the session hardpoints, the standard
+empty-state, safe construction of corners/vehicle and the sweep cache.
 """
 
 from __future__ import annotations
@@ -28,30 +28,30 @@ def load_hardpoints_from_state() -> Optional[pl.DataFrame]:
 
 def load_demo_into_session() -> None:
     st.session_state["hardpoints_df"] = generate_template_dataframe()
-    st.session_state["hardpoints_source"] = "Template demo"
+    st.session_state["hardpoints_source"] = "Demo template"
 
 
 def render_empty_state(message: str, key: str) -> None:
-    """Call-to-action padrão exibido quando não há hardpoints na sessão."""
+    """Standard call-to-action shown when there are no hardpoints in the session."""
     with st.container(border=True):
-        st.markdown("#### 📂 Nenhuma geometria carregada")
+        st.markdown("#### 📂 No geometry loaded")
         st.markdown(message)
         c1, c2 = st.columns([1, 2], vertical_alignment="center")
         with c1:
-            if st.button("🏎️ Carregar geometria demo", type="primary",
+            if st.button("🏎️ Load demo geometry", type="primary",
                           key=key, width="stretch"):
                 load_demo_into_session()
                 st.rerun(scope="app")
         with c2:
-            st.caption("Ou carregue seu arquivo (.xlsx / .csv / .json) "
-                       "na **barra lateral** ⬅️")
+            st.caption("Or load your file (.xlsx / .csv / .json) "
+                       "in the **sidebar** ⬅️")
 
 
 def build_corner_safe(df, corner_id):
     try:
         return build_corner_from_dataframe(df, corner_id)
     except HardpointValidationError as exc:
-        st.error(f"❌ Erro corner '{corner_id}': {exc}")
+        st.error(f"❌ Error in corner '{corner_id}': {exc}")
         return None
 
 
@@ -59,12 +59,12 @@ def build_vehicle_safe(df):
     try:
         return build_vehicle_from_dataframe(df)
     except HardpointValidationError as exc:
-        st.warning(f"⚠️ Veículo incompleto: {exc}")
+        st.warning(f"⚠️ Incomplete vehicle: {exc}")
         return None, None
 
 
 def _geometry_signature(corner, tie_rod) -> tuple:
-    """Tupla hashable com todos os hardpoints — chave de cache para sweeps."""
+    """Hashable tuple with all hardpoints — cache key for sweeps."""
     pts = (
         corner.upper_arm.inboard_front, corner.upper_arm.inboard_rear,
         corner.upper_arm.outboard,
@@ -79,8 +79,8 @@ def _geometry_signature(corner, tie_rod) -> tuple:
 @st.cache_data(show_spinner=False, max_entries=128)
 def _sweep_cache(geom_sig: tuple, sweep_type: str, params: tuple,
                  _corner=None, _tie_rod=None):
-    # geom_sig identifica a geometria no cache; _corner/_tie_rod (prefixo "_"
-    # = não-hasheados pelo Streamlit) só são usados em cache miss.
+    # geom_sig identifies the geometry in the cache; _corner/_tie_rod (prefix "_"
+    # = not hashed by Streamlit) are only used on a cache miss.
     solver = KinematicSolver3D(_corner, _tie_rod)
     runner = SweepRunner(solver=solver)
     if sweep_type == "Heave":

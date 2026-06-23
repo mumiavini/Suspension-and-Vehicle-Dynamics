@@ -1,12 +1,12 @@
 """
 analysis
 ========
-Análise dinâmica, otimização, KPIs e I/O para o motor de suspensão FSAE.
+Dynamic analysis, optimization, KPIs and I/O for the FSAE suspension engine.
 
-Módulos:
-    sweeps         : varreduras paramétricas (heave, roll, steer) + plots
-    optimizer      : síntese de geometria via differential_evolution
-    io_hardpoints  : leitura/escrita de arquivos xlsx/csv/json
-    kpis           : KPIs avançados (Ackermann, Ride/Roll Camber, Sum Toe,
-                     Steer Ratio, RC sob 1g, Anti-dive/Anti-squat)
+Modules:
+    sweeps         : parametric sweeps (heave, roll, steer) + plots
+    optimizer      : geometry synthesis via differential_evolution
+    io_hardpoints  : reading/writing of xlsx/csv/json files
+    kpis           : advanced KPIs (Ackermann, Ride/Roll Camber, Sum Toe,
+                     Steer Ratio, RC under 1g, Anti-dive/Anti-squat)
 """
