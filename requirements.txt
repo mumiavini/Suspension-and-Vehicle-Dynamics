@@ -4,4 +4,4 @@ plotly>=5.0
 polars>=0.20
 openpyxl>=3.0
 fastexcel>=0.10
-streamlit>=1.30
+streamlit>=1.37  # st.fragment é usado na aba de Síntese

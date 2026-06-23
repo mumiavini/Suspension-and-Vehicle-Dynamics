@@ -85,15 +85,20 @@ class SweepRunner:
 
     Atributos:
         solver       : solver 3D já inicializado
-        static_state : estado estático (cache, computado no __post_init__)
+        static_state : estado estático (resolvido sob demanda e cacheado —
+                       evita 1 solve extra por SweepRunner quando ninguém usa,
+                       o que importa no otimizador, que cria um por avaliação)
     """
-    solver:       KinematicSolver3D
-    static_state: Optional[KinematicState3D] = field(default=None)
+    solver:        KinematicSolver3D
+    _static_cache: Optional[KinematicState3D] = field(default=None, repr=False)
 
-    def __post_init__(self) -> None:
-        """Computa o estado estático como referência."""
-        self.solver.reset_seed()
-        self.static_state = self.solver.solve(0.0, 0.0, 0.0)
+    @property
+    def static_state(self) -> KinematicState3D:
+        """Estado estático (heave=roll=rack=0), computado na 1ª leitura."""
+        if self._static_cache is None:
+            self.solver.reset_seed()
+            self._static_cache = self.solver.solve(0.0, 0.0, 0.0)
+        return self._static_cache
 
     # -------------------------------------------------------------------------
     # Sweeps padrão
