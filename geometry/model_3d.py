@@ -1,5 +1,5 @@
-"""Last commit without claude interfering"""
-
+# Last commit without claude interfering
+from __future__ import annotations
 """
 geometry/model_3d.py
 ====================
@@ -30,7 +30,6 @@ NOTA: este módulo trabalha apenas com a POSIÇÃO ESTÁTICA. Para movimentos
 (bump, roll, steer), use `geometry/solver_3d.py`.
 """
 
-from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field

@@ -133,6 +133,9 @@ class KinematicSolver3D:
     `solver.reset_seed()` ao iniciar um novo sweep.
     """
 
+    # Peso da regularização suave (usado em _residuals e _residuals_jac)
+    _REG_WEIGHT: float = 1e-4
+
     def __init__(
         self,
         corner: SuspensionCorner,
@@ -228,8 +231,11 @@ class KinematicSolver3D:
             ])
 
         # ─── 3. Resolver o sistema não-linear ────────────────────────────────
+        # jac analítico: evita ~10 avaliações numéricas do residual por passo
+        # do LM (diferenças finitas em 9 variáveis) → solver ~3-5× mais rápido.
         result = least_squares(
             fun=self._residuals,
+            jac=self._residuals_jac,
             x0=seed,
             args=(uca_in_moved, lca_in_moved, tr_in_moved, seed),
             method="lm",                   # Levenberg-Marquardt
@@ -317,12 +323,50 @@ class KinematicSolver3D:
         r_d3 = np.linalg.norm(lbj - tro) - self._d_lbj_tro
 
         # 3. Regularização suave (peso muito pequeno para não dominar)
-        reg = (x - seed) * 1e-4
+        reg = (x - seed) * self._REG_WEIGHT
 
         return np.concatenate([
             np.array([r_ubj, r_lbj, r_tro, r_d1, r_d2, r_d3]),
             reg,
         ])
+
+    def _residuals_jac(
+        self,
+        x:            NDArray[np.float64],
+        uca_in_moved: NDArray[np.float64],
+        lca_in_moved: NDArray[np.float64],
+        tr_in_moved:  NDArray[np.float64],
+        seed:         NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """
+        Jacobiano ANALÍTICO de `_residuals` (15 resíduos × 9 variáveis).
+
+        Para um resíduo de distância r = ||a − b|| − L:
+            ∂r/∂a = (a − b) / ||a − b||      (e ∂r/∂b = −∂r/∂a)
+
+        As linhas de regularização são simplesmente I₉ × _REG_WEIGHT.
+        """
+        ubj = x[0:3]; lbj = x[3:6]; tro = x[6:9]
+
+        def unit(d: NDArray[np.float64]) -> NDArray[np.float64]:
+            n = float(np.linalg.norm(d))
+            return d / n if n > 1e-12 else np.zeros(3)
+
+        J = np.zeros((15, 9))
+
+        # 1. Distâncias para os inboards (só dependem do próprio ponto)
+        J[0, 0:3] = unit(ubj - uca_in_moved)
+        J[1, 3:6] = unit(lbj - lca_in_moved)
+        J[2, 6:9] = unit(tro - tr_in_moved)
+
+        # 2. Distâncias internas da manga (par de pontos, sinais opostos)
+        u = unit(ubj - lbj); J[3, 0:3] = u; J[3, 3:6] = -u
+        u = unit(ubj - tro); J[4, 0:3] = u; J[4, 6:9] = -u
+        u = unit(lbj - tro); J[5, 3:6] = u; J[5, 6:9] = -u
+
+        # 3. Regularização
+        J[6:15, :] = np.eye(9) * self._REG_WEIGHT
+        return J
 
     # =========================================================================
     # Movimento dos pontos do chassi (heave + roll)

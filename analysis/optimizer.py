@@ -30,7 +30,7 @@ FLUXO DE USO:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -164,6 +164,13 @@ class SuspensionOptimizer:
     workers:         int  = 1
     polish:          bool = True
     verbose:         bool = False
+
+    # ─── Callback de progresso (opcional) ─────────────────────────────────────
+    # Chamado uma vez por geração: on_generation(geração, melhor_custo, convergência).
+    # Retornar True INTERROMPE a otimização (early stop), mantendo o melhor
+    # indivíduo encontrado até então. Útil para barras de progresso e limites
+    # de tempo em UIs.
+    on_generation: Optional[Callable[[int, float, float], bool]] = None
 
     # -------------------------------------------------------------------------
     # Inicialização: cria bounds default se não fornecidos
@@ -381,6 +388,22 @@ class SuspensionOptimizer:
                     # Amostragem uniforme nos bounds
                     init_pop[i, j] = rng.uniform(lo, hi)
 
+        # ─── Callback por geração: histórico de convergência + early stop ─────
+        # Usa a assinatura legada do scipy `callback(xk, convergence)`, que
+        # funciona em qualquer versão. `xk` é o melhor indivíduo da geração;
+        # reavaliá-lo custa 1 avaliação extra por geração (desprezível frente
+        # às population_size × 12 avaliações da geração).
+        history: list[float] = []
+
+        def _de_callback(xk, convergence: float = 0.0) -> bool:
+            best_cost = float(self.objective(np.asarray(xk)))
+            history.append(best_cost)
+            if self.on_generation is not None:
+                return bool(self.on_generation(
+                    len(history), best_cost, float(convergence),
+                ))
+            return False
+
         # ─── Roda differential_evolution ──────────────────────────────────────
         result = differential_evolution(
             func=self.objective,
@@ -395,6 +418,7 @@ class SuspensionOptimizer:
             workers=self.workers,
             polish=self.polish,
             disp=self.verbose,
+            callback=_de_callback,
             updating="deferred" if self.workers != 1 else "immediate",
         )
 
@@ -405,6 +429,7 @@ class SuspensionOptimizer:
             cost=float(result.fun),
             x=result.x,
             scipy_result=result,
+            convergence_history=history,
         )
 
 
@@ -420,6 +445,8 @@ class OptimizationResult:
     cost:            float
     x:               NDArray[np.float64]
     scipy_result:    OptimizeResult
+    # Melhor custo ao fim de cada geração (índice 0 = geração 1)
+    convergence_history: list[float] = field(default_factory=list)
 
     def summary(self) -> str:
         """Resumo formatado do resultado."""
@@ -536,20 +563,24 @@ def validate_against_targets(
         _row("Trail Mecânico", targets.mechanical_trail_target_mm,
              corner.static_mechanical_trail_mm(), "mm", tol=3.0, fmt="+.2f")
 
-    # ─── DINÂMICOS ────────────────────────────────────────────────────────────
-    _row("Camber Gain", targets.camber_gain_target_deg_per_mm,
-         camber_gain_per_mm(sweep), "°/mm", tol=0.005, fmt="+.5f")
+    # ─── DINÂMICOS (peso 0 = termo desativado, fora do relatório) ─────────────
+    if targets.w_camber_gain > 0.0:
+        _row("Camber Gain", targets.camber_gain_target_deg_per_mm,
+             camber_gain_per_mm(sweep), "°/mm", tol=0.005, fmt="+.5f")
 
-    bs = bump_steer_per_mm(sweep)
-    _row("Bump Steer (|max|)", 0.0, abs(bs), "°/mm",
-         tol=targets.bump_steer_max_abs_deg_per_mm, fmt="+.5f")
+    if targets.w_bump_steer > 0.0:
+        bs = bump_steer_per_mm(sweep)
+        _row("Bump Steer (|max|)", 0.0, abs(bs), "°/mm",
+             tol=targets.bump_steer_max_abs_deg_per_mm, fmt="+.5f")
 
-    rc_z = float(np.mean(sweep["rc_z_mm"]))
-    _row("RC Height (médio)", targets.rc_height_target_mm,
-         rc_z, "mm", tol=10.0, fmt="+.2f")
+    if targets.w_rc_height > 0.0:
+        rc_z = float(np.mean(sweep["rc_z_mm"]))
+        _row("RC Height (médio)", targets.rc_height_target_mm,
+             rc_z, "mm", tol=10.0, fmt="+.2f")
 
-    dy, _dz = rc_migration_range(sweep)
-    _row("RC ΔY (migração)", targets.rc_y_migration_max_mm,
-         dy, "mm", tol=targets.rc_y_migration_max_mm, fmt="+.2f")
+    if targets.w_rc_migration > 0.0:
+        dy, _dz = rc_migration_range(sweep)
+        _row("RC ΔY (migração)", targets.rc_y_migration_max_mm,
+             dy, "mm", tol=targets.rc_y_migration_max_mm, fmt="+.2f")
 
     return TargetValidation(rows=rows)
