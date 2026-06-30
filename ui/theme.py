@@ -27,7 +27,7 @@ THEMES: dict[str, dict[str, str]] = {
     "🏁 PUCPR Racing": {
         "base": "light",
         "primaryColor": "#E10600",
-        "backgroundColor": "#FFFFFF",
+        "backgroundColor": "#F5F5F5",
         "secondaryBackgroundColor": "#F3F4F6",
         "textColor": "#111827",
         "sidebar.backgroundColor": "#15151E",
