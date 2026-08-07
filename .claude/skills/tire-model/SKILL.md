@@ -1,19 +1,101 @@
 ---
-description: "Tire modelling: MF5.2 / Pacejka coefficients, fitting workflow from TTC data, ISO vs SAE sign conventions, load and camber sensitivity, brush-model fallback. Use when writing tire-related code in vdcore/tire/. IMPORTANT: PUCPR Racing does NOT yet have tire data — say so explicitly when asked."
+description: "Tire modelling: TTC data loading, raw-data analysis, sign conventions, load and camber sensitivity, MF5.2 fitting (future). Use when writing tire-related code in vdcore/tire/."
 ---
 
-## Current status: NO TIRE DATA
+## Current status: RAW DATA ANALYSIS
 
-PUCPR Racing does not yet have TTC (Tire Test Consortium) data. TTC acquisition is pending.
+PUCPR Racing has TTC (Tire Test Consortium) data. The current module loads raw .mat files, applies sign-convention corrections, conditions the data, and computes design-relevant metrics from binned raw data — no Magic Formula fitting yet. Fitting comes later; 80 % of design-relevant information is readable from binned raw data.
 
-**When asked to compute anything that requires tire data:**
-1. State clearly: "This requires tire data that the team does not have yet."
-2. Raise `NotImplementedError` in code with a message naming the missing input.
-3. Never invent placeholder coefficients — they produce plausible-looking but wrong results.
+## Sign convention — adapted-SAE (TTC) → ISO 8855 (this project)
 
-The brush-model fallback (section below) can provide order-of-magnitude estimates for early design, but must be clearly labelled as estimates.
+**This is the single most common source of bugs when importing tire data. Every channel must be derived from the frame definitions, not guessed.**
 
-## Magic Formula 5.2 (Pacejka '02)
+### Frame definitions
+
+| Axis | Adapted SAE (TTC raw) | ISO 8855 (this project) |
+|---|---|---|
+| X | Forward | Forward |
+| Y | **Right** | **Left** |
+| Z | **Down** | **Up** |
+
+Both frames are right-handed with X forward, but Y and Z are inverted.
+
+### Channel-by-channel derivation
+
+A force that points physically rightward has:
+- Adapted SAE: positive FY (Y+ = right)
+- ISO 8855: **negative** FY (Y+ = left)
+
+Therefore **FY flips sign** when converting from adapted SAE to ISO 8855.
+
+The same logic applies to every quantity whose physical direction involves Y or Z:
+
+| Channel | Physical meaning | Axis involved | Flips? | Reason |
+|---|---|---|---|---|
+| SA (slip angle) | Angle of velocity from heading, positive = wheel pointed right of travel in SAE | Y (lateral) | **Yes — negate** | ISO 8855 positive SA = wheel pointed left of travel |
+| FX | Longitudinal force | X | No | X axis is the same in both frames |
+| FY | Lateral force | Y | **Yes — negate** | Y axis reverses |
+| FZ | Normal (vertical) load | Z | **Yes — negate** | TTC FZ is negative (downward in Z-down); ISO FZ is positive (upward, Z-up). After negation a loaded tire has FZ > 0 |
+| MX | Overturning moment | About X | **Yes — negate** | Moment about X follows from Y/Z axis reversal |
+| MZ | Self-aligning torque | About Z | **Yes — negate** | Positive MZ in SAE = clockwise (top view); ISO 8855 positive MZ = counterclockwise (right-hand rule about Z-up) |
+| IA | Inclination angle (camber) | Tilt about X, measured toward Y | **Yes — negate** | Positive IA in SAE = tilt toward Y+ (rightward); in ISO positive IA = tilt toward Y+ (leftward) |
+| P | Inflation pressure | Scalar | No | |
+| V | Travel velocity | Scalar magnitude | No | |
+| RL | Loaded radius | Scalar length | No | |
+| RE | Effective rolling radius | Scalar length | No | |
+| SR | Slip ratio | Longitudinal | No | Defined as (Vx − Re·ω)/Vx; X axis is the same |
+| ET | Elapsed time | Scalar | No | |
+| TSTC/TSTI/TSTO | Tread temperatures | Scalar | No | |
+
+### Validation rule
+
+After conversion, a **positive slip angle** must produce a **positive lateral force** (leftward in ISO 8855) for a normal tire. This is the fundamental sanity check. If it fails, signs are wrong.
+
+### Implementation
+
+The conversion is applied once, at load time, in `vdcore.tire.ttc.load_ttc_mat()`. All downstream code sees only ISO 8855 signs and units. The raw file is never modified.
+
+## Units after conversion
+
+| Channel | Unit | Notes |
+|---|---|---|
+| SA | deg | Kept in degrees (TTC native); internal code converts to rad where needed |
+| FX, FY, FZ | N | |
+| MX, MZ | Nm | |
+| IA | deg | |
+| P | kPa | TTC ships kPa |
+| V | km/h | TTC ships km/h |
+| RL, RE | mm | TTC ships m; multiply by 1000 |
+| SR | dimensionless | |
+| ET | s | |
+| TSTC/TSTI/TSTO | °C | |
+
+## Conditioning
+
+TTC runs contain warmup sweeps, pressure transients, and temperature drift that must not enter analysis. Standard filters:
+
+1. **Warmup drop**: remove the first N seconds of each sweep
+2. **Pressure band**: keep only rows within ±X kPa of target pressure
+3. **Velocity band**: keep only rows within a target speed range
+4. **Temperature window**: drop rows where tread temperature is outside a stated range
+
+Every filter **must report how many rows it removed**. Silent data loss is not acceptable.
+
+## Raw-data metrics (no curve fitting)
+
+All metrics are computed per bin of (FZ, IA, P):
+
+- **peak_mu_lateral** — max |FY|/FZ, and the slip angle where it occurs
+- **cornering_stiffness** — dFY/dα near α ≈ 0, by linear regression over a stated window
+- **load_sensitivity** — dμ/dFZ across FZ bins, as a slope with R²
+- **camber_sensitivity** — dFY/dIA at peak slip angle
+- **peak_sharpness** — fraction of peak FY retained at ±2° from peak slip angle
+- **pneumatic_trail** — MZ/FY vs α
+- **loaded_radius_vs_fz** — regression of RL against FZ with tolerance
+
+**Critical**: report every metric over the FZ range the car actually runs (roughly 300–1200 N for FSAE), not over TTC's full test range. FSAE loads sit far below passenger-car test loads and tire rankings reorder in that band. The FZ window is an explicit argument with no default.
+
+## Magic Formula 5.2 (Pacejka '02) — FUTURE
 
 ### Coefficient structure
 
@@ -32,38 +114,14 @@ MF5.2 adds combined slip, camber effects, and turn slip through ~100+ coefficien
 - `rBy`, `rCy`, `rHy` — combined lateral
 - `qBz`, `qCz`, `qDz`, `qEz` — self-aligning torque
 
-### Load sensitivity
+### Fitting workflow (not yet implemented)
 
-All peak forces scale with normal load Fz, but not linearly — the **load sensitivity** means the friction coefficient decreases at higher loads. This is why lightweight FSAE cars produce more grip per unit load than heavier cars.
-
-### Camber sensitivity
-
-Camber thrust: a cambered tire generates lateral force even at zero slip angle. Coefficient `pDy3` controls the magnitude. Typical: 0.5–1.5 N per degree of camber per kN of load.
-
-## ISO 8855 vs adapted-SAE sign convention
-
-**This is the single most common source of bugs when importing tire data.**
-
-| Quantity | ISO 8855 (this project) | Adapted SAE (TTC raw data) |
-|---|---|---|
-| Slip angle | Positive = wheel pointed left of travel | Positive = wheel pointed right of travel |
-| Lateral force | Positive = leftward | Positive = rightward |
-| Self-aligning torque | Positive = counterclockwise (top view) | Positive = clockwise |
-
-**When importing TTC .mat or .csv files:**
-1. Check which convention the data uses (stated in the file header or README).
-2. If adapted SAE: negate slip angle, lateral force Fy, and self-aligning moment Mz.
-3. Validate by checking: positive slip angle should produce a positive (leftward) lateral force in ISO 8855.
-
-## Fitting workflow (for when TTC data arrives)
-
-1. Load raw TTC data (.mat format, typically from FSAE TTC rounds)
-2. Apply sign convention correction (see above)
-3. Separate sweeps: pure lateral (Fx ≈ 0), pure longitudinal (α ≈ 0), combined
-4. Fit pure slip coefficients first using `scipy.optimize.least_squares`
-5. Fit combined slip coefficients using the pure slip results as fixed
-6. Validate: plot measured vs fitted for each sweep, report RMS error
-7. Store coefficients in a versioned JSON file with metadata (tire name, test date, pressure, etc.)
+1. Load raw TTC data and apply sign convention correction (done — see above)
+2. Separate sweeps: pure lateral (Fx ≈ 0), pure longitudinal (α ≈ 0), combined
+3. Fit pure slip coefficients first using `scipy.optimize.least_squares`
+4. Fit combined slip coefficients using the pure slip results as fixed
+5. Validate: compare measured vs fitted for each sweep, report RMS error
+6. Store coefficients in a versioned JSON file with metadata
 
 ## Brush model fallback
 

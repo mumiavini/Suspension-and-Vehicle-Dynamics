@@ -16,7 +16,7 @@ Concretely: targets are arguments to a query, not properties of the design space
 - Not an FEA tool (no stress, deflection, fatigue)
 - Not a lap-time simulator
 - Not an optimizer that picks geometry — it evaluates geometry the designer proposes
-- Does not compute anything that requires tire data until TTC data is acquired
+- Magic Formula tire fitting is not yet implemented — raw binned metrics only
 
 ## Layering rule (absolute)
 
@@ -45,11 +45,13 @@ Never mix. Use unit suffixes on ambiguous variable names: `steer_angle_deg`, `ra
 - Toe-in positive.
 - **Per-side vs total must always be explicit** on every toe quantity: `toe_deg_per_side`, `total_toe_deg`. This has caused confusion on the real car — never leave it ambiguous.
 
-## Design scope — clean-sheet, no tire data
+## Design scope — clean-sheet, TTC tire data available
 
 This is a clean-sheet FSAE26 design. There is no existing car geometry to validate against. The only fixed inputs are: powertrain, brake discs, springs, and dampers. Everything else is a design variable.
 
-The tool produces geometrically sound designs but **cannot derive the performance targets it serves** — those come from literature (Milliken RCVD, Optimum G, SAE papers) and must be tagged `source="design_intent"` with a rationale string in every report and config that uses them. Never present a literature-derived target as a measured or computed value.
+TTC tire data is available. `vdcore/tire/` loads raw .mat files, converts adapted-SAE → ISO 8855, conditions the data, and computes design-relevant metrics from binned raw data. Magic Formula fitting is not yet implemented.
+
+Targets derived from raw tire data can carry `source="measured"`. Targets still derived from literature (Milliken RCVD, Optimum G, SAE papers) must be tagged `source="design_intent"` with a rationale string. Never present a literature-derived target as a measured or computed value.
 
 ## Provenance
 
@@ -99,7 +101,7 @@ vdcore/                     # PURE LIBRARY — zero UI imports
   models/                   # pydantic v2: Hardpoint, Corner, Vehicle, Target, TirePackage
   geometry/                 # kinematic primitives, 3D solver, frame transforms
   analysis/                 # KPIs, sweeps, camber, steering
-  tire/                     # MF5.2 fitting + evaluation (stub until TTC data)
+  tire/                     # TTC loader, conditioning, raw-data metrics, comparison
   optimize/                 # differential_evolution wrappers
   io/                       # config load/save, frame transforms, CSV/JSON export
   validate/                 # cross-checks vs Optimum Kinematics, benchmark cases
