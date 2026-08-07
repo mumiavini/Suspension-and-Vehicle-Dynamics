@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from vdcore.explain import Explained
 from vdcore.models.mass import MassProperties, UnsprungMassSet
 
 
@@ -138,10 +139,7 @@ def lateral_load_transfer(
     m_front_total = m_total * fmf
     m_rear_total = m_total * (1.0 - fmf)
 
-    ra_height_mm = (
-        front_rc_height_mm * (1.0 - fmf)
-        + rear_rc_height_mm * fmf
-    )
+    ra_height_mm = front_rc_height_mm * (1.0 - fmf) + rear_rc_height_mm * fmf
 
     h_sprung_above_ra = h_cg - ra_height_mm
 
@@ -161,40 +159,24 @@ def lateral_load_transfer(
     if unsprung.rr.has_estimates():
         estimates.append("unsprung_rr")
 
-    front_geom = (
-        m_front_total * ay_ms2 * front_rc_height_mm / 1000.0
-    ) / front_track_mm * 1000.0
+    front_geom = (m_front_total * ay_ms2 * front_rc_height_mm / 1000.0) / front_track_mm * 1000.0
 
-    rear_geom = (
-        m_rear_total * ay_ms2 * rear_rc_height_mm / 1000.0
-    ) / rear_track_mm * 1000.0
+    rear_geom = (m_rear_total * ay_ms2 * rear_rc_height_mm / 1000.0) / rear_track_mm * 1000.0
 
     if k_total > 0:
         elastic_moment_nm = m_sprung * ay_ms2 * h_sprung_above_ra / 1000.0
-        front_elastic = (
-            elastic_moment_nm * (k_front / k_total) / front_track_mm * 1000.0
-        )
-        rear_elastic = (
-            elastic_moment_nm * (k_rear / k_total) / rear_track_mm * 1000.0
-        )
+        front_elastic = elastic_moment_nm * (k_front / k_total) / front_track_mm * 1000.0
+        rear_elastic = elastic_moment_nm * (k_rear / k_total) / rear_track_mm * 1000.0
     else:
         front_elastic = 0.0
         rear_elastic = 0.0
 
-    usm_h_front = (
-        unsprung.fl.cg_height_mm.value + unsprung.fr.cg_height_mm.value
-    ) / 2.0
-    usm_h_rear = (
-        unsprung.rl.cg_height_mm.value + unsprung.rr.cg_height_mm.value
-    ) / 2.0
+    usm_h_front = (unsprung.fl.cg_height_mm.value + unsprung.fr.cg_height_mm.value) / 2.0
+    usm_h_rear = (unsprung.rl.cg_height_mm.value + unsprung.rr.cg_height_mm.value) / 2.0
 
-    front_unsprung = (
-        usm_front * ay_ms2 * usm_h_front / 1000.0
-    ) / front_track_mm * 1000.0
+    front_unsprung = (usm_front * ay_ms2 * usm_h_front / 1000.0) / front_track_mm * 1000.0
 
-    rear_unsprung = (
-        usm_rear * ay_ms2 * usm_h_rear / 1000.0
-    ) / rear_track_mm * 1000.0
+    rear_unsprung = (usm_rear * ay_ms2 * usm_h_rear / 1000.0) / rear_track_mm * 1000.0
 
     front_total = front_geom + front_elastic + front_unsprung
     rear_total = rear_geom + rear_elastic + rear_unsprung
@@ -294,3 +276,92 @@ def sprung_mass_front_fraction(
     if m_sprung <= 0:
         return 0.5
     return (m_front - usm_front) / m_sprung
+
+
+def lateral_load_transfer_explained(
+    mass: MassProperties,
+    unsprung: UnsprungMassSet,
+    *,
+    ay_g: float,
+    front_rc_height_mm: float,
+    rear_rc_height_mm: float,
+    front_track_mm: float,
+    rear_track_mm: float,
+    front_roll_stiffness_nm_per_deg: float,
+    rear_roll_stiffness_nm_per_deg: float,
+    wheelbase_mm: float,
+) -> Explained[VehicleLoadTransferResult]:
+    """Lateral load transfer with full derivation audit trail.
+
+    Calls :func:`lateral_load_transfer` internally and wraps the
+    result in an :class:`Explained` object.
+    """
+    result = lateral_load_transfer(
+        mass,
+        unsprung,
+        ay_g=ay_g,
+        front_rc_height_mm=front_rc_height_mm,
+        rear_rc_height_mm=rear_rc_height_mm,
+        front_track_mm=front_track_mm,
+        rear_track_mm=rear_track_mm,
+        front_roll_stiffness_nm_per_deg=front_roll_stiffness_nm_per_deg,
+        rear_roll_stiffness_nm_per_deg=rear_roll_stiffness_nm_per_deg,
+        wheelbase_mm=wheelbase_mm,
+    )
+
+    g = 9.81
+    m_total = mass.total_mass_kg.value
+    m_sprung = sprung_mass_kg(mass, unsprung)
+    fmf = mass.front_mass_fraction.value
+    ra_height_mm = front_rc_height_mm * (1.0 - fmf) + rear_rc_height_mm * fmf
+
+    def _src(field_name: str) -> str:
+        pf = getattr(mass, field_name, None)
+        if pf is not None:
+            return str(pf.source)
+        return "computed"
+
+    return Explained(
+        value=result,
+        formula="delta_fz_total = m * ay * h_cg / t",
+        inputs={
+            "m": (m_total, "kg", _src("total_mass_kg")),
+            "ay": (ay_g * g, "m/s^2", "computed"),
+            "h_cg": (mass.cg_height_mm.value / 1000.0, "m", _src("cg_height_mm")),
+            "t": (front_track_mm / 1000.0, "m", "computed"),
+            "ay_g": (ay_g, "g", "computed"),
+            "front_rc_height_mm": (front_rc_height_mm, "mm", "computed"),
+            "rear_rc_height_mm": (rear_rc_height_mm, "mm", "computed"),
+            "front_track_mm": (front_track_mm, "mm", "computed"),
+            "rear_track_mm": (rear_track_mm, "mm", "computed"),
+            "front_roll_stiffness_nm_per_deg": (
+                front_roll_stiffness_nm_per_deg,
+                "Nm/deg",
+                "computed",
+            ),
+            "rear_roll_stiffness_nm_per_deg": (
+                rear_roll_stiffness_nm_per_deg,
+                "Nm/deg",
+                "computed",
+            ),
+        },
+        intermediates={
+            "sprung_mass_kg": m_sprung,
+            "roll_axis_height_mm": ra_height_mm,
+            "front_geometric_n": result.front.geometric_delta_fz_n,
+            "front_elastic_n": result.front.elastic_delta_fz_n,
+            "front_unsprung_n": result.front.unsprung_delta_fz_n,
+            "rear_geometric_n": result.rear.geometric_delta_fz_n,
+            "rear_elastic_n": result.rear.elastic_delta_fz_n,
+            "rear_unsprung_n": result.rear.unsprung_delta_fz_n,
+            "lltd": result.lltd,
+        },
+        reference="Milliken RCVD Ch. 18 — lateral load transfer decomposition",
+        assumptions=[
+            "Quasi-static (no transients, dampers irrelevant)",
+            "Small angles (sin phi ~ phi, cos phi ~ 1)",
+            "Roll axis fixed at static position",
+            "Rigid chassis (no torsional flex)",
+            "Tire vertical stiffness neglected",
+        ],
+    )
