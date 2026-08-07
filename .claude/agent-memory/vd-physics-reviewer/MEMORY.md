@@ -1,0 +1,2 @@
+- [Audit findings v1](audit-findings-v1.md) -- First comprehensive audit of vdcore geometry+analysis (2026-08-05)
+- [Audit roll centre v1](audit-roll-centre-v1.md) -- FVIC and RC construction audit: asymmetric RC bug, degenerate fallback, test comment (2026-08-05)

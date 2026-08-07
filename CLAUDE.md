@@ -1,63 +1,141 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project
 
-FSAE suspension geometry engine for the PUCPR Racing team (FSAE26 car): analyzes and optimizes double-A-arm suspension hardpoints. The whole project (code, comments, UI, README) is in **English** — communicate with the user in English.
+`vdcore` — a Python library and Streamlit application for FSAE suspension and steering design support. Built by PUCPR Racing (team #27) for the FSAE26 car. This is a kinematics design-support tool, **not** a lap-time simulator. It makes design trade-offs visible, quantified, and defensible — for internal decisions and Design Event judging.
+
+## Design principle — trade-off tool, not decision-maker
+
+The tool computes trade-offs. The designer chooses the geometry. The tool must **never present a recommended value**. It presents consequences and sensitivities; the designer picks and defends the pick.
+
+Concretely: targets are arguments to a query, not properties of the design space. The primary interface is a sweep/what-if engine that fills a table of consequences for each combination the designer asks about. The solver fills the table; it does not pick a row. Telling the designer a combination is infeasible is information, not a decision.
+
+## What this project is NOT
+
+- Not a dynamics simulator (no wheel rates, damping, frequency response)
+- Not an FEA tool (no stress, deflection, fatigue)
+- Not a lap-time simulator
+- Not an optimizer that picks geometry — it evaluates geometry the designer proposes
+- Does not compute anything that requires tire data until TTC data is acquired
+
+## Layering rule (absolute)
+
+`vdcore/` is a **pure library**. It may import: `numpy`, `scipy`, `pydantic`, `polars`.
+It may **NEVER** import: `streamlit`, `plotly`, `PySide6`, `pyqtgraph`, `pyvista`, `matplotlib`.
+Every function in `vdcore/` must be callable from a bare Python REPL.
+Enforced by `scripts/check_purity.py`, `tests/unit/test_layering.py`, and a PostToolUse hook.
+
+## Coordinate system — ISO 8855
+
+- **X+ forward, Y+ LEFT, Z+ up.** Right-handed: X × Y = Z.
+- Origin: front axle centreline, ground plane, vehicle centreline.
+- **Y+ is LEFT.** Left wheels (FL, RL) have positive Y. Right wheels (FR, RR) have negative Y. This is the opposite of the old codebase and most FSAE CAD defaults.
+- Rotations follow the right-hand rule: roll about X, pitch about Y, yaw about Z.
+- This is the native frame for MF-Tyre / Pacejka — no conversion needed for the tire module.
+- See `.claude/skills/vd-conventions/references/frames.md` for conversion matrices to J670e, SolidWorks, Optimum Kinematics, and the legacy project frame.
+
+## Units
+
+mm (length), N (force), Nm (torque), deg (angles in user-facing I/O), rad (angles internally).
+Never mix. Use unit suffixes on ambiguous variable names: `steer_angle_deg`, `rack_travel_mm`.
+
+## Sign conventions
+
+- Negative camber = top of wheel inboard (both sides).
+- Toe-in positive.
+- **Per-side vs total must always be explicit** on every toe quantity: `toe_deg_per_side`, `total_toe_deg`. This has caused confusion on the real car — never leave it ambiguous.
+
+## Design scope — clean-sheet, no tire data
+
+This is a clean-sheet FSAE26 design. There is no existing car geometry to validate against. The only fixed inputs are: powertrain, brake discs, springs, and dampers. Everything else is a design variable.
+
+The tool produces geometrically sound designs but **cannot derive the performance targets it serves** — those come from literature (Milliken RCVD, Optimum G, SAE papers) and must be tagged `source="design_intent"` with a rationale string in every report and config that uses them. Never present a literature-derived target as a measured or computed value.
+
+## Provenance
+
+Every `Hardpoint` carries `source: Literal["cad", "measured", "estimate", "design_intent"]` and `tol_mm: float` (required, no default). `TirePackage` carries the same.
+
+- `cad` — extracted from the team's CAD model
+- `measured` — physically measured on the car
+- `estimate` — engineering estimate, not yet validated
+- `design_intent` — a value chosen by the designer, not measured or computed
+
+`static_camber_deg` and `static_toe_deg_per_side` on `Corner` are design variables (source: `design_intent`), not measured properties.
+
+Any analysis consuming an estimate-tagged input must be able to report that fact.
+
+## Numerical conventions
+
+Every solver returns convergence status. Non-convergence raises or returns an explicit failure object — **never a plausible-looking number silently.** Use scipy's default trust-region method (not LM — LM does not support bounds). Numerical Jacobian by default; analytic only after separate validation.
+
+## Language and typing
+
+All English: comments, docstrings, identifiers, docs. Full type hints on `vdcore/`. mypy strict-equivalent flags on `vdcore/` (individual flags in `pyproject.toml` overrides). `apps/` may be looser.
 
 ## Commands
 
-```powershell
-# Run the app (project venv in .venv\)
+```bash
+# Run tests
+uv run pytest
+
+# Lint and format
+uv run ruff check vdcore/
+uv run ruff format vdcore/
+
+# Type check
+uv run mypy vdcore/
+
+# Purity check
+python scripts/check_purity.py
+
+# Run the Streamlit app (existing, uses .venv)
 & .venv\Scripts\streamlit.exe run app.py
-
-# Install dependencies
-& .venv\Scripts\python.exe -m pip install -r requirements.txt
-
-# Quick sanity check of the engine (without Streamlit)
-& .venv\Scripts\python.exe -c "from geometry import Point3D; print(Point3D(1,2,3))"
 ```
 
-There is no test suite or linter configured. To validate changes:
+## Repository structure
 
-- **Smoke test**: `streamlit.testing.v1.AppTest.from_file("app.py", default_timeout=60)` — run with an empty session and with the demo (`generate_template_dataframe()`), check `at.exception`.
-- **Visual check**: bring the app up on an alternate port (`--server.headless true --server.port 85xx`) and use **Selenium + Edge headless** (`--headless=new`). The one-shot `msedge --screenshot` does NOT render Streamlit. The sidebar is `section[data-testid='stSidebar']` (not `div`).
-- On the Windows console, set `$env:PYTHONIOENCODING='utf-8'` before running Python scripts that print emoji/accents (the app uses emoji in labels).
+```
+vdcore/                     # PURE LIBRARY — zero UI imports
+  models/                   # pydantic v2: Hardpoint, Corner, Vehicle, Target, TirePackage
+  geometry/                 # kinematic primitives, 3D solver, frame transforms
+  analysis/                 # KPIs, sweeps, camber, steering
+  tire/                     # MF5.2 fitting + evaluation (stub until TTC data)
+  optimize/                 # differential_evolution wrappers
+  io/                       # config load/save, frame transforms, CSV/JSON export
+  validate/                 # cross-checks vs Optimum Kinematics, benchmark cases
+legacy_app/                 # FROZEN — original Streamlit app (not under active development)
+  geometry/                 #   primitives, 2D/3D solvers, model
+  analysis/                 #   io, KPIs, optimizer, sweeps, viz3d
+  ui/                       #   sidebar, tabs, theme
+  app.py                    #   Streamlit entry point
+tests/
+  unit/                     # pytest
+  property/                 # hypothesis
+  benchmarks/               # known-answer cases
+docs/
+  README.md                 # full legacy app documentation
+  onboarding/               # for new team members
+  theory/                   # derivations with sign conventions
+scripts/                    # check_purity.py, hooks
+configs/                    # versioned vehicle configs
+```
 
-## Architecture
+## Glossary
 
-Three layers, with dependencies flowing only top-down:
-
-1. **`geometry/`** — pure mathematical engine (numpy/scipy, zero Streamlit).
-   - `primitives.py`: `Point3D`/`Vector3D`/`Point2D` + intersections.
-   - `model_3d.py`: `ControlArm`, `KingpinGeometry`, `SuspensionCorner`, `Vehicle` — static KPIs (caster, KPI, scrub, trail, RC height…).
-   - `solver_3d.py`: `KinematicSolver3D` — treats the upright as a rigid body and solves the position for a state `(heave, roll, rack)` via 3-sphere intersection + `least_squares` (Levenberg-Marquardt). It is the heart of the dynamic computation.
-   - `solver_2d.py`: four-bar mechanism in the front Y-Z view (used for the Roll Center).
-2. **`analysis/`** — uses `geometry/`:
-   - `io_hardpoints.py`: reading/validation/writing (csv/xlsx/json) and construction of `SuspensionCorner`/`Vehicle` from **polars** DataFrames. Defines `VALID_CORNERS` (FL/FR/RL/RR), `REQUIRED_POINTS_PER_CORNER` (10 points per corner) and `HardpointValidationError` — all input validation goes through here.
-   - `sweeps.py`: `SweepRunner` (heave/roll/steer sweeps over the 3D solver) → numpy arrays; dynamic KPIs (camber gain, bump steer, RC migration) and Plotly plots.
-   - `optimizer.py`: synthesis via `scipy.optimize.differential_evolution` — `DesignTargets` (static + dynamic targets), `HardpointBounds` (keep-out), `validate_against_targets()`.
-   - `kpis.py`: full-vehicle KPIs (Ackermann, steer ratio, anti-dive, RC @ 1g, `build_full_report()`).
-   - `viz3d.py`: 3D Plotly visualization (corner, vehicle, animation).
-3. **`app.py` + `ui/`** — Streamlit layer. `app.py` is orchestration only (page config, theme, header, sidebar, `st.tabs`); each of the 5 tabs (Inputs / Analysis / View 3D / Synthesis / Comparison) lives in `ui/tab_*.py` exposing `render()`. Support: `ui/theme.py` (presets `THEMES`, CSS, header), `ui/sidebar.py` and `ui/shared.py` (empty-state, safe builders, sweep cache via `_geometry_signature()`).
-
-### Data flow in the app
-
-Hardpoints file → validated polars DataFrame → `st.session_state["hardpoints_df"]` (+ `"hardpoints_source"`) is the **single source of truth**; the tabs build corners from it on every rerun. Sweeps are cached with `@st.cache_data` keyed by `_geometry_signature()` in `ui/shared.py` (hashable tuple of all hardpoints) — if you add a new hardpoint to the model, include it in the signature. The Synthesis tab (`ui/tab_synthesis.py`) uses `st.fragment` and publishes `last_optimization`, consumed by the Comparison tab. The manual editor (`ui/tab_inputs.py`) keeps its own state (`manual_hardpoints`) synced via `manual_synced_source`.
-
-### Domain conventions
-
-- **SAE J670** axes: origin at the center of the front axle at ground level; X+ = front, Y+ = left, Z+ = up. Units: **mm** and **degrees** (never inches/radians).
-- Scope is **pure kinematics** (does not compute wheel rate, motion ratio, frequency, damping — see README §2 and §15 before promising a new KPI).
-
-## UI conventions (keep consistent)
-
-- Width: `width="stretch"` — **never** `use_container_width` (deprecated).
-- Metrics with `border=True`; `st.segmented_control`/`st.pills` return `None` when deselected — always handle the fallback.
-- Standard empty-state via `render_empty_state()` from `ui/shared.py` (inline demo button); status badges in the header.
-- **Themes**: `.streamlit/config.toml` defines only the boot state; the selectable presets live in the `THEMES` dict in `ui/theme.py`, applied via `st._config.set_option("theme.*")` + forced rerun (config is global to the process). If you change `config.toml`, update `_DEFAULT_THEME` to the equivalent preset.
-
-## Documentation
-
-The `README.md` is the end-user documentation (physics concepts, file format, tutorial, glossary) — update it when you change visible behavior. Note: the README's tab tour (§8) is partially out of date relative to the actual tab order in `app.py`.
+| Term | Symbol | Unit |
+|---|---|---|
+| Camber | γ | deg |
+| Caster | τ | deg |
+| Kingpin inclination (KPI) | σ | deg |
+| Scrub radius | rs | mm |
+| Mechanical trail | tm | mm |
+| Toe (per side) | δtoe | deg |
+| Roll centre height | hRC | mm |
+| Instant centre | IC | — |
+| Front-view swing arm (FVSA) | — | mm |
+| Side-view swing arm (SVSA) | — | mm |
+| Anti-dive | %AD | % |
+| Anti-squat | %AS | % |
+| Wheelbase | L | mm |
+| Track width | T | mm |
+| Steering ratio | — | :1 |

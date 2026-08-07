@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Type checking and linting
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Testing and hypothesis
+.hypothesis/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+_tmp_*.py
+_smoke*.py
+_shot.py
