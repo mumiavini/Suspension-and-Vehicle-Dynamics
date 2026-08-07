@@ -13,7 +13,7 @@ from typing import Any
 
 from vdcore.models.hardpoint import Vehicle
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 _ALLOWED_TOP_KEYS = frozenset(Vehicle.model_fields.keys())
 

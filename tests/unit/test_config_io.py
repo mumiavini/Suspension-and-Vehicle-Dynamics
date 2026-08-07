@@ -111,4 +111,4 @@ def test_schema_version_in_output(tmp_path: Path) -> None:
     path = tmp_path / "vehicle.json"
     save_vehicle(v, path)
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["schema_version"] == 1
+    assert data["schema_version"] == 2

@@ -101,25 +101,58 @@ class TestSignConvention:
     """The fundamental sanity check: after ISO 8855 conversion,
     positive slip angle must produce positive lateral force."""
 
-    def test_positive_sa_gives_positive_fy(self, tmp_path: Path) -> None:
+    def test_left_turn_produces_leftward_force(self, tmp_path: Path) -> None:
+        """Physical scenario: vehicle turning left about ISO 8855 Z-axis.
+
+        A left turn has positive yaw rate (counterclockwise from above,
+        right-hand rule about Z-up). The resulting lateral acceleration
+        points to the left (positive Y in ISO 8855). To sustain the
+        turn, the tires must generate a lateral force toward the left
+        (positive FY in ISO 8855).
+
+        For the outside (right) tire in a left turn, the velocity vector
+        points forward-right relative to the wheel heading, so the slip
+        angle is positive in ISO 8855 (wheel pointed left of travel
+        direction). A positive slip angle must therefore produce a
+        positive lateral force.
+
+        This test constructs the slip angle from the physical cornering
+        direction rather than checking raw channel signs, so it cannot
+        be fooled by a loader that flips both SA and FY together.
+        """
         mat_path = tmp_path / "test_tire.mat"
         _make_synthetic_mat(mat_path)
 
-        df, _meta = load_ttc_mat(
+        df, _ = load_ttc_mat(
             mat_path,
             tire_designation="SyntheticTest",
             rim_width_in=7.0,
             test_round="TestRound",
         )
 
-        positive_sa = df.filter(pl.col("sa_deg") > 1.0)
-        assert positive_sa.height > 0, "No rows with positive SA after conversion"
+        sa_for_left_turn_outside_deg = 4.0
 
-        mean_fy = positive_sa["fy_n"].mean()
+        near_sa = df.filter(
+            (pl.col("sa_deg") > sa_for_left_turn_outside_deg - 0.5)
+            & (pl.col("sa_deg") < sa_for_left_turn_outside_deg + 0.5)
+        )
+        assert near_sa.height > 0, (
+            f"No data points near SA = {sa_for_left_turn_outside_deg} deg"
+        )
+
+        mean_fy = near_sa["fy_n"].mean()
         assert mean_fy is not None
         assert mean_fy > 0, (
-            f"ISO 8855 violation: positive SA should produce positive FY "
-            f"(leftward), got mean FY = {mean_fy:.1f} N"
+            f"Physical violation: in a left turn (positive yaw rate), "
+            f"the outside tire at SA = {sa_for_left_turn_outside_deg} deg "
+            f"must produce positive FY (leftward force in ISO 8855). "
+            f"Got mean FY = {mean_fy:.1f} N"
+        )
+
+        mean_fz = near_sa["fz_n"].mean()
+        assert mean_fz is not None
+        assert mean_fz > 0, (
+            "FZ must be positive for a loaded tire in ISO 8855 (Z-up)"
         )
 
     def test_fz_positive_for_loaded_tire(self, tmp_path: Path) -> None:

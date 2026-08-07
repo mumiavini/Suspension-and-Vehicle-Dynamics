@@ -194,7 +194,7 @@ class TestVehicle:
         v = Vehicle(front=Axle(left=fl, right=fr), rear=Axle(left=rl, right=rr))
         d = v.model_dump()
         assert "wheelbase_mm" not in d
-        assert v.schema_version == 1
+        assert v.schema_version == 2
 
     def test_round_trip_json(self) -> None:
         fl = _fl_corner()

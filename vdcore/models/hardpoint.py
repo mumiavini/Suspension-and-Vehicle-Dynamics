@@ -10,6 +10,8 @@ from typing import Literal
 
 from pydantic import BaseModel, model_validator
 
+from vdcore.models.mass import MassProperties, UnsprungMassSet
+
 
 class DerivedPoint(BaseModel, frozen=True):
     """A computed 3D point with no provenance — derived, not measured.
@@ -130,11 +132,17 @@ class Axle(BaseModel, frozen=True):
 
 
 class Vehicle(BaseModel, frozen=True):
-    """Full vehicle: front and rear axles.
+    """Full vehicle: front and rear axles, optional mass properties.
 
     Derived dimensions (track, wheelbase) are in vdcore.geometry.derived.
+
+    mass and unsprung_mass are optional so that geometry-only configs
+    remain valid. Any analysis that requires mass will fail explicitly
+    if these are None rather than silently using a placeholder.
     """
 
     front: Axle
     rear: Axle
-    schema_version: int = 1
+    mass: MassProperties | None = None
+    unsprung_mass: UnsprungMassSet | None = None
+    schema_version: int = 2

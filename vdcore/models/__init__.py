@@ -1,1 +1,1 @@
-"""Pydantic v2 data models for suspension geometry."""
+"""Pydantic v2 data models for suspension geometry and vehicle mass."""
