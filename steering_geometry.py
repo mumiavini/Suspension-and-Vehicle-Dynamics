@@ -1177,24 +1177,70 @@ def plot_steering(
 
 # Edit this block to change the steering design inputs.
 STEERING_2027 = SteeringInputs(
+    # -- Kingpin axis in side view --
+    # Kingpin tilt rearward at top. From CAD or target.
+    # Milliken RCVD §2.6, typically 3-7 deg for FSAE.
     caster_deg=5.0,
+    # Bodily X shift of the kingpin axis at wheel-centre height.
+    # From upright / spindle CAD.
     caster_offset_mm=0.0,
+    # -- Steering arm (TRO) --
+    # Cylindrical parameterisation about the kingpin axis.
+    # Distance from LBJ up the kingpin to the TRO base.
+    # From upright CAD.
     tro_height_along_kingpin_mm=40.0,
+    # Perpendicular distance from kingpin axis to TRO.
+    # From upright CAD. This IS the moment arm that sets
+    # C-factor and effort.
     steer_arm_length_mm=90.0,
+    # 0 = forward, +ve toward inboard. Choose to set
+    # Ackermann % (use --solve-ackermann to back-solve).
     steer_arm_angle_deg=15.0,
+    # -- Rack geometry (axis assumed lateral + horizontal) --
+    # Rack centreline x, +rearward from front axle.
+    # From chassis CAD / packaging study.
     rack_x_mm=30.0,
+    # Rack centreline height. From chassis CAD.
     rack_z_mm=100.0,
+    # Y of the inner tie-rod joint at zero steer.
+    # From rack housing CAD. Use --solve-bump-steer to
+    # back-solve for zero bump steer.
     rack_half_length_mm=230.0,
+    # -- Rack hardware --
+    # Pinion pitch radius. From rack/pinion datasheet.
     pinion_radius_mm=20.0,
+    # Half-stroke hard limit. From rack datasheet
+    # (total stroke = 2x this value).
     max_rack_travel_mm=25.0,
+    # Rim outer diameter. From steering wheel spec.
+    # Standard FSAE: 250-280 mm.
     steering_wheel_diameter_mm=260.0,
+    # -- Static alignment --
+    # Static toe-in per side. Design choice, set during
+    # corner-weight alignment.
     static_toe_deg_per_side=0.0,
+    # -- Design-intent targets --
+    # Arguments to a query, not values the script chases.
+    # Ideal Ackermann %. From vehicle dynamics targets.
+    # 100% = full Ackermann (Milliken RCVD §6.3).
     target_ackermann_pct=100.0,
+    # Outer wheel angle at which to evaluate Ackermann %.
+    # Pick a representative cornering steer angle.
     ackermann_at_steer_deg=2.0,
+    # Target bump-steer gradient. 0 = no bump steer
+    # (ideal). Used by --solve-bump-steer.
     target_bump_steer_deg_per_mm=0.0,
+    # -- Effort model --
+    # Tyre-ground friction for parking effort.
+    # ~0.7-1.0 on dry tarmac (Lenkungshandbuch §4.2).
     mu_parking=1.0,
+    # -- Sweep settings --
+    # Max road-wheel angle for the steer sweep plots.
     steer_sweep_deg=25.0,
+    # Number of points in each sweep.
     n_sweep=21,
+    # Tolerance tag on all emitted Hardpoints
+    # (feeds vdcore provenance).
     hardpoint_tol_mm=1.0,
 )
 
