@@ -597,23 +597,25 @@ class SteeringKinematics:
         )
 
     def _ackermann_at_steer(self, outer_steer_deg: float) -> float:
-        """Compute actual Ackermann % at a given outer wheel steer angle."""
+        """Compute actual Ackermann % at a given outer wheel steer angle.
+
+        Uses a LEFT turn (positive rack): FL is inner, FR is outer.
+        Finds the rack where FR (outer) reaches ``outer_steer_deg``, then
+        compares the FL (inner) steer with the Ackermann-ideal inner angle.
+        """
         T = self.inp.track_mm
         L = self.veh.wheelbase_mm
 
-        _, fr_static = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
+        fl_static, fr_static = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
 
-        # find the rack travel that gives the outer wheel the target angle
-        # positive rack → FR steers in negative toe direction
         def outer_err(rack: float) -> float:
             try:
                 _, fr = self.solve_pair(bump_mm=0.0, rack_mm=rack)
             except KinematicError:
                 return float("nan")
-            return (fr.toe_deg_per_side - fr_static.toe_deg_per_side) + outer_steer_deg
+            return abs(fr.toe_deg_per_side - fr_static.toe_deg_per_side) - outer_steer_deg
 
-        # bracket: sweep the full feasible rack range
-        lo = -self.steer.max_rack_travel_mm * 0.95
+        lo = 0.01
         hi = self.steer.max_rack_travel_mm * 0.95
 
         try:
@@ -627,26 +629,25 @@ class SteeringKinematics:
             return float("nan")
 
         fl_sol, fr_sol = self.solve_pair(bump_mm=0.0, rack_mm=rack_target)
-        fl_static, _ = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
 
-        delta_inner = fl_sol.toe_deg_per_side - fl_static.toe_deg_per_side
-        delta_outer = fr_sol.toe_deg_per_side - fr_static.toe_deg_per_side
+        delta_outer = abs(fr_sol.toe_deg_per_side - fr_static.toe_deg_per_side)
+        delta_inner = abs(fl_sol.toe_deg_per_side - fl_static.toe_deg_per_side)
 
-        if abs(delta_outer) < 1e-12:
+        if delta_outer < 1e-12:
             return 0.0
 
-        cot_outer = 1.0 / np.tan(abs(delta_outer) * D2R)
+        cot_outer = 1.0 / np.tan(delta_outer * D2R)
         cot_inner_ideal = cot_outer - T / L
         if abs(cot_inner_ideal) < 1e-12:
             delta_inner_ideal_deg = 90.0
         else:
             delta_inner_ideal_deg = R2D * np.arctan(1.0 / cot_inner_ideal)
 
-        denom = delta_inner_ideal_deg - abs(delta_outer)
+        denom = delta_inner_ideal_deg - delta_outer
         if abs(denom) < 1e-12:
             return 100.0
 
-        return float(100.0 * (abs(delta_inner) - abs(delta_outer)) / denom)
+        return float(100.0 * (delta_inner - delta_outer) / denom)
 
     def _worst_rod_end_misalignment(self) -> float:
         """Screening check: max swing of tie-rod direction over bump × steer."""
@@ -1180,20 +1181,20 @@ STEERING_2027 = SteeringInputs(
     caster_deg=5.0,
     caster_offset_mm=0.0,
     tro_height_along_kingpin_mm=40.0,
-    steer_arm_length_mm=90.0,
-    steer_arm_angle_deg=15.0,
+    steer_arm_length_mm=80.0,          # was 90.0 — shorter arm for ratio ~4.6:1
+    steer_arm_angle_deg=-12.0,         # was 15.0 — rotated for ~101% geometric Ackermann
     rack_x_mm=30.0,
-    rack_z_mm=100.0,
-    rack_half_length_mm=230.0,
-    pinion_radius_mm=20.0,
-    max_rack_travel_mm=25.0,
-    steering_wheel_diameter_mm=260.0,
+    rack_z_mm=139.3,                   # was 100.0
+    rack_half_length_mm=270.0,         # was 230.0 — wider rack shortens tie rod below 350 mm
+    pinion_radius_mm=16.0,             # was 20.0
+    max_rack_travel_mm=38.0,           # was 25.0
+    steering_wheel_diameter_mm=280.0,  # was 260.0
     static_toe_deg_per_side=0.0,
     target_ackermann_pct=100.0,
-    ackermann_at_steer_deg=2.0,
+    ackermann_at_steer_deg=10.0,
     target_bump_steer_deg_per_mm=0.0,
     mu_parking=1.0,
-    steer_sweep_deg=25.0,
+    steer_sweep_deg=30.0,
     n_sweep=21,
     hardpoint_tol_mm=1.0,
 )
