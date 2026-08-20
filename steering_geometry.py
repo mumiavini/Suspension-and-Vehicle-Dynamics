@@ -495,7 +495,8 @@ class SteeringRates:
     toe_at_full_droop_deg_per_side: float
     c_factor_mm_per_deg: float
     steering_ratio: float
-    max_steer_at_stroke_deg: float
+    max_steer_at_stroke_deg: float      # outer wheel (governs turning radius)
+    max_steer_inner_at_stroke_deg: float  # inner wheel (larger due to Ackermann)
     ackermann_pct_at_target: float
     worst_rod_end_misalignment_deg: float
 
@@ -543,22 +544,21 @@ class SteeringKinematics:
         inp = self.inp
         steer = self.steer
 
-        # --- bump steer (central difference about static, per-side) ---
+        # --- bump steer (central difference about static, FL only) ---
+        # FL and FR are symmetric: |dtoe_fl| = |dtoe_fr| with opposite sign.
+        # Averaging them cancels to zero. Use FL as the reference side.
         step = inp.travel_bump_mm / 20.0
-        fl_up, fr_up = self.solve_pair(bump_mm=+step, rack_mm=0.0)
-        fl_dn, fr_dn = self.solve_pair(bump_mm=-step, rack_mm=0.0)
+        fl_up, _ = self.solve_pair(bump_mm=+step, rack_mm=0.0)
+        fl_dn, _ = self.solve_pair(bump_mm=-step, rack_mm=0.0)
 
-        # average both sides
-        dtoe_fl = (fl_up.toe_deg_per_side - fl_dn.toe_deg_per_side) / (2.0 * step)
-        dtoe_fr = (fr_up.toe_deg_per_side - fr_dn.toe_deg_per_side) / (2.0 * step)
-        bump_steer_per_side = (dtoe_fl + dtoe_fr) / 2.0
-        bump_steer_total = dtoe_fl + dtoe_fr
+        bump_steer_per_side = (fl_up.toe_deg_per_side - fl_dn.toe_deg_per_side) / (2.0 * step)
+        bump_steer_total = 2.0 * abs(bump_steer_per_side)
 
-        # toe at full bump/droop
-        fl_fb, fr_fb = self.solve_pair(bump_mm=inp.travel_bump_mm, rack_mm=0.0)
-        fl_fd, fr_fd = self.solve_pair(bump_mm=-inp.travel_droop_mm, rack_mm=0.0)
-        toe_full_bump = (fl_fb.toe_deg_per_side + fr_fb.toe_deg_per_side) / 2.0
-        toe_full_droop = (fl_fd.toe_deg_per_side + fr_fd.toe_deg_per_side) / 2.0
+        # toe at full bump/droop (FL, per-side)
+        fl_fb, _ = self.solve_pair(bump_mm=inp.travel_bump_mm, rack_mm=0.0)
+        fl_fd, _ = self.solve_pair(bump_mm=-inp.travel_droop_mm, rack_mm=0.0)
+        toe_full_bump = fl_fb.toe_deg_per_side
+        toe_full_droop = fl_fd.toe_deg_per_side
 
         # --- C-factor: numerical (rack_mm per deg steer) ---
         eps = 0.5
@@ -573,10 +573,11 @@ class SteeringKinematics:
         else:
             steering_ratio = float("inf")
 
-        # --- max steer at stroke ---
-        fl_max, _ = self.solve_pair(bump_mm=0.0, rack_mm=steer.max_rack_travel_mm)
-        fl_static, _ = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
-        max_steer_deg = abs(fl_max.toe_deg_per_side - fl_static.toe_deg_per_side)
+        # --- max steer at stroke (outer = FR for +rack, inner = FL) ---
+        fl_max, fr_max = self.solve_pair(bump_mm=0.0, rack_mm=steer.max_rack_travel_mm)
+        fl_static, fr_static = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
+        max_steer_outer = abs(fr_max.toe_deg_per_side - fr_static.toe_deg_per_side)
+        max_steer_inner = abs(fl_max.toe_deg_per_side - fl_static.toe_deg_per_side)
 
         # --- Ackermann at target steer angle ---
         ack_pct = self._ackermann_at_steer(steer.ackermann_at_steer_deg)
@@ -591,7 +592,8 @@ class SteeringKinematics:
             toe_at_full_droop_deg_per_side=toe_full_droop,
             c_factor_mm_per_deg=c_factor,
             steering_ratio=steering_ratio,
-            max_steer_at_stroke_deg=max_steer_deg,
+            max_steer_at_stroke_deg=max_steer_outer,
+            max_steer_inner_at_stroke_deg=max_steer_inner,
             ackermann_pct_at_target=ack_pct,
             worst_rod_end_misalignment_deg=worst_misalign,
         )
@@ -741,7 +743,7 @@ class SteeringKinematics:
         racks = np.linspace(
             -self.steer.max_rack_travel_mm, self.steer.max_rack_travel_mm, n,
         )
-        fl_static, _ = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
+        fl_static, fr_static = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
         results: list[tuple[float, float, float, float]] = []
         for r in racks:
             try:
@@ -751,7 +753,7 @@ class SteeringKinematics:
             results.append((
                 float(r),
                 fl.toe_deg_per_side - fl_static.toe_deg_per_side,
-                fr.toe_deg_per_side - fl_static.toe_deg_per_side,
+                fr.toe_deg_per_side - fr_static.toe_deg_per_side,
                 fl.camber_deg,
             ))
         return results
@@ -1035,8 +1037,10 @@ def steering_report(
              f"{rates.c_factor_mm_per_deg:8.3f} mm/deg")
     L.append(f"   Steering ratio                 "
              f"{rates.steering_ratio:8.2f} :1")
-    L.append(f"   Max steer at full stroke       "
+    L.append(f"   Max steer at stroke (outer)    "
              f"{rates.max_steer_at_stroke_deg:8.2f} deg")
+    L.append(f"   Max steer at stroke (inner)    "
+             f"{rates.max_steer_inner_at_stroke_deg:8.2f} deg")
     L.append(f"   Geometric Ackermann            "
              f"{sg.geometric_ackermann_pct:8.1f} %")
     L.append(f"   Ackermann at {steer.ackermann_at_steer_deg:.0f} deg        "
@@ -1184,7 +1188,7 @@ STEERING_2027 = SteeringInputs(
     steer_arm_length_mm=80.0,          # was 90.0 — shorter arm for ratio ~4.6:1
     steer_arm_angle_deg=-12.0,         # was 15.0 — rotated for ~101% geometric Ackermann
     rack_x_mm=30.0,
-    rack_z_mm=139.3,                   # was 100.0
+    rack_z_mm=158.3,                   # was 100.0 — solved for zero bump steer
     rack_half_length_mm=270.0,         # was 230.0 — wider rack shortens tie rod below 350 mm
     pinion_radius_mm=16.0,             # was 20.0
     max_rack_travel_mm=38.0,           # was 25.0
