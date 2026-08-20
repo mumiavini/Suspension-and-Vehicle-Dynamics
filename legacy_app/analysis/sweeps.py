@@ -392,13 +392,16 @@ def plot_camber_vs_heave(sweep: NDArray, title: str = "Camber vs Heave") -> "go.
         y=sweep["camber_deg"],
         mode="lines+markers",
         name="Camber",
-        line=dict(width=2),
+        line=dict(width=2, color="#1f77b4"),
+        marker=dict(size=5),
     ))
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", line_width=1)
     fig.update_layout(
         title=title,
         xaxis_title="Heave (mm)  [+ = bump]",
         yaxis_title="Camber (°)  [− = top inward]",
         template="plotly_white",
+        height=380,
         hovermode="x unified",
     )
     return fig
@@ -420,12 +423,15 @@ def plot_bump_steer(sweep: NDArray, title: str = "Bump Steer") -> "go.Figure":
         mode="lines+markers",
         name="Δ Toe",
         line=dict(width=2, color="darkorange"),
+        marker=dict(size=5),
     ))
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", line_width=1)
     fig.update_layout(
         title=title,
         xaxis_title="Heave (mm)",
         yaxis_title="Δ Toe (°)  [+ = toe-in]",
         template="plotly_white",
+        height=380,
         hovermode="x unified",
     )
     return fig
@@ -452,13 +458,26 @@ def plot_rc_migration(sweep: NDArray, title: str = "Roll Center Migration") -> "
         line=dict(width=1, color="gray"),
         name="RC trajectory",
     ))
+    # Mark the static position (heave closest to 0)
+    i_static = int(np.argmin(np.abs(sweep["heave_mm"])))
+    fig.add_trace(go.Scatter(
+        x=[sweep["rc_y_mm"][i_static]],
+        y=[sweep["rc_z_mm"][i_static]],
+        mode="markers",
+        marker=dict(size=12, symbol="star", color="#d62728",
+                    line=dict(width=1, color="white")),
+        name="Static position",
+    ))
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", line_width=1)
+    fig.add_vline(x=0, line_dash="dot", line_color="gray", line_width=1)
     fig.update_layout(
         title=title,
         xaxis_title="RC Y (mm)",
         yaxis_title="RC Z (mm)",
         template="plotly_white",
+        height=380,
     )
-    fig.update_yaxes(scaleanchor="x", scaleratio=1)   # isometric axes
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)
     return fig
 
 
@@ -472,19 +491,116 @@ def plot_caster_kpi_vs_steer(
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=sweep["rack_mm"], y=sweep["caster_deg"],
-        mode="lines+markers", name="Caster (°)",
-        line=dict(width=2),
+        mode="lines+markers", name="Caster",
+        line=dict(width=2, color="#1f77b4"),
+        marker=dict(size=5),
     ))
     fig.add_trace(go.Scatter(
         x=sweep["rack_mm"], y=sweep["kpi_deg"],
-        mode="lines+markers", name="KPI (°)",
-        line=dict(width=2, dash="dash"),
+        mode="lines+markers", name="KPI",
+        line=dict(width=2, color="#d62728", dash="dash"),
+        marker=dict(size=5),
     ))
     fig.update_layout(
         title=title,
         xaxis_title="Rack (mm)",
         yaxis_title="Angle (°)",
         template="plotly_white",
+        height=380,
         hovermode="x unified",
     )
+    return fig
+
+
+def plot_camber_vs_roll(sweep: NDArray, title: str = "Camber vs Roll") -> "go.Figure":
+    """Chart: Camber (°) versus Roll (°)."""
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=sweep["roll_deg"],
+        y=sweep["camber_deg"],
+        mode="lines+markers",
+        name="Camber",
+        line=dict(width=2, color="#1f77b4"),
+        marker=dict(size=5),
+    ))
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", line_width=1)
+    fig.add_vline(x=0, line_dash="dot", line_color="gray", line_width=1)
+    fig.update_layout(
+        title=title,
+        xaxis_title="Roll (°)",
+        yaxis_title="Camber (°)  [− = top inward]",
+        template="plotly_white",
+        height=380,
+        hovermode="x unified",
+    )
+    return fig
+
+
+def plot_toe_vs_roll(sweep: NDArray, title: str = "Toe vs Roll") -> "go.Figure":
+    """Chart: Toe variation (°) versus Roll (°)."""
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=sweep["roll_deg"],
+        y=sweep["toe_deg"],
+        mode="lines+markers",
+        name="Δ Toe",
+        line=dict(width=2, color="darkorange"),
+        marker=dict(size=5),
+    ))
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", line_width=1)
+    fig.add_vline(x=0, line_dash="dot", line_color="gray", line_width=1)
+    fig.update_layout(
+        title=title,
+        xaxis_title="Roll (°)",
+        yaxis_title="Δ Toe (°)  [+ = toe-in]",
+        template="plotly_white",
+        height=380,
+        hovermode="x unified",
+    )
+    return fig
+
+
+def plot_rc_migration_roll(sweep: NDArray, title: str = "RC Migration (Roll)") -> "go.Figure":
+    """Chart: Roll Center trajectory in the Y-Z plane during roll, colored by roll angle."""
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=sweep["rc_y_mm"],
+        y=sweep["rc_z_mm"],
+        mode="lines+markers",
+        marker=dict(
+            size=6,
+            color=sweep["roll_deg"],
+            colorscale="RdBu",
+            cmid=0,
+            showscale=True,
+            colorbar=dict(title="Roll (°)"),
+        ),
+        line=dict(width=1, color="gray"),
+        name="RC trajectory",
+    ))
+    i_static = int(np.argmin(np.abs(sweep["roll_deg"])))
+    fig.add_trace(go.Scatter(
+        x=[sweep["rc_y_mm"][i_static]],
+        y=[sweep["rc_z_mm"][i_static]],
+        mode="markers",
+        marker=dict(size=12, symbol="star", color="#d62728",
+                    line=dict(width=1, color="white")),
+        name="Static position",
+    ))
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", line_width=1)
+    fig.add_vline(x=0, line_dash="dot", line_color="gray", line_width=1)
+    fig.update_layout(
+        title=title,
+        xaxis_title="RC Y (mm)",
+        yaxis_title="RC Z (mm)",
+        template="plotly_white",
+        height=380,
+    )
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)
     return fig

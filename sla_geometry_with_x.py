@@ -550,7 +550,7 @@ FRONT = CornerSpec(
     name="Dianteira",
     track=1240.0, rc_height=35.0, fvsa_length=1500.0,
     loaded_radius=245.0, rim_diameter_in=13.0,
-    lbj_y=588.0, lbj_z=110.0, kpi=10.0, spindle_length=225.0,
+    lbj_y=582.0, lbj_z=130.0, kpi=10.0, spindle_length=259.34,
     rail_y=175.0, static_camber=-1.5,
 )
 
@@ -558,8 +558,8 @@ REAR = CornerSpec(
     name="Traseira",
     track=1200.0, rc_height=55.0, fvsa_length=1400.0,
     loaded_radius=245.0, rim_diameter_in=13.0,
-    lbj_y=578.0, lbj_z=110.0, kpi=5.0, spindle_length=225.0,
-    rail_y=175.0, static_camber=-1.0, kpi_band=(3.0, 10.0),
+    lbj_y=558.6, lbj_z=130.0, kpi=8.5, spindle_length=263.23,
+    rail_y=175.0, static_camber=-1.5, kpi_band=(3.0, 10.0),
 )
 
 VEHICLE = VehicleSpec(
@@ -568,9 +568,344 @@ VEHICLE = VehicleSpec(
 )
 
 
+
+
+
+# ============================================================================
+# PARTE 2 — VISTA LATERAL E PLANTA: COORDENADAS X
+# ============================================================================
+#
+# Convencao 3D:
+#     x : positivo para TRAS   (origem no eixo dianteiro)
+#     y : positivo para FORA   (origem na linha de centro)
+#     z : positivo para CIMA   (origem no solo, altura de rodagem de projeto)
+#
+# Cada bracao tem DUAS fixacoes no chassi, separadas em x pela "base".
+# O eixo de pivo e a reta que une essas duas fixacoes.
+#
+# Dois efeitos independentes:
+#   1) VARREDURA EM PLANTA (sweep): desloca o pivo externo em x em relacao ao
+#      meio da base. NAO altera a vista frontal (o eixo continua paralelo a x),
+#      mas concentra carga numa das pernas.
+#   2) INCLINACAO EM VISTA LATERAL (dz): fixacoes dianteira e traseira em z
+#      diferentes. E ISSO que gera anti-dive / anti-squat.
+# ============================================================================
+
+
+@dataclass
+class AxleXSpec:
+    """Layout longitudinal de um canto."""
+
+    name: str = "Dianteira"
+    axle_x: float = 0.0              # x do centro de roda / pivos externos [mm]
+    is_front: bool = True
+
+    # --- base entre as duas fixacoes de cada bracao ---
+    base_lca: float = 260.0          # [mm]
+    base_uca: float = 240.0          # [mm]
+
+    # --- varredura: e = x_pivo_externo - x_meio_da_base ---
+    #     e > 0  -> pivo externo ATRAS do meio da base (bracao "arrastado")
+    sweep_lca: float = 0.0           # [mm]
+    sweep_uca: float = 0.0           # [mm]
+
+    # --- inclinacao em vista lateral: dz = z(fix. traseira) - z(fix. dianteira)
+    dz_lca: float = 0.0              # [mm]
+    dz_uca: float = 0.0              # [mm]
+
+    # ------------------------------------------------------------------
+    def _arm_x(self, base, sweep):
+        """x das fixacoes dianteira e traseira."""
+        x_mid = self.axle_x - sweep
+        return x_mid - base / 2.0, x_mid + base / 2.0
+
+    @property
+    def lca_x(self):
+        return self._arm_x(self.base_lca, self.sweep_lca)
+
+    @property
+    def uca_x(self):
+        return self._arm_x(self.base_uca, self.sweep_uca)
+
+    def ratio_ea(self, arm="lca"):
+        """|e|/a — mede o quanto a carga migra para uma perna so."""
+        if arm == "lca":
+            return abs(self.sweep_lca) / (self.base_lca / 2.0)
+        return abs(self.sweep_uca) / (self.base_uca / 2.0)
+
+
+def build_3d(corner: CornerSpec, xspec: AxleXSpec) -> dict:
+    """Combina a vista frontal (y,z) com o layout longitudinal (x).
+
+    Retorna os 6 pontos do canto em 3D.
+    """
+    g = solve_pickups(corner)
+    xl_f, xl_r = xspec.lca_x
+    xu_f, xu_r = xspec.uca_x
+
+    z_lca, z_uca = g["lca_in"][1], g["uca_in"][1]
+    ry = corner.rail_y
+
+    return {
+        "LBJ  (pivo inf. externo)": np.array([xspec.axle_x, *g["lbj"]]),
+        "UBJ  (pivo sup. externo)": np.array([xspec.axle_x, *g["ubj"]]),
+        "LCA fix. dianteira":       np.array([xl_f, ry, z_lca - xspec.dz_lca / 2.0]),
+        "LCA fix. traseira":        np.array([xl_r, ry, z_lca + xspec.dz_lca / 2.0]),
+        "UCA fix. dianteira":       np.array([xu_f, ry, z_uca - xspec.dz_uca / 2.0]),
+        "UCA fix. traseira":        np.array([xu_r, ry, z_uca + xspec.dz_uca / 2.0]),
+    }
+
+
+# ----------------------------------------------------------------------------
+# Vista lateral: centro instantaneo e anti-geometria
+# ----------------------------------------------------------------------------
+
+def side_view_ic(corner: CornerSpec, xspec: AxleXSpec):
+    """Centro instantaneo em vista lateral (SVIC), em (x, z).
+
+    Construcao: projete cada eixo de pivo no plano xz; o SVIC e a intersecao
+    das duas projecoes. Eixos horizontais (dz=0) -> retas paralelas -> SVIC no
+    infinito -> anti = 0.
+    """
+    g = solve_pickups(corner)
+    xl_f, xl_r = xspec.lca_x
+    xu_f, xu_r = xspec.uca_x
+    zl, zu = g["lca_in"][1], g["uca_in"][1]
+
+    p1 = np.array([xl_f, zl - xspec.dz_lca / 2.0])
+    p2 = np.array([xl_r, zl + xspec.dz_lca / 2.0])
+    p3 = np.array([xu_f, zu - xspec.dz_uca / 2.0])
+    p4 = np.array([xu_r, zu + xspec.dz_uca / 2.0])
+
+    return line_intersection(p1, p2, p3, p4)   # None se paralelas
+
+
+def anti_percent(corner: CornerSpec, xspec: AxleXSpec, veh: VehicleSpec,
+                 brake_bias_front: float = 0.70) -> dict:
+    """Anti-dive (frenagem) e anti-squat (aceleracao).
+
+    Freios OUTBOARD e diferencial montado no CHASSI: em ambos os casos a
+    construcao parte do CONTATO DO PNEU ate o SVIC.
+
+        %anti-dive_diant = eps     * tan(theta) * L/h
+        %anti-lift_tras  = (1-eps) * tan(theta) * L/h
+        %anti-squat_tras =           tan(theta) * L/h
+    """
+    ic = side_view_ic(corner, xspec)
+    L_over_h = veh.wheelbase / veh.cg_height
+
+    if ic is None or not np.isfinite(ic).all():
+        return {"svic": None, "svsa": np.inf, "tan_theta": 0.0,
+                "anti_dive": 0.0, "anti_lift": 0.0, "anti_squat": 0.0}
+
+    dx = ic[0] - xspec.axle_x            # SVIC em relacao ao contato do pneu
+    if xspec.is_front:
+        tan_t = ic[1] / dx if abs(dx) > 1e-9 else np.inf
+    else:
+        tan_t = ic[1] / (-dx) if abs(dx) > 1e-9 else np.inf
+
+    return {
+        "svic": ic,
+        "svsa": abs(dx),
+        "tan_theta": tan_t,
+        "anti_dive": 100.0 * brake_bias_front * tan_t * L_over_h,
+        "anti_lift": 100.0 * (1 - brake_bias_front) * tan_t * L_over_h,
+        "anti_squat": 100.0 * tan_t * L_over_h,
+    }
+
+
+def dz_uca_for_anti(corner: CornerSpec, xspec: AxleXSpec, veh: VehicleSpec,
+                    target_pct: float, mode: str = "dive",
+                    brake_bias_front: float = 0.70) -> float:
+    """Resolve o dz do UCA que entrega o anti desejado (mantendo dz_lca).
+
+    mode: 'dive' (dianteira), 'lift' (traseira em frenagem) ou 'squat'.
+    """
+    from dataclasses import replace as _replace
+
+    def err(dz):
+        xs = _replace(xspec, dz_uca=dz)
+        a = anti_percent(corner, xs, veh, brake_bias_front)
+        key = {"dive": "anti_dive", "lift": "anti_lift", "squat": "anti_squat"}[mode]
+        return a[key] - target_pct
+
+    if abs(target_pct) < 1e-9:
+        return xspec.dz_lca
+    lo, hi = xspec.dz_lca - 120.0, xspec.dz_lca + 120.0
+    # evita a singularidade em dz_uca == dz_lca (retas paralelas)
+    eps = 1e-3
+    for a_, b_ in [(lo, xspec.dz_lca - eps), (xspec.dz_lca + eps, hi)]:
+        try:
+            if err(a_) * err(b_) < 0:
+                return brentq(err, a_, b_, xtol=1e-9)
+        except (ValueError, ZeroDivisionError):
+            continue
+    return np.nan
+
+
+# ----------------------------------------------------------------------------
+# Divisao de carga entre as duas pernas do bracao
+# ----------------------------------------------------------------------------
+
+def leg_forces(bj, p_front, p_rear, load_at_bj):
+    """Divide a carga da rotula entre as duas pernas do bracao.
+
+    O bracao so reage carga no SEU PLANO; a componente perpendicular vai para
+    o pushrod / amortecedor. Por isso a carga e projetada no plano do bracao.
+    Positivo = tracao.
+    """
+    bj, p1, p2 = map(lambda v: np.asarray(v, float), (bj, p_front, p_rear))
+    u1, u2 = p1 - bj, p2 - bj
+    n = np.cross(u1, u2)
+    n /= np.linalg.norm(n)
+
+    F = np.asarray(load_at_bj, float)
+    F_plane = F - np.dot(F, n) * n
+
+    e1 = u1 / np.linalg.norm(u1)
+    e2 = u2 / np.linalg.norm(u2)
+    b2 = np.cross(n, e1)
+    A = np.array([[1.0, np.dot(e2, e1)],
+                  [0.0, np.dot(e2, b2)]])
+    rhs = -np.array([np.dot(F_plane, e1), np.dot(F_plane, b2)])
+    return np.linalg.solve(A, rhs)
+
+
+def upright_reactions(corner: CornerSpec, xspec: AxleXSpec, load_cp):
+    """Equilibrio do upright -> forcas nas duas rotulas.
+
+    Modelo (vista frontal, pushrod fixado no LCA):
+      - a forca no pivo SUPERIOR atua ao longo do plano do UCA (1 incognita),
+        obtida por momento em torno do pivo inferior;
+      - o pivo INFERIOR fecha o equilibrio de forcas (2 incognitas);
+      - o pushrod absorve o que o LCA nao consegue reagir no proprio plano.
+
+    load_cp = (Fx, Fy, Fz) no contato do pneu.
+    Retorna as forcas aplicadas PELO UPRIGHT nos bracoes (acao, nao reacao).
+    """
+    g = solve_pickups(corner)
+    lbj = np.array([xspec.axle_x, *g["lbj"]])
+    ubj = np.array([xspec.axle_x, *g["ubj"]])
+    cp = np.array([xspec.axle_x, corner.half_track, 0.0])
+
+    d = g["uca_in"] - g["ubj"]                 # direcao do UCA em vista frontal
+    d = np.array([0.0, d[0], d[1]])
+    d /= np.linalg.norm(d)
+
+    F = np.asarray(load_cp, float)
+    r_cp = cp - lbj
+    r_u = ubj - lbj
+
+    # momento em torno do eixo x que passa pelo pivo inferior
+    M = np.cross(r_cp, F)[0]
+    denom = np.cross(r_u, d)[0]
+    T_u = -M / denom
+    F_ubj = T_u * d
+    F_lbj = -(F + F_ubj)
+
+    # forcas que o UPRIGHT aplica nos bracoes = reacao do que sofre
+    return -F_lbj, -F_ubj, lbj, ubj
+
+
+def load_cases(corner: CornerSpec, veh: VehicleSpec, mu_y=1.5, mu_x=1.4,
+               lltd=0.55, ay=1.5) -> dict:
+    """Casos de carga aproximados NO CONTATO do pneu externo carregado.
+
+    Estimativa de primeira ordem para dimensionamento. Substitua por dados do
+    simulador / TTC quando disponiveis.
+    """
+    W = veh.mass_total * 9.81
+    is_front = corner.name.lower().startswith("d")
+    frac = veh.front_mass_frac if is_front else 1 - veh.front_mass_frac
+    share = lltd if is_front else 1 - lltd
+
+    Fz_static = W * frac / 2.0
+    dW = share * (W * ay * veh.cg_height / 1000.0) / (corner.track / 1000.0)
+    Fz = Fz_static + dW
+    return {
+        "Curva pura": np.array([0.0, -mu_y * Fz, Fz]),
+        "Frenagem":   np.array([mu_x * Fz, 0.0, Fz]),
+        "Combinado":  np.array([0.7 * mu_x * Fz, -0.7 * mu_y * Fz, Fz]),
+        "Fz": Fz,
+    }
+
+
+# ----------------------------------------------------------------------------
+# Relatorio 3D
+# ----------------------------------------------------------------------------
+
+def report_3d(corner: CornerSpec, xspec: AxleXSpec, veh: VehicleSpec,
+              brake_bias_front: float = 0.70) -> str:
+    P = build_3d(corner, xspec)
+    a = anti_percent(corner, xspec, veh, brake_bias_front)
+    lc = load_cases(corner, veh)
+
+    L = [f"\n{'=' * 78}", f" {corner.name.upper()} — PONTOS 3D", "=" * 78]
+    L.append("\n (x para tras desde o eixo dianteiro; y para fora; z para cima desde o solo)")
+    L.append(f"   {'ponto':<28s} {'x [mm]':>9s} {'y [mm]':>9s} {'z [mm]':>9s}")
+    for k, v in P.items():
+        L.append(f"   {k:<28s} {v[0]:9.1f} {v[1]:9.1f} {v[2]:9.1f}")
+
+    L.append("\n LAYOUT LONGITUDINAL")
+    L.append(f"   Base LCA / UCA                 {xspec.base_lca:6.0f} / {xspec.base_uca:.0f} mm")
+    L.append(f"   Varredura LCA / UCA            {xspec.sweep_lca:6.0f} / {xspec.sweep_uca:.0f} mm")
+    for arm in ("lca", "uca"):
+        r = xspec.ratio_ea(arm)
+        flag = "OK " if r <= 1.5 else "!! "
+        L.append(f"  {flag}Razao e/a {arm.upper():<21s} {r:6.2f}       (alvo <= 1.5)")
+
+    L.append("\n VISTA LATERAL / ANTI-GEOMETRIA")
+    if a["svic"] is None:
+        L.append("   Eixos de pivo horizontais -> SVIC no infinito, anti = 0%")
+    else:
+        L.append(f"   SVIC (x, z)                    {a['svic'][0]:9.1f} {a['svic'][1]:9.1f} mm")
+        L.append(f"   SVSA                           {a['svsa']:9.1f} mm")
+    if xspec.is_front:
+        L.append(check("Anti-dive", a["anti_dive"], 0, 30, "%"))
+    else:
+        L.append(check("Anti-squat", a["anti_squat"], 0, 30, "%"))
+        L.append(check("Anti-lift (frenagem)", a["anti_lift"], 0, 30, "%"))
+
+    L.append(f"\n FORCAS NAS PERNAS  (Fz externo estimado {lc['Fz']:.0f} N)")
+    L.append(f"   {'caso':<14s} {'LCA diant':>11s} {'LCA tras':>11s} "
+             f"{'UCA diant':>11s} {'UCA tras':>11s}")
+    for case in ("Curva pura", "Frenagem", "Combinado"):
+        Flbj, Fubj, lbj, ubj = upright_reactions(corner, xspec, lc[case])
+        fl = leg_forces(lbj, P["LCA fix. dianteira"], P["LCA fix. traseira"], Flbj)
+        fu = leg_forces(ubj, P["UCA fix. dianteira"], P["UCA fix. traseira"], Fubj)
+        L.append(f"   {case:<14s} {fl[0]:11.0f} {fl[1]:11.0f} {fu[0]:11.0f} {fu[1]:11.0f}")
+    L.append("   (positivo = tracao, negativo = compressao)")
+    return "\n".join(L)
+
+
+# ----------------------------------------------------------------------------
+# Layout PUCPR Racing
+# ----------------------------------------------------------------------------
+
+FRONT_X = AxleXSpec(
+    name="Dianteira", axle_x=0.0, is_front=True,
+    base_lca=260.0, base_uca=240.0,
+    sweep_lca=0.0, sweep_uca=0.0,
+    dz_lca=0.0, dz_uca=0.0,
+)
+
+REAR_X = AxleXSpec(
+    name="Traseira", axle_x=1540.0, is_front=False,
+    base_lca=340.0, base_uca=320.0,
+    sweep_lca=230.0, sweep_uca=220.0,     # arrastada: fixacoes a frente do pivo
+    dz_lca=0.0, dz_uca=0.0,
+)
+
+
 if __name__ == "__main__":
+    # --- Parte 1: vista frontal ---
     print(report(FRONT))
     print(report(REAR))
     print(vehicle_report(VEHICLE, FRONT, REAR))
+
+    # --- Parte 2: coordenadas X, anti-geometria, forcas ---
+    print(report_3d(FRONT, FRONT_X, VEHICLE))
+    print(report_3d(REAR, REAR_X, VEHICLE))
+
     out = plot_all(FRONT, REAR)
     print(f"\nGrafico salvo em: {out}\n")

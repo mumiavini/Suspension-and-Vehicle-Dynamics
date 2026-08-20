@@ -1,0 +1,31 @@
+﻿Category,Parameter,Unit,Front,Rear,Source
+🛞 Tires & Wheels,"Tire size, compound, make",,—,—,⌨️ input
+🛞 Tires & Wheels,Wheel (diameter × width),inch,10.0 × 7.0,10.0 × 7.0,⌨️ input
+🛞 Tires & Wheels,Wheel material / construction,,—,—,⌨️ input
+🔩 Suspension & Rates,Suspension type,,Double wishbone push/pull-rod,Double wishbone push/pull-rod,⌨️ input
+🔩 Suspension & Rates,Suspension design travel,mm,—,—,⌨️ input
+🔩 Suspension & Rates,Wheel rate (chassis → wheel center),N/mm,—,—,🧮 derived from spring + MR
+🔩 Suspension & Rates,Roll rate (chassis → wheel center),Nm/deg,—,—,🧮 derived from wheel rate + track
+🔩 Suspension & Rates,Sprung mass natural frequency,Hz,—,—,🧮 derived from wheel rate + mass
+🔩 Suspension & Rates,Jounce damping,% critical,—,—,⌨️ input
+🔩 Suspension & Rates,Rebound damping,% critical,—,—,⌨️ input
+🔩 Suspension & Rates,Motion ratio,x:1,—,—,⌨️ input
+🎢 Kinematics,Ride Camber (rate of change),deg/m,+39.25,+25.26,📐 calculated
+🎢 Kinematics,Roll Camber,deg/deg,-0.5955,-0.3258,📐 calculated
+📐 Static alignment,"Static Sum Toe (− out, + in)",deg,+0.0000,+0.0000,📐 calculated
+📐 Static alignment,Static camber (L / R),deg,+0.000 / +0.000,+0.000 / +0.000,📐 calculated
+📐 Static alignment,Static camber adjustment method,,2 mm plates between upright and upper arm fixation,2 mm plates between upright and upper arm fixation,⌨️ input
+🎢 Kinematics,Anti dive / Anti squat,%,+0.00,+84.28,"📐 calculated (needs CG, brake bias)"
+🎢 Kinematics,"Roll center height above ground, static",mm,+34.99,+55.00,📐 calculated
+🎢 Kinematics,Roll center @ 1g lateral acc — height,mm,+34.98,+54.99,📐 calculated (roll stiffness 1.5°/g)
+🎢 Kinematics,Roll center @ 1g lateral acc — lateral,mm,-0.92,-1.44,📐 calculated (roll stiffness 1.5°/g)
+📐 Static alignment,Caster (L / R),deg,-0.000 / -0.000,N/A (no relevant rear caster),📐 calculated
+📐 Static alignment,Kingpin trail (L / R),mm,+0.00 / +0.00,+0.00 / +0.00,📐 calculated
+📐 Static alignment,Scrub radius (L / R),mm,+15.08 / -15.08,+21.97 / -21.97,📐 calculated
+📐 Static alignment,Kingpin Inclination (L / R),deg,+9.999 / +9.999,+8.500 / +8.500,📐 calculated
+🕹️ Steering,Static Ackermann,%,-108.02,N/A,📐 calculated
+🕹️ Steering,Adjustable Ackermann?,,No,—,⌨️ input
+🔩 Suspension & Rates,Suspension adjustment methods,,—,—,⌨️ input
+🕹️ Steering,Steer Ratio,x:1,6.74,N/A,🧮 derived from c-factor=100 mm/rev
+🕹️ Steering,C-factor,mm/rev,100.0,N/A,⌨️ input (sidebar)
+🕹️ Steering,Steer Arm Length (L / R),mm,110.90 / 110.90,N/A,📐 calculated

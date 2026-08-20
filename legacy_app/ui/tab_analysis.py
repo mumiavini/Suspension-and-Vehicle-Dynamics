@@ -14,8 +14,6 @@ import math
 import numpy as np
 import polars as pl
 import streamlit as st
-import plotly.graph_objects as go
-
 from analysis.io_hardpoints import (
     build_vehicle_from_dataframe,
     VALID_CORNERS,
@@ -30,6 +28,9 @@ from analysis.sweeps import (
     plot_bump_steer,
     plot_rc_migration,
     plot_caster_kpi_vs_steer,
+    plot_camber_vs_roll,
+    plot_toe_vs_roll,
+    plot_rc_migration_roll,
 )
 from analysis.kpis import (
     static_sum_toe_deg,
@@ -121,11 +122,17 @@ def _compute_axle_cached(df_csv: str, axle: str, brake_bias: float,
 
     # ── Anti-features ──
     if is_front:
-        res["anti_dive"]  = left_corner.anti_dive_percent(brake_bias=brake_bias)
+        res["anti_dive"]  = left_corner.anti_dive_percent(
+            brake_bias=brake_bias,
+            wheelbase_mm=vehicle.wheelbase_mm,
+        )
         res["anti_squat"] = float("nan")
     else:
         res["anti_dive"]  = float("nan")
-        res["anti_squat"] = left_corner.anti_squat_percent(drive_fraction=1.0)
+        res["anti_squat"] = left_corner.anti_dive_percent(
+            brake_bias=1.0,
+            wheelbase_mm=vehicle.wheelbase_mm,
+        )
 
     # ── Ackermann (only meaningful at the front) ──
     if is_front:
@@ -389,37 +396,48 @@ def render() -> None:
 
         # ─── QUICK SUMMARY (cards with the most consulted KPIs) ──────────────
         st.markdown("---")
-        st.markdown("### ⚡ Quick summary")
+        st.markdown("### Quick summary")
 
         st.caption("**Front**")
-        fm = st.columns(5)
-        fm[0].metric("Camber L/R (°)",
-                     fmt_pair(front_data["camber_l"], front_data["camber_r"], "+.2f"),
+        fm = st.columns(6)
+        fm[0].metric("KPI L/R (°)",
+                     fmt_pair(front_data["kpi_l"], front_data["kpi_r"], "+.2f"),
                      border=True)
         fm[1].metric("Caster L/R (°)",
                      fmt_pair(front_data["caster_l"], front_data["caster_r"], "+.2f"),
                      border=True)
-        fm[2].metric("Static RC (mm)",
+        fm[2].metric("Scrub L/R (mm)",
+                     fmt_pair(front_data["scrub_l"], front_data["scrub_r"], "+.1f"),
+                     border=True)
+        fm[3].metric("Static RC (mm)",
                      fmt(front_data["rc_static"], "+.1f"), border=True)
-        fm[3].metric("Σ Toe (°)",
+        fm[4].metric("Σ Toe (°)",
                      fmt(front_data["sum_toe"], "+.3f"), border=True)
-        fm[4].metric("Ackermann (%)",
+        fm[5].metric("Ackermann (%)",
                      fmt(front_data["ackermann"], "+.1f"), border=True)
 
         st.caption("**Rear**")
-        rm = st.columns(5)
-        rm[0].metric("Camber L/R (°)",
-                     fmt_pair(rear_data["camber_l"], rear_data["camber_r"], "+.2f"),
-                     border=True)
-        rm[1].metric("KPI L/R (°)",
+        rm = st.columns(6)
+        rm[0].metric("KPI L/R (°)",
                      fmt_pair(rear_data["kpi_l"], rear_data["kpi_r"], "+.2f"),
                      border=True)
-        rm[2].metric("Static RC (mm)",
+        rm[1].metric("Caster L/R (°)",
+                     fmt_pair(rear_data["caster_l"], rear_data["caster_r"], "+.2f"),
+                     border=True)
+        rm[2].metric("Scrub L/R (mm)",
+                     fmt_pair(rear_data["scrub_l"], rear_data["scrub_r"], "+.1f"),
+                     border=True)
+        rm[3].metric("Static RC (mm)",
                      fmt(rear_data["rc_static"], "+.1f"), border=True)
-        rm[3].metric("Σ Toe (°)",
+        rm[4].metric("Σ Toe (°)",
                      fmt(rear_data["sum_toe"], "+.3f"), border=True)
-        rm[4].metric("Anti-squat (%)",
+        rm[5].metric("Anti-squat (%)",
                      fmt(rear_data["anti_squat"], "+.1f"), border=True)
+
+        st.caption(
+            "_Static camber is not shown — it depends on the upright "
+            "manufacturing and cannot be inferred from hardpoints alone._"
+        )
 
         # ─── MAIN TABLE ──────────────────────────────────────────────────────
         st.markdown("---")
@@ -486,7 +504,7 @@ def render() -> None:
             fmt(rear_data["motion_ratio"],  ".3f"),
             "⌨️ input")
 
-        # Calculated (geometry)
+        # Calculated (geometry) — Kinematics block (contiguous)
         category = "🎢 Kinematics"
         add("Ride Camber (rate of change)",        "deg/m",
             fmt(front_data["ride_camber_dpm"], "+.2f"),
@@ -496,18 +514,6 @@ def render() -> None:
             fmt(front_data["roll_camber"], "+.4f"),
             fmt(rear_data["roll_camber"],  "+.4f"),
             "📐 calculated")
-        category = "📐 Static alignment"
-        add("Static Sum Toe (− out, + in)",         "deg",
-            fmt(front_data["sum_toe"], "+.4f"),
-            fmt(rear_data["sum_toe"],  "+.4f"),
-            "📐 calculated")
-        add("Static camber (L / R)",                "deg",
-            fmt_pair(front_data["camber_l"], front_data["camber_r"], "+.3f"),
-            fmt_pair(rear_data["camber_l"],  rear_data["camber_r"],  "+.3f"),
-            "📐 calculated")
-        add("Static camber adjustment method",      "",
-            susp_adj or "—", susp_adj or "—", "⌨️ input")
-        category = "🎢 Kinematics"
         add("Anti dive / Anti squat",               "%",
             fmt(front_data["anti_dive"],  "+.2f"),
             fmt(rear_data["anti_squat"], "+.2f"),
@@ -524,23 +530,37 @@ def render() -> None:
             fmt(front_data["rc_1g_y"], "+.2f"),
             fmt(rear_data["rc_1g_y"],  "+.2f"),
             f"📐 calculated (roll stiffness {roll_stiff}°/g)")
+
+        # Static alignment block (contiguous)
         category = "📐 Static alignment"
+        add("Kingpin Inclination (L / R)",             "deg",
+            fmt_pair(front_data["kpi_l"], front_data["kpi_r"], "+.3f"),
+            fmt_pair(rear_data["kpi_l"],  rear_data["kpi_r"],  "+.3f"),
+            "📐 calculated")
         add("Caster (L / R)",                         "deg",
             fmt_pair(front_data["caster_l"], front_data["caster_r"], "+.3f"),
-            "N/A (no relevant rear caster)",
-            "📐 calculated")
-        add("Kingpin trail (L / R)",                  "mm",
-            fmt_pair(front_data["trail_l"], front_data["trail_r"], "+.2f"),
-            fmt_pair(rear_data["trail_l"],  rear_data["trail_r"],  "+.2f"),
+            fmt_pair(rear_data["caster_l"],  rear_data["caster_r"],  "+.3f"),
             "📐 calculated")
         add("Scrub radius (L / R)",                   "mm",
             fmt_pair(front_data["scrub_l"], front_data["scrub_r"], "+.2f"),
             fmt_pair(rear_data["scrub_l"],  rear_data["scrub_r"],  "+.2f"),
             "📐 calculated")
-        add("Kingpin Inclination (L / R)",             "deg",
-            fmt_pair(front_data["kpi_l"], front_data["kpi_r"], "+.3f"),
-            fmt_pair(rear_data["kpi_l"],  rear_data["kpi_r"],  "+.3f"),
+        add("Kingpin trail (L / R)",                  "mm",
+            fmt_pair(front_data["trail_l"], front_data["trail_r"], "+.2f"),
+            fmt_pair(rear_data["trail_l"],  rear_data["trail_r"],  "+.2f"),
             "📐 calculated")
+        add("Static Sum Toe (− out, + in)",         "deg",
+            fmt(front_data["sum_toe"], "+.4f"),
+            fmt(rear_data["sum_toe"],  "+.4f"),
+            "📐 calculated")
+        add("Static camber (L / R)",                "deg",
+            fmt_pair(front_data["camber_l"], front_data["camber_r"], "+.3f"),
+            fmt_pair(rear_data["camber_l"],  rear_data["camber_r"],  "+.3f"),
+            "📐 calculated")
+        add("Static camber adjustment method",      "",
+            susp_adj or "—", susp_adj or "—", "⌨️ input")
+
+        # Steering block (contiguous)
         category = "🕹️ Steering"
         add("Static Ackermann",                        "%",
             fmt(front_data["ackermann"], "+.2f"),
@@ -549,11 +569,6 @@ def render() -> None:
         add("Adjustable Ackermann?",                   "",
             ackermann_adj, "—",
             "⌨️ input")
-        category = "🔩 Suspension & Rates"
-        add("Suspension adjustment methods",           "",
-            arb_adj or "—", arb_adj or "—",
-            "⌨️ input")
-        category = "🕹️ Steering"
         add("Steer Ratio",                             "x:1",
             fmt(front_data["steer_ratio"], ".2f"),
             "N/A",
@@ -566,6 +581,12 @@ def render() -> None:
             fmt_pair(front_data["steer_arm_l"], front_data["steer_arm_r"], ".2f"),
             "N/A",
             "📐 calculated")
+
+        # Suspension & Rates addendum
+        category = "🔩 Suspension & Rates"
+        add("Suspension adjustment methods",           "",
+            arb_adj or "—", arb_adj or "—",
+            "⌨️ input")
 
         # Masses / distribution
         category = "⚖️ Masses"
@@ -654,19 +675,26 @@ def render() -> None:
                 if sweep_type == "Heave":
                     pc1, pc2 = st.columns(2)
                     with pc1:
-                        st.plotly_chart(plot_camber_vs_heave(sweep), width="stretch")
+                        st.plotly_chart(plot_camber_vs_heave(sweep),
+                                        use_container_width=True)
                     with pc2:
-                        st.plotly_chart(plot_bump_steer(sweep), width="stretch")
-                    st.plotly_chart(plot_rc_migration(sweep), width="stretch")
+                        st.plotly_chart(plot_bump_steer(sweep),
+                                        use_container_width=True)
+                    st.plotly_chart(plot_rc_migration(sweep),
+                                    use_container_width=True)
                 elif sweep_type == "Steer":
-                    st.plotly_chart(plot_caster_kpi_vs_steer(sweep), width="stretch")
+                    st.plotly_chart(plot_caster_kpi_vs_steer(sweep),
+                                    use_container_width=True)
                 else:
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=sweep["roll_deg"], y=sweep["camber_deg"],
-                                               mode="lines+markers"))
-                    fig.update_layout(title="Camber vs Roll", xaxis_title="Roll (°)",
-                                       yaxis_title="Camber (°)", template="plotly_white")
-                    st.plotly_chart(fig, width="stretch")
+                    pc1, pc2 = st.columns(2)
+                    with pc1:
+                        st.plotly_chart(plot_camber_vs_roll(sweep),
+                                        use_container_width=True)
+                    with pc2:
+                        st.plotly_chart(plot_toe_vs_roll(sweep),
+                                        use_container_width=True)
+                    st.plotly_chart(plot_rc_migration_roll(sweep),
+                                    use_container_width=True)
 
                 with st.expander("📋 Sweep data"):
                     sweep_df = pl.DataFrame({n: sweep[n] for n in sweep.dtype.names})
