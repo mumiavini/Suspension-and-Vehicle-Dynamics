@@ -2,11 +2,43 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 
-from vdcore.geometry.solver import DWSolver
+from vdcore.geometry.solver import DWSolver, SolverResult
 from vdcore.models.hardpoint import Corner, Hardpoint, TirePackage
+
+
+def _upright_yaw_deg(corner: Corner, result: SolverResult) -> float:
+    """Yaw of the upright about Z, in degrees, independent of any toe convention.
+
+    Recovers the upright's rigid rotation from the three ball joints (Kabsch)
+    and reads the heading of the body-fixed +X axis. This is the ground truth
+    the toe sign convention must agree with: for a LEFT wheel, toe-in means the
+    front of the wheel turns toward the centreline (-Y), i.e. negative yaw; for
+    a RIGHT wheel toe-in is positive yaw.
+    """
+    static = np.array([
+        [corner.uca_outboard.x_mm, corner.uca_outboard.y_mm, corner.uca_outboard.z_mm],
+        [corner.lca_outboard.x_mm, corner.lca_outboard.y_mm, corner.lca_outboard.z_mm],
+        [corner.tie_rod_outboard.x_mm,
+         corner.tie_rod_outboard.y_mm,
+         corner.tie_rod_outboard.z_mm],
+    ])
+    moved = np.array([
+        [result.ubj.x_mm, result.ubj.y_mm, result.ubj.z_mm],
+        [result.lbj.x_mm, result.lbj.y_mm, result.lbj.z_mm],
+        [result.tro.x_mm, result.tro.y_mm, result.tro.z_mm],
+    ])
+    p = static - static.mean(axis=0)
+    q = moved - moved.mean(axis=0)
+    u, _, vt = np.linalg.svd(p.T @ q)
+    d = float(np.sign(np.linalg.det(vt.T @ u.T)))
+    rot = vt.T @ np.diag([1.0, 1.0, d]) @ u.T
+    forward = rot @ np.array([1.0, 0.0, 0.0])
+    return math.degrees(math.atan2(forward[1], forward[0]))
 
 
 def _hp(name: str, x: float, y: float, z: float) -> Hardpoint:
@@ -118,38 +150,144 @@ class TestRightCorner:
         rr = solver_r.solve()
         assert rl.kpi_deg == pytest.approx(rr.kpi_deg, abs=0.01)
 
+    def test_symmetric_static_toe(self) -> None:
+        """Mirrored geometry with the same design-intent toe must report the
+        same toe on both sides — same sign, not opposite.
 
-class TestAsymmetricRack:
-    """Apply opposite rack travel to a mirrored pair: left and right toe
-    must change in opposite senses with equal magnitude.
+        Toe-in is defined per side relative to the centreline, so a symmetric
+        car set to 0.15 deg of toe-in reads +0.15 on BOTH corners.
+        """
+        toe = 0.15
+        rl = DWSolver(_corner("FL", 1.0, static_toe_deg_per_side=toe)).solve()
+        rr = DWSolver(_corner("FR", -1.0, static_toe_deg_per_side=toe)).solve()
+        assert rl.toe_deg_per_side == pytest.approx(toe, abs=1e-4)
+        assert rr.toe_deg_per_side == pytest.approx(toe, abs=1e-4)
 
-    A real steering rack pushes one tie-rod inboard in +Y while pulling
-    the other in -Y. We simulate this by giving +rack to one side and
-    -rack to the other.
+    def test_symmetric_bump_steer(self) -> None:
+        """Mirrored geometry must toe the SAME way in bump on both sides.
+
+        This is the regression guard for the left-corner toe sign inversion:
+        the two branches of _extract_angles must agree in sign for mirrored
+        input, or every left-corner toe change comes out backwards.
+        """
+        sl = DWSolver(_corner("FL", 1.0))
+        sr = DWSolver(_corner("FR", -1.0))
+        static_l = sl.solve().toe_deg_per_side
+        static_r = sr.solve().toe_deg_per_side
+
+        for travel in (-20.0, -10.0, 10.0, 20.0):
+            rl = sl.solve(wheel_travel_mm=travel)
+            rr = sr.solve(wheel_travel_mm=travel)
+            assert rl.converged and rr.converged
+            d_l = rl.toe_deg_per_side - static_l
+            d_r = rr.toe_deg_per_side - static_r
+            assert abs(d_l) > 1e-3, f"no bump steer to test at {travel}mm"
+            assert d_l == pytest.approx(d_r, abs=1e-3), (
+                f"Left/right toe change must match for mirrored geometry at "
+                f"{travel}mm: left={d_l:.5f}, right={d_r:.5f}"
+            )
+
+
+class TestRackSteer:
+    """Rack travel and toe.
+
+    The rack is ONE RIGID BAR: steering it moves both tie-rod inboard points
+    in the same direction along Y. That is precisely why both front wheels
+    steer the same way, which per side reads as toe-in on one wheel and
+    toe-out on the other.
+
+    Feeding +rack to one corner and -rack to the other is therefore NOT a
+    steering input — it is a mirror-image input, and it must produce a
+    mirror-image (same-sign) toe change.
     """
 
-    def test_rack_produces_opposite_toe(self) -> None:
-        fl = _corner("FL", 1.0)
-        fr = _corner("FR", -1.0)
-        solver_l = DWSolver(fl)
-        solver_r = DWSolver(fr)
+    def test_real_rack_steers_both_wheels_the_same_way(self) -> None:
+        """One rigid rack, both inboard points moving +Y: the wheels steer
+        together, so the per-side toe changes have OPPOSITE signs."""
+        solver_l = DWSolver(_corner("FL", 1.0))
+        solver_r = DWSolver(_corner("FR", -1.0))
 
         rack_mm = 3.0
+        static_l = solver_l.solve().toe_deg_per_side
+        static_r = solver_r.solve().toe_deg_per_side
         rl = solver_l.solve(rack_mm=rack_mm)
-        rr = solver_r.solve(rack_mm=-rack_mm)
+        rr = solver_r.solve(rack_mm=rack_mm)
 
         assert rl.converged and rr.converged
+        delta_l = rl.toe_deg_per_side - static_l
+        delta_r = rr.toe_deg_per_side - static_r
 
-        rl_static = solver_l.solve()
-        rr_static = solver_r.solve()
-        delta_toe_l = rl.toe_deg_per_side - rl_static.toe_deg_per_side
-        delta_toe_r = rr.toe_deg_per_side - rr_static.toe_deg_per_side
+        assert abs(delta_l) > 0.01, "Rack produced no toe change on left"
+        assert abs(delta_r) > 0.01, "Rack produced no toe change on right"
+        assert delta_l * delta_r < 0.0, (
+            f"A real rack must steer the wheels together, giving opposite "
+            f"per-side toe: left={delta_l:.4f}, right={delta_r:.4f}"
+        )
+        # Magnitudes differ by the Ackermann effect — same order, not equal.
+        assert abs(delta_l) == pytest.approx(abs(delta_r), rel=0.25)
 
-        assert abs(delta_toe_l) > 0.01, "Rack produced no toe change on left"
-        assert abs(delta_toe_r) > 0.01, "Rack produced no toe change on right"
-        assert delta_toe_l == pytest.approx(-delta_toe_r, abs=0.05), (
-            f"Left/right toe change not antisymmetric: "
-            f"left={delta_toe_l:.4f}, right={delta_toe_r:.4f}"
+    def test_mirrored_rack_gives_mirrored_toe(self) -> None:
+        """+rack on the left and -rack on the right is a mirror-image input,
+        so a mirrored car must give the SAME toe change on both sides.
+
+        Regression guard for the left-corner toe sign inversion: under the old
+        convention these came out equal and opposite, which looked plausible.
+        """
+        solver_l = DWSolver(_corner("FL", 1.0))
+        solver_r = DWSolver(_corner("FR", -1.0))
+
+        rack_mm = 3.0
+        static_l = solver_l.solve().toe_deg_per_side
+        static_r = solver_r.solve().toe_deg_per_side
+        delta_l = solver_l.solve(rack_mm=rack_mm).toe_deg_per_side - static_l
+        delta_r = solver_r.solve(rack_mm=-rack_mm).toe_deg_per_side - static_r
+
+        assert abs(delta_l) > 0.01
+        assert delta_l == pytest.approx(delta_r, abs=1e-3), (
+            f"Mirrored input on mirrored geometry must give mirrored toe: "
+            f"left={delta_l:.4f}, right={delta_r:.4f}"
+        )
+
+
+class TestToeSignConvention:
+    """Anchor the toe sign to geometry rather than to the solver's own model.
+
+    _upright_yaw_deg recovers the upright's rigid rotation directly, so these
+    tests fail if the spin-axis construction and the toe extraction are ever
+    changed together in a way that stays self-consistent but is physically
+    inverted — which is exactly how the left-corner bug survived.
+    """
+
+    def test_left_corner_toe_in_is_negative_yaw(self) -> None:
+        corner = _corner("FL", 1.0)
+        solver = DWSolver(corner)
+        static = solver.solve()
+        bumped = solver.solve(wheel_travel_mm=20.0)
+        assert bumped.converged
+
+        d_toe = bumped.toe_deg_per_side - static.toe_deg_per_side
+        d_yaw = _upright_yaw_deg(corner, bumped) - _upright_yaw_deg(corner, static)
+
+        assert abs(d_toe) > 1e-3, "no toe change to test"
+        assert d_toe == pytest.approx(-d_yaw, rel=0.05), (
+            f"Left corner: toe-in must correspond to negative upright yaw. "
+            f"d_toe={d_toe:.5f}, d_yaw={d_yaw:.5f}"
+        )
+
+    def test_right_corner_toe_in_is_positive_yaw(self) -> None:
+        corner = _corner("FR", -1.0)
+        solver = DWSolver(corner)
+        static = solver.solve()
+        bumped = solver.solve(wheel_travel_mm=20.0)
+        assert bumped.converged
+
+        d_toe = bumped.toe_deg_per_side - static.toe_deg_per_side
+        d_yaw = _upright_yaw_deg(corner, bumped) - _upright_yaw_deg(corner, static)
+
+        assert abs(d_toe) > 1e-3, "no toe change to test"
+        assert d_toe == pytest.approx(d_yaw, rel=0.05), (
+            f"Right corner: toe-in must correspond to positive upright yaw. "
+            f"d_toe={d_toe:.5f}, d_yaw={d_yaw:.5f}"
         )
 
 

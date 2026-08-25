@@ -30,3 +30,6 @@ Thumbs.db
 _tmp_*.py
 _smoke*.py
 _shot.py
+
+# Generated Altair API stubs (scripts/gen_altair_stubs.py)
+typings/

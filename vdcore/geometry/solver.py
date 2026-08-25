@@ -180,10 +180,13 @@ class DWSolver:
             # So z_component = -sin(camber_rad), y_component = cos(camber_rad).
             sy = math.cos(camber_rad)
             sz = -math.sin(camber_rad)
-            # Toe rotates in X-Y plane.
-            # toe_deg_per_side = -atan2(x, y) for left.
-            # So x_component = -sin(toe_rad) * cos(camber_rad)
-            sx = -math.sin(toe_rad) * math.cos(camber_rad)
+            # Toe rotates in X-Y plane. Toe-in yaws the front of the wheel
+            # toward the centreline (-Y for a left wheel), which swings the
+            # outboard-pointing spin axis toward +X. Both sides therefore have
+            # x_component = +sin(toe_rad) * cos(camber_rad) for toe-in; only
+            # the y_component differs in sign.
+            # toe_deg_per_side = +atan2(x, y) for left.
+            sx = math.sin(toe_rad) * math.cos(camber_rad)
             sy = math.cos(toe_rad) * math.cos(camber_rad)
         else:
             # Base direction: -Y. Camber rotates in Y-Z plane.
@@ -377,8 +380,11 @@ class DWSolver:
             toe_deg_per_side = 0.0
         else:
             spin_xy_unit = spin_xy / spin_xy_norm
+            # Toe-in swings the outboard-pointing spin axis toward +X on BOTH
+            # sides, so both branches must return the same sign for the same
+            # physical toe direction. Only the y_component sign differs.
             if self._is_left:
-                toe_deg_per_side = -math.degrees(math.atan2(spin_xy_unit[0], spin_xy_unit[1]))
+                toe_deg_per_side = math.degrees(math.atan2(spin_xy_unit[0], spin_xy_unit[1]))
             else:
                 toe_deg_per_side = -math.degrees(math.atan2(-spin_xy_unit[0], -spin_xy_unit[1]))
 
