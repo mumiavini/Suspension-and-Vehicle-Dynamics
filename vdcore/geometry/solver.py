@@ -62,6 +62,13 @@ class DWSolver:
         self._corner = corner
         self._is_left = corner.corner_id in ("FL", "RL")
 
+        # Chassis pose for the current solve, set by solve() before the
+        # residuals run. Defaults describe the undisplaced static state so a
+        # bare _residuals() call is still well defined.
+        self._chassis_rot: Arr = np.eye(3)
+        self._chassis_dz: Arr = np.zeros(3)
+        self._wc_z_target: float = float(corner.wheel_center.z_mm)
+
         # Static positions of the outboard joints (upright vertices)
         self._ubj_0 = np.array([
             corner.uca_outboard.x_mm,
@@ -322,16 +329,25 @@ class DWSolver:
         r[6] = float(np.linalg.norm(ubj - tro)) - self._d_ubj_tro
         r[7] = float(np.linalg.norm(lbj - tro)) - self._d_lbj_tro
 
-        # 9th constraint: wheel centre must maintain its Z relationship
-        # to the upright (prevents the solution from flipping)
+        # 9th constraint: DRIVES the suspension travel.
+        #
+        # Constraints 0-7 leave exactly one degree of freedom -- the travel DOF
+        # -- so without a driving equation the solution is a one-parameter
+        # curve and least_squares picks a point on it by optimiser path rather
+        # than by physics. The previous residual here projected the wheel
+        # centre onto the kingpin axis, but the wheel centre is reconstructed
+        # rigidly from (UBJ, LBJ, TRO) and the kingpin is body-fixed, so that
+        # projection is invariant: the residual was identically zero and
+        # constrained nothing. Asking for 25 mm of bump then delivered 27.03 mm
+        # on the FSAE2027 front corner, a 8.1% overshoot that put camber gain
+        # 7.3% out.
+        #
+        # The wheel centre height in the CHASSIS frame is what "wheel travel"
+        # means, so pin it. Working in the chassis frame keeps this correct
+        # under roll, where the chassis is rotated as well as translated.
         wc = self._reconstruct_wc(ubj, lbj, tro)
-        kingpin = ubj - lbj
-        kingpin_unit = kingpin / np.linalg.norm(kingpin)
-        wc_to_lbj = wc - lbj
-        wc_along_kp = np.dot(wc_to_lbj, kingpin_unit)
-        kp_ref = (self._ubj_0 - self._lbj_0) / np.linalg.norm(self._ubj_0 - self._lbj_0)
-        wc_along_kp_ref = float(np.dot(self._wc_0 - self._lbj_0, kp_ref))
-        r[8] = wc_along_kp - wc_along_kp_ref
+        wc_chassis = self._chassis_rot.T @ (wc - self._chassis_dz)
+        r[8] = float(wc_chassis[2]) - self._wc_z_target
 
         return r
 
@@ -440,6 +456,18 @@ class DWSolver:
             -wheel_travel_mm, roll_deg, rack_mm
         )
 
+        # Chassis transform, so the travel-driving residual can be written in
+        # the chassis frame (see _residuals r[8]).
+        if abs(roll_deg) > 1e-12:
+            self._chassis_rot = Rotation.from_rotvec(
+                math.radians(roll_deg) * np.array([1.0, 0.0, 0.0])
+            ).as_matrix()
+        else:
+            self._chassis_rot = np.eye(3)
+        self._chassis_dz = np.array([0.0, 0.0, -wheel_travel_mm])
+        # Bump = wheel up relative to the chassis = higher in the chassis frame.
+        self._wc_z_target = float(self._wc_0[2]) + wheel_travel_mm
+
         x0 = np.concatenate([self._ubj_0, self._lbj_0, self._tro_0])
 
         result = least_squares(
@@ -464,13 +492,17 @@ class DWSolver:
             ubj, lbj, spin
         )
 
-        # Contact patch with camber correction
+        # Contact patch with camber correction.
+        # The patch is at the BOTTOM of the wheel, so it moves opposite to the
+        # top: negative camber (top inboard) puts the patch OUTBOARD. The
+        # loaded radius is the VERTICAL drop to the road, so the patch stays on
+        # the ground plane. Must stay consistent with
+        # vdcore.geometry.derived.contact_patch.
         gamma = math.radians(camber_deg)
         r = self._tire_r
-        lateral_shift = r * math.sin(gamma)
-        vertical_corr = r * (1.0 - math.cos(gamma))
+        lateral_shift = -r * math.tan(gamma)
         cp_y = wc[1] + lateral_shift if self._is_left else wc[1] - lateral_shift
-        cp_z = wc[2] - r + vertical_corr
+        cp_z = wc[2] - r
 
         return SolverResult(
             ubj=DerivedPoint(x_mm=float(ubj[0]), y_mm=float(ubj[1]), z_mm=float(ubj[2])),

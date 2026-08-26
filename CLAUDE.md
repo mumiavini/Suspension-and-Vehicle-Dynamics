@@ -64,6 +64,33 @@ Every `Hardpoint` carries `source: Literal["cad", "measured", "estimate", "desig
 
 Any analysis consuming an estimate-tagged input must be able to report that fact.
 
+## Where numbers come from
+
+There is one kinematic solver: `vdcore.geometry.solver.DWSolver`. Axle rates and
+roll behaviour come from `vdcore.analysis.axle`, driven by
+`scripts/geometry_summary.py` §3b — the merged corner is the only complete one,
+because `sla_geometry.py` synthesises the wishbones and `steering_geometry.py`
+owns the tie rod that closes the sixth DOF.
+
+- `sla_geometry.py` — static synthesis only: hardpoints, static KPIs, checks,
+  anti-geometry, leg forces. No sweeps. It cannot build a complete corner.
+- `steering_geometry.py` — caster, tie rod, rack, bump steer, Ackermann, effort.
+  Supersedes sla's zero-caster outboard ball joints.
+- `legacy_app/` — **do not quote its dynamic KPIs.** Its solver models each
+  wishbone as a strut to the pivot midpoint, leaving 3 of 9 DOF to a numerical
+  regularisation. Anti-dive reports +200% (actually 0%), Ackermann +173%
+  (actually ~70%, formula inverted vs its docstring), RC migration ~1 mm
+  (actually 110 mm), rear camber gain 27% low, mechanical trail sign inverted.
+  Static values are correct. The app carries a banner saying so.
+
+Track is measured at the **contact patches**. `loaded_radius_mm` is the vertical
+wheel-centre-to-road distance, so patches sit at z=0 and negative camber moves
+them OUTBOARD (widening ground track, increasing scrub). Static camber is built
+into the upright, so ball joints, KPI and kingpin length are unaffected.
+
+Rate and roll Z values are **chassis-referenced**. Ground-referenced RC
+migration differs by exactly 1 mm per mm of travel — always state which.
+
 ## Numerical conventions
 
 Every solver returns convergence status. Non-convergence raises or returns an explicit failure object — **never a plausible-looking number silently.** Use scipy's default trust-region method (not LM — LM does not support bounds). Numerical Jacobian by default; analytic only after separate validation.
@@ -103,7 +130,7 @@ vdcore/                     # PURE LIBRARY — zero UI imports
   optimize/                 # differential_evolution wrappers
   io/                       # config load/save, frame transforms, CSV/JSON export
   validate/                 # cross-checks vs Optimum Kinematics, benchmark cases
-legacy_app/                 # FROZEN — original Streamlit app (not under active development)
+legacy_app/                 # FROZEN — original Streamlit app. Dynamic KPIs are WRONG, see below
   geometry/                 #   primitives, 2D/3D solvers, model
   analysis/                 #   io, KPIs, optimizer, sweeps, viz3d
   ui/                       #   sidebar, tabs, theme

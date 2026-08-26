@@ -61,43 +61,61 @@ class TestContactPatch:
         cp = contact_patch_uncambered(fl)
         assert cp.y_mm == pytest.approx(600.0)
 
-    def test_negative_camber_shifts_patch_inboard(self) -> None:
-        """Negative camber shifts the contact patch toward Y=0 (inboard)."""
+    def test_negative_camber_shifts_patch_outboard(self) -> None:
+        """Negative camber shifts the contact patch AWAY from Y=0 (outboard).
+
+        The patch is at the bottom of the wheel. Negative camber tips the TOP
+        inboard, so the bottom goes outboard. This is why building static
+        camber into a design widens the track at the ground -- see the
+        FSAE2027 geometry summary, where -1.50 deg moves the patch 6.42 mm
+        outboard and takes front scrub from 15.08 to 21.49 mm.
+
+        Before the sign fix this asserted the opposite and passed, which put
+        vdcore 2*r*sin(gamma) = 12.8 mm out on any cambered corner.
+        """
         fl = _corner("FL", 1.0)
         cp_zero = contact_patch(fl, camber_deg=0.0)
         cp_neg = contact_patch(fl, camber_deg=-2.0)
-        # Left corner (Y+): negative camber shifts patch toward centreline (lower Y)
-        assert cp_neg.y_mm < cp_zero.y_mm
+        # Left corner (Y+): outboard is +Y
+        assert cp_neg.y_mm > cp_zero.y_mm
 
-    def test_negative_camber_right_corner_shifts_inboard(self) -> None:
-        """For right corner, negative camber also shifts toward Y=0 (higher Y)."""
+    def test_negative_camber_right_corner_shifts_outboard(self) -> None:
+        """For the right corner, negative camber also shifts outboard (lower Y)."""
         fr = _corner("FR", -1.0)
         cp_zero = contact_patch(fr, camber_deg=0.0)
         cp_neg = contact_patch(fr, camber_deg=-2.0)
-        # Right corner (Y-): negative camber shifts patch toward centreline (higher Y)
-        assert cp_neg.y_mm > cp_zero.y_mm
+        # Right corner (Y-): outboard is -Y
+        assert cp_neg.y_mm < cp_zero.y_mm
 
     def test_camber_correction_magnitude(self) -> None:
-        """Lateral shift should be r * sin(gamma)."""
+        """Lateral shift should be r * tan(gamma), directed outboard.
+
+        tan, not sin: loaded_radius_mm is the VERTICAL drop from wheel centre
+        to road, so the patch slides along the ground plane by r*tan(gamma).
+        """
         fl = _corner("FL", 1.0)
         gamma = -2.0
         r = 228.0
-        expected_shift = r * math.sin(math.radians(gamma))
+        expected_shift = -r * math.tan(math.radians(gamma))
         cp_zero = contact_patch(fl, camber_deg=0.0)
         cp_camb = contact_patch(fl, camber_deg=gamma)
         actual_shift = cp_camb.y_mm - cp_zero.y_mm
         assert actual_shift == pytest.approx(expected_shift)
+        assert actual_shift > 0.0  # outboard for a left corner
 
-    def test_camber_vertical_correction(self) -> None:
-        """Vertical correction should be r * (1 - cos(gamma))."""
+    def test_camber_does_not_lift_patch_off_the_ground(self) -> None:
+        """Camber must not change the patch height.
+
+        loaded_radius_mm is the vertical wheel-centre-to-road distance, so the
+        contact patch sits on the ground plane at every camber angle. A
+        non-zero vertical term here would mean scrub, trail and the roll-centre
+        construction were all measured off a plane that is not the road.
+        """
         fl = _corner("FL", 1.0)
-        gamma = -2.0
-        r = 228.0
-        expected = r * (1.0 - math.cos(math.radians(gamma)))
         cp_zero = contact_patch(fl, camber_deg=0.0)
-        cp_camb = contact_patch(fl, camber_deg=gamma)
-        actual = cp_camb.z_mm - cp_zero.z_mm
-        assert actual == pytest.approx(expected)
+        cp_camb = contact_patch(fl, camber_deg=-2.0)
+        assert cp_camb.z_mm - cp_zero.z_mm == pytest.approx(0.0, abs=1e-12)
+        assert cp_camb.z_mm == pytest.approx(fl.wheel_center.z_mm - 228.0)
 
 
 class TestTrack:
@@ -113,12 +131,22 @@ class TestTrack:
         t = track_mm(axle)
         assert t == pytest.approx(1200.0)  # 600 - (-600)
 
-    def test_camber_reduces_track(self) -> None:
-        """Negative camber on both sides reduces effective track."""
+    def test_camber_widens_track(self) -> None:
+        """Negative camber on both sides WIDENS the track at the ground.
+
+        The contact patch is at the bottom of the wheel, so tipping the tops
+        inboard pushes the patches outboard by r*tan|gamma| each. This is the
+        same fact the FSAE2027 summary records: building in -1.50 deg moves
+        each patch 6.42 mm outboard.
+
+        Before the sign fix this asserted the opposite and passed.
+        """
         axle = Axle(left=_corner("FL", 1.0), right=_corner("FR", -1.0))
         t_zero = track_mm(axle)
         t_camb = track_mm(axle, camber_left_deg=-5.0, camber_right_deg=-5.0)
-        assert t_camb < t_zero
+        assert t_camb > t_zero
+        # exactly two patches moved out by r*tan(5 deg), r = 228 mm
+        assert t_camb - t_zero == pytest.approx(2 * 228.0 * math.tan(math.radians(5.0)))
 
 
 class TestWheelbase:

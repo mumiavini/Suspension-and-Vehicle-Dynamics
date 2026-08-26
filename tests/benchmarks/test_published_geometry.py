@@ -17,10 +17,10 @@ suspension with FSAE-scale dimensions:
   - ~15 deg KPI, ~5.6 deg caster
   - Tie rod behind the axle line (rear-steer)
 
-Regression values recorded at initial validation (2026-08-05):
+Regression values (updated 2026-08-25, contact-patch sign fix):
   KPI       = 14.93 deg
   Caster    = 5.58 deg
-  RC height = 12.69 mm
+  RC height = 12.95 mm
   FVSA      = -8761 mm
   Camber gain = -0.0068 deg/mm
 
@@ -246,7 +246,11 @@ class TestRCVDRollCentre:
         rr = DWSolver(fr).solve()
         assert rl.converged and rr.converged
         rc = roll_centre_height(axle, rl, rr)
-        assert rc.rc_height_mm == pytest.approx(12.69, abs=0.1)
+        # Re-anchored 2026-08-25: was 12.69, recorded while the contact-patch
+        # lateral shift carried an inverted sign. This fixture has -1.5 deg of
+        # static camber, so the corrected patch moves 2*r*sin(1.5 deg) outboard
+        # and the n-line construction lands 0.26 mm higher.
+        assert rc.rc_height_mm == pytest.approx(12.95, abs=0.1)
 
     def test_rc_height_positive(self) -> None:
         """RC should be above ground for this geometry."""

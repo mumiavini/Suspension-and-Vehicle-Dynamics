@@ -23,15 +23,15 @@ Geometry (ISO 8855: X+ forward, Y+ LEFT, Z+ up):
   - -2.0 deg static camber, 0.1 deg toe per side
   - ~5.2 deg caster, ~14.0 deg KPI
 
-Regression values (updated 2026-08-06, scrub fix):
+Regression values (updated 2026-08-25, contact-patch sign fix):
   Camber    = -2.00 deg (design intent)
   Toe       = 0.10 deg (design intent)
   KPI       = 14.04 deg
   Caster    = 5.24 deg
-  FVSA      = -2192 mm
-  RC height = 48.77 mm
+  FVSA      = -2209 mm
+  RC height = 49.81 mm
   Camber gain = -0.0280 deg/mm
-  Bump steer = 0.40 deg/1000mm
+  Bump steer = -0.22 deg/1000mm (bump gives toe-out)
   Scrub radius = -6.9 mm
   Mechanical trail = 16.6 mm
 """
@@ -266,7 +266,10 @@ class TestRollCentre:
         r = DWSolver(fl).solve()
         assert r.converged
         fvic = front_view_instant_centre(fl, ubj=r.ubj, lbj=r.lbj, contact_patch=r.contact_patch)
-        assert fvic.fvsa_mm == pytest.approx(-2192, abs=5)
+        # Re-anchored 2026-08-25: the contact-patch lateral shift carried an
+        # inverted sign; this fixture has -2.0 deg of static camber so the
+        # corrected patch sits outboard and the construction shifts.
+        assert fvic.fvsa_mm == pytest.approx(-2209, abs=5)
 
     def test_rc_height_value(self) -> None:
         fl, fr = _fsae_fl(), _fsae_fr()
@@ -275,7 +278,10 @@ class TestRollCentre:
         rr = DWSolver(fr).solve()
         assert rl.converged and rr.converged
         rc = roll_centre_height(axle, rl, rr)
-        assert rc.rc_height_mm == pytest.approx(48.77, abs=0.2)
+        # Re-anchored 2026-08-25: the contact-patch lateral shift carried an
+        # inverted sign; this fixture has -2.0 deg of static camber so the
+        # corrected patch sits outboard and the construction shifts.
+        assert rc.rc_height_mm == pytest.approx(49.81, abs=0.2)
 
     def test_rc_height_positive(self) -> None:
         fl, fr = _fsae_fl(), _fsae_fr()
@@ -318,15 +324,17 @@ class TestBumpSteer:
     def test_bump_steer_regression(self) -> None:
         """Regression anchor for bump steer rate.
 
-        The anchor was +0.40 deg/1000mm, which this geometry has never
-        produced: before the left-corner toe sign was corrected the solver
-        returned +0.2244 here, so the assertion was already failing. The sign
-        correction flips it to -0.2211 (bump gives toe-out on this geometry);
-        the two differ slightly in magnitude rather than being exact negatives
-        because static camber couples into the projected wheel heading.
+        The -0.22 anchor is correct and was never stale. It had been failing
+        on main because DWSolver did not impose the wheel travel it was asked
+        for: its 9th residual was identically zero, leaving the travel DOF
+        unconstrained, so a requested 25 mm of bump delivered ~27 mm and
+        inflated this rate to -0.40. With the driving constraint in place the
+        geometry returns -0.2222, matching the value recorded when the
+        left-corner toe sign was fixed.
 
-        The docstring target of ~0.40 above is a design intent this tie-rod
-        placement does not meet — worth revisiting the geometry, not the number.
+        The ~0.40 deg/1000mm in the class docstring is a design intent this
+        tie-rod placement does not meet — worth revisiting the geometry, not
+        the number.
         """
         solver = DWSolver(_fsae_fl())
         r_bump = solver.solve(wheel_travel_mm=25.0)

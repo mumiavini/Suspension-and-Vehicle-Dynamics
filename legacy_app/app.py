@@ -36,6 +36,25 @@ st.set_page_config(
 init_theme()
 inject_css()
 render_header()
+
+st.error(
+    "**Dynamic KPIs on this app are known to be wrong. Do not quote them.**\n\n"
+    "The 3D solver models each wishbone as a single strut to the midpoint "
+    "between the two chassis pivots, so the ball joint rides a sphere instead "
+    "of a circle about the pivot axis. That leaves 3 of 9 degrees of freedom "
+    "closed by a numerical regularisation rather than by the linkage. Confirmed "
+    "wrong: anti-dive (reports +200%, actually 0%), anti-squat (+83.74%, "
+    "actually 0%), Ackermann (+173%, actually ~70% — the formula is the "
+    "reciprocal of its own docstring), roll-centre migration under roll "
+    "(reports ~1 mm, actually 110 mm front), rear camber gain (27% low) and "
+    "mechanical trail (sign inverted).\n\n"
+    "Static values — KPI, caster, scrub, roll-centre height — are correct.\n\n"
+    "For anything dynamic use `sla_geometry.py` and `steering_geometry.py`, "
+    "or section 3b of `scripts/geometry_summary.py`, which solve in 3D via "
+    "`vdcore.analysis.axle` and are covered by the test suite.",
+    icon="🚨",
+)
+
 render_sidebar()
 
 t_inputs, t_analysis, t_3d, t_synthesis, t_compare = st.tabs([

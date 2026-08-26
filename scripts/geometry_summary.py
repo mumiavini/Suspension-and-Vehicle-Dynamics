@@ -68,6 +68,13 @@ if str(REPO) not in sys.path:
 
 import sla_geometry as sla  # noqa: E402
 import steering_geometry as stg  # noqa: E402
+from vdcore.analysis.axle import axle_rates, axle_roll  # noqa: E402
+from vdcore.models.hardpoint import (  # noqa: E402
+    Axle,
+    Corner,
+    Hardpoint,
+    TirePackage,
+)
 
 W = 78
 RULE = "=" * W
@@ -238,11 +245,16 @@ def member_lengths(hp: MergedHardpoints, corner: str) -> MemberLengths:
 
 
 def static_alignment_encoded(hp: MergedHardpoints, corner: str) -> tuple[float, float]:
-    """Static camber and toe the exported CONTACT_PATCH actually encodes.
+    """Static camber and toe the exported points actually encode.
 
-    The contact patch is exported directly below the wheel centre, which is a
-    zero-camber, zero-toe convention. The rate tables assume the design-intent
-    camber instead. Whoever loads these points needs to know which they get.
+    Track is measured at the CONTACT PATCHES, so the contact patch carries the
+    half-track and the wheel centre is displaced inboard by the built-in static
+    camber. This reads that displacement back, so the deliverable is checked
+    against design intent rather than restating it.
+
+    Toe cannot be recovered here and is always returned as 0: toe rotates the
+    wheel about a vertical axis and leaves both points where they are. A
+    consumer needing static toe must read it from the config.
     """
     wc, cp = hp.arr(corner, "WHEEL_CENTER"), hp.arr(corner, "CONTACT_PATCH")
     dz = wc[2] - cp[2]
@@ -358,7 +370,7 @@ def members_section(hp: MergedHardpoints) -> str:
     return "\n".join(L)
 
 
-def hardpoints_section(hp: MergedHardpoints) -> str:
+def hardpoints_section(hp: MergedHardpoints, front: sla.AxleGeometry) -> str:
     L = ["", RULE, " 6. MERGED HARDPOINTS  (ISO 8855)", RULE]
     L.append("   X POSITIVE FORWARD. Y POSITIVE LEFT. Z POSITIVE UP.")
     L.append("   Origin: front axle centreline, ground plane, vehicle centreline.")
@@ -379,13 +391,23 @@ def hardpoints_section(hp: MergedHardpoints) -> str:
     L.append("")
     L.append(" (* reference points, not hardpoints)")
     L.append("")
-    L.append("  !!  STATIC ALIGNMENT ENCODED IN THIS TABLE:")
-    L.append(f"      camber {cam:+.2f} deg, toe {toe:+.2f} deg per side.")
-    L.append("      CONTACT_PATCH sits directly below WHEEL_CENTER on all four")
-    L.append("      corners, which is a ZERO-camber, ZERO-toe convention. The rate")
-    L.append("      and roll tables assume the design-intent static camber instead.")
-    L.append("      Build the design camber in for real and the contact patch moves")
-    L.append("      outboard, which moves scrub radius -- see section 8.")
+    design_cam = front.inputs.static_camber_deg
+    ok = abs(cam - design_cam) < 1e-3
+    L.append(f"  {'OK ' if ok else '!! '} STATIC ALIGNMENT ENCODED IN THIS TABLE:")
+    L.append(f"      camber {cam:+.2f} deg per side   (design intent {design_cam:+.2f})")
+    L.append("      Recovered from CONTACT_PATCH -> WHEEL_CENTER, not restated")
+    L.append("      from the config, so the rate and roll tables above and these")
+    L.append("      points now describe the same car.")
+    L.append("")
+    L.append("      Track is measured at the CONTACT PATCHES -- the datum the rules,")
+    L.append("      the tilt test and lateral load transfer all use. The wheel")
+    inboard = abs(front.inputs.loaded_radius_mm * math.tan(math.radians(design_cam)))
+    L.append(f"      centres sit {inboard:.2f} mm inboard of them, so the wheel-centre")
+    L.append("      track is narrower than the quoted track -- see section 8.")
+    L.append("")
+    L.append(f"      Toe is {toe:+.2f} deg here because a contact-patch / wheel-centre")
+    L.append("      pair CANNOT encode toe at all, not because toe is known to be")
+    L.append("      zero. Static toe must come from the config.")
     return "\n".join(L)
 
 
@@ -426,19 +448,28 @@ def open_items(hp: MergedHardpoints, front: sla.AxleGeometry,
                rear: sla.AxleGeometry) -> str:
     L = ["", RULE, " 8. OPEN ITEMS", RULE]
 
-    r = front.inputs.loaded_radius_mm
-    for label, geo in (("Front", front), ("Rear", rear)):
-        cam = abs(geo.inputs.static_camber_deg)
-        shift = r * math.tan(math.radians(cam))
-        moved = geo.scrub_radius_mm + shift
-        L.append(f"   {label}: building the design {cam:.2f} deg of static camber into")
-        L.append(f"     the contact patch moves it {shift:.2f} mm outboard and takes")
-        L.append(f"     scrub radius from {geo.scrub_radius_mm:.2f} to {moved:.2f} mm."
-                 f"{'  <-- leaves the 5 to 25 window' if moved > 25 else ''}")
+    L.append("   Static camber is now carried by the exported points (section 6),")
+    L.append("   so the rate tables and the deliverable describe the same car.")
+    L.append("   Track is the CONTACT PATCH datum, which leaves scrub radius")
+    L.append("   untouched. What it moves instead is the wheel-centre track:")
     L.append("")
-    L.append("   The static camber / toe convention has to be decided once and")
-    L.append("   applied everywhere: either the export carries it and scrub moves,")
-    L.append("   or it does not and the rate tables stop claiming it.")
+    L.append(f"   {'axle':<8s}{'ground track':>15s}{'wheel-centre track':>21s}{'per corner':>13s}")
+    for label, geo in (("Front", front), ("Rear", rear)):
+        inp = geo.inputs
+        shift = inp.loaded_radius_mm * math.tan(math.radians(inp.static_camber_deg))
+        L.append(f"   {label:<8s}{inp.track_mm:12.1f} mm"
+                 f"{inp.wheel_centre_track_mm:18.1f} mm{shift:10.2f} mm")
+    L.append("")
+    L.append("   TO CONFIRM: the wheel offset and upright width have to absorb")
+    L.append("   that per-corner shift. It is a packaging number, not a kinematic")
+    L.append("   one, and nothing in this tool can check it.")
+    L.append("")
+    L.append("   TO CONFIRM: the nominal camber is machined into the upright, so")
+    L.append("   the 2 mm plates at the upper arm trim around it. Plate step is")
+    for label, geo in (("Front", front), ("Rear", rear)):
+        step = math.degrees(math.atan(2.0 / geo.inputs.kingpin_length_mm))
+        L.append(f"     {label.lower()} {step:.3f} deg per 2 mm plate"
+                 f"   (kingpin {geo.inputs.kingpin_length_mm:.2f} mm)")
     L.append("")
     if hp.rear_tie_rod_from_csv:
         L.append("   The rear tie rod has no synthesis script and no test.")
@@ -453,6 +484,108 @@ def open_items(hp: MergedHardpoints, front: sla.AxleGeometry,
 # --------------------------------------------------------------------------- #
 # 4. TOP LEVEL
 # --------------------------------------------------------------------------- #
+
+def _vdcore_corner(
+    hp: MergedHardpoints, corner: str, inp: sla.AxleInputs
+) -> Corner:
+    """Lift one merged corner into a vdcore Corner.
+
+    The merged set is the only place a COMPLETE corner exists: sla_geometry
+    synthesises the wishbones and steering_geometry supersedes the outboard
+    ball joints and owns the tie rod. DWSolver needs the tie rod to close the
+    sixth degree of freedom, which is why the rate and roll tables live here
+    and not in either script alone.
+    """
+
+    def point(name: str) -> Hardpoint:
+        x, y, z = hp.arr(corner, name)
+        return Hardpoint(
+            name=name, x_mm=float(x), y_mm=float(y), z_mm=float(z),
+            source="design_intent", tol_mm=0.5,
+        )
+
+    return Corner(
+        corner_id=corner,
+        uca_inboard_front=point("UCA_IN_FRONT"),
+        uca_inboard_rear=point("UCA_IN_REAR"),
+        uca_outboard=point("UCA_OUT"),
+        lca_inboard_front=point("LCA_IN_FRONT"),
+        lca_inboard_rear=point("LCA_IN_REAR"),
+        lca_outboard=point("LCA_OUT"),
+        tie_rod_inboard=point("TIE_ROD_IN"),
+        tie_rod_outboard=point("TIE_ROD_OUT"),
+        wheel_center=point("WHEEL_CENTER"),
+        tire=TirePackage(
+            loaded_radius_mm=inp.loaded_radius_mm,
+            source="design_intent",
+            tol_mm=1.0,
+        ),
+        static_camber_deg=inp.static_camber_deg,
+        static_toe_deg_per_side=0.0,
+    )
+
+
+def rates_section(
+    hp: MergedHardpoints, front: sla.AxleGeometry, rear: sla.AxleGeometry
+) -> str:
+    """Rate and roll tables, solved in 3D on the complete merged corners.
+
+    These used to come from a front-view four-bar inside sla_geometry.py that
+    never read the pivot-axis rake, so dialling in anti-dive left every rate
+    unchanged while the real geometry moved. vdcore.analysis.axle runs the full
+    3D solver, so rake is carried by the constraints.
+    """
+    L = ["", RULE, " 3b. RATES AND ROLL  (3D solve, merged corners)", RULE]
+    L.append("   Solved by vdcore.analysis.axle on DWSolver. Z values are")
+    L.append("   CHASSIS-referenced: ride height measured from the sprung mass,")
+    L.append("   which is the frame the roll couple needs. Ground-referenced RC")
+    L.append("   migration differs by exactly 1 mm per mm of travel.")
+
+    for label, geo, sides in (
+        ("FRONT", front, ("FL", "FR")),
+        ("REAR", rear, ("RL", "RR")),
+    ):
+        inp = geo.inputs
+        axle = Axle(
+            left=_vdcore_corner(hp, sides[0], inp),
+            right=_vdcore_corner(hp, sides[1], inp),
+        )
+        rates = axle_rates(
+            axle,
+            travel_bump_mm=inp.travel_bump_mm,
+            travel_droop_mm=inp.travel_droop_mm,
+        )
+        roll = axle_roll(axle, inp.roll_reference_deg)
+
+        L.append("")
+        L.append(f" {label}   RATES ABOUT STATIC")
+        L.append(f"   Camber gain                 {rates.camber_gain_deg_per_mm:12.4f} deg/mm")
+        L.append(f"   Roll centre migration       {rates.rc_migration_mm_per_mm:12.4f} mm/mm")
+        L.append(f"   Half-track change           {rates.half_track_change_mm_per_mm:12.4f} mm/mm")
+        L.append(f"   Camber at full bump         {rates.camber_full_bump_deg:12.4f} deg")
+        L.append(f"   Camber at full droop        {rates.camber_full_droop_deg:12.4f} deg")
+        L.append(f"   RC over the travel range    {rates.rc_min_mm:7.1f} to {rates.rc_max_mm:.1f} mm")
+        L.append(
+            f"   (travel {inp.travel_bump_mm:.0f} mm bump / "
+            f"{inp.travel_droop_mm:.0f} mm droop)"
+        )
+        L.append("")
+        L.append(f" {label}   AT {roll.roll_deg:.1f} DEG OF ROLL   (camber relative to the ROAD)")
+        L.append(f"   Outer wheel                 {roll.outer_camber_deg:12.2f} deg"
+                 f"   (static {inp.static_camber_deg:+.2f})")
+        L.append(f"   Inner wheel                 {roll.inner_camber_deg:12.2f} deg")
+        L.append(f"   Roll centre height          {roll.rc_height_mm:12.1f} mm"
+                 f"   (design {inp.rc_height_mm:.1f})")
+        L.append(f"   Roll centre lateral         {roll.rc_lateral_mm:12.1f} mm")
+        L.append(f"   Wheel travel at that roll   {roll.wheel_travel_mm:12.2f} mm")
+        band = inp.limits.outer_camber_in_roll_deg
+        ok = band[0] <= roll.outer_camber_deg <= band[1]
+        L.append(
+            f"  {'OK ' if ok else '!! '} Outer wheel camber in the useful window "
+            f"({band[0]:.1f} to {band[1]:.1f} deg)"
+        )
+    return "\n".join(L)
+
 
 def build_report() -> tuple[str, MergedHardpoints]:
     design = sla.run()
@@ -471,9 +604,10 @@ def build_report() -> tuple[str, MergedHardpoints]:
         provenance_report(hp),
         design.text.rstrip("\n"),
         rules_report(veh, front, rear, design.vehicle_results),
+        rates_section(hp, design.front, design.rear),
         steering_section(steer),
         members_section(hp),
-        hardpoints_section(hp),
+        hardpoints_section(hp, design.front),
         load_case_note(veh),
         open_items(hp, front, rear),
         "",

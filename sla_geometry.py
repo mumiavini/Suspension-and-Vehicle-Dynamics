@@ -8,7 +8,7 @@ car -- front and rear axle, all four corners.
 
 Merged from ``sla_geometry_complete.py`` (architecture, ISO 8855 model, corrected
 rotation, JSON/CSV export, CLI) and ``sla_geometry_with_x.py`` (pivot-axis rise
-for real anti-geometry, force decomposition, anti-solver, matplotlib plots).
+for real anti-geometry, force decomposition, anti-solver).
 
 WHAT IT DOES
 ------------
@@ -283,11 +283,44 @@ class AxleInputs:
 
     @property
     def contact_patch(self) -> Vec2:
+        """Tyre contact centre -- the TRACK DATUM.
+
+        ``track_mm`` is measured between the two contact centres, so this
+        point sits at ``half_track_mm`` whatever the static camber is. Scrub
+        radius, FVSA, the roll centre construction, the tilt test and lateral
+        load transfer are all referenced to this point.
+        """
         return np.array([self.half_track_mm, 0.0])
 
     @property
     def wheel_centre(self) -> Vec2:
-        return np.array([self.half_track_mm, self.loaded_radius_mm])
+        """Wheel centre, displaced from the contact patch by static camber.
+
+        The static camber is built into the UPRIGHT (the hub face is machined
+        at ``static_camber_deg``); the ball joints, KPI and kingpin length are
+        unaffected, and the 2 mm plates at the upper arm trim around this
+        nominal. Negative camber tips the top of the wheel inboard, so the
+        wheel centre sits INBOARD of the contact patch by
+        ``loaded_radius * tan(camber)``.
+
+        ``loaded_radius_mm`` is the vertical distance from the wheel centre to
+        the road, so the height is unaffected by camber.
+        """
+        return np.array([
+            self.half_track_mm
+            + self.loaded_radius_mm * np.tan(self.static_camber_deg * D2R),
+            self.loaded_radius_mm,
+        ])
+
+    @property
+    def wheel_centre_track_mm(self) -> float:
+        """Track measured at the wheel centres, not at the ground.
+
+        Differs from ``track_mm`` whenever static camber is non-zero. Reported
+        so the two are never confused: the rules and the tilt test use
+        ``track_mm``, wheel offset and upright width use this one.
+        """
+        return 2.0 * float(self.wheel_centre[0])
 
     @property
     def rim_z_band(self) -> Band:
@@ -451,188 +484,6 @@ def _side_view_anti(inp: AxleInputs, veh: VehicleData, is_front: bool,
 
 # --------------------------------------------------------------------------- #
 # 4. KINEMATICS -- front view four-bar sweep
-# --------------------------------------------------------------------------- #
-
-@dataclass(frozen=True)
-class CornerState:
-    """One solved position of the corner, in the design front view."""
-
-    lca_angle_rad: float
-    lbj: Vec2
-    ubj: Vec2
-    contact_patch: Vec2
-    wheel_centre: Vec2
-    ic: Vec2
-    camber_deg: float
-    bump_mm: float
-    half_track_mm: float
-    rc_height_mm: float
-    fvsa_length_mm: float
-
-
-class AxleKinematics:
-    """Front-view four-bar: chassis -- LCA -- upright -- UCA.
-
-    ``legacy_rotation_sign=True`` reproduces the sign error in the original
-    script that generated the 2027 PDF.  Default is False (corrected physics).
-    """
-
-    def __init__(self, geo: AxleGeometry, *, legacy_rotation_sign: bool = False):
-        self.geo = geo
-        self.inp = geo.inputs
-        self.legacy = legacy_rotation_sign
-
-        self.lca_in, self.uca_in = geo.lca_in, geo.uca_in
-        self.l_lca, self.l_uca = geo.lca_length_mm, geo.uca_length_mm
-        self.l_kingpin = self.inp.kingpin_length_mm
-
-        self.lbj0, self.ubj0 = geo.lbj, geo.ubj
-        self.theta0 = float(np.arctan2(
-            self.lbj0[1] - self.lca_in[1], self.lbj0[0] - self.lca_in[0]))
-        self.psi0 = float(np.arctan2(
-            self.ubj0[0] - self.lbj0[0], self.ubj0[1] - self.lbj0[1]))
-
-        cp0, wc0 = self.inp.contact_patch, self.inp.wheel_centre
-        self.r_cp = cp0 - self.lbj0
-        self.r_wc = wc0 - self.lbj0
-
-    def state_at_angle(self, theta: float) -> CornerState:
-        lbj = self.lca_in + self.l_lca * np.array([np.cos(theta), np.sin(theta)])
-        ubj = circle_intersection(self.uca_in, self.l_uca,
-                                  lbj, self.l_kingpin, reference=self.ubj0)
-
-        psi = float(np.arctan2(ubj[0] - lbj[0], ubj[1] - lbj[1]))
-        d_psi = psi - self.psi0
-        rot_angle = d_psi if self.legacy else -d_psi
-        R = rot2(rot_angle)
-
-        cp = lbj + R @ self.r_cp
-        wc = lbj + R @ self.r_wc
-
-        ic = line_intersection(self.lca_in, lbj, self.uca_in, ubj)
-        if ic is None:
-            ic = np.array([np.copysign(1e7, self.geo.fvic[0]), lbj[1]])
-
-        rc = line_intersection(cp, ic, np.array([0.0, 0.0]), np.array([0.0, 1.0]))
-        rc_z = float(rc[1]) if rc is not None else np.nan
-
-        return CornerState(
-            lca_angle_rad=theta, lbj=lbj, ubj=ubj,
-            contact_patch=cp, wheel_centre=wc, ic=ic,
-            camber_deg=self.inp.static_camber_deg + np.degrees(d_psi),
-            bump_mm=float(cp[1] - self.inp.contact_patch[1]),
-            half_track_mm=float(cp[0]),
-            rc_height_mm=rc_z,
-            fvsa_length_mm=float(cp[0] - ic[0]),
-        )
-
-    def state_at_bump(self, bump_mm: float) -> CornerState:
-        def residual(theta: float) -> float:
-            return self.state_at_angle(theta).bump_mm - bump_mm
-
-        span = 0.75
-        for _ in range(80):
-            lo, hi = self.theta0 - span, self.theta0 + span
-            try:
-                residual(lo)
-                residual(hi)
-                theta = brentq(residual, lo, hi, xtol=1e-12)
-                return self.state_at_angle(theta)
-            except (KinematicError, ValueError):
-                span *= 0.9
-        raise KinematicError(
-            f"{self.inp.name}: cannot reach {bump_mm:+.2f} mm of travel"
-        )
-
-    def sweep(self, n: int = 41) -> list[CornerState]:
-        lo, hi = -self.inp.travel_droop_mm, self.inp.travel_bump_mm
-        return [self.state_at_bump(lo + (hi - lo) * i / (n - 1)) for i in range(n)]
-
-
-@dataclass(frozen=True)
-class SweepRates:
-    camber_gain_deg_per_mm: float
-    rc_migration_mm_per_mm: float
-    half_track_change_mm_per_mm: float
-    camber_full_bump_deg: float
-    camber_full_droop_deg: float
-    rc_min_mm: float
-    rc_max_mm: float
-
-
-def compute_rates(kin: AxleKinematics) -> SweepRates:
-    step = kin.inp.travel_bump_mm / 20.0
-    up, dn = kin.state_at_bump(+step), kin.state_at_bump(-step)
-    two_h = 2.0 * step
-    full_bump = kin.state_at_bump(kin.inp.travel_bump_mm)
-    full_droop = kin.state_at_bump(-kin.inp.travel_droop_mm)
-    rc_all = [s.rc_height_mm for s in kin.sweep()]
-    return SweepRates(
-        camber_gain_deg_per_mm=(up.camber_deg - dn.camber_deg) / two_h,
-        rc_migration_mm_per_mm=(up.rc_height_mm - dn.rc_height_mm) / two_h,
-        half_track_change_mm_per_mm=(up.half_track_mm - dn.half_track_mm) / two_h,
-        camber_full_bump_deg=full_bump.camber_deg,
-        camber_full_droop_deg=full_droop.camber_deg,
-        rc_min_mm=min(rc_all), rc_max_mm=max(rc_all),
-    )
-
-
-@dataclass(frozen=True)
-class RollState:
-    roll_deg: float
-    wheel_travel_mm: float
-    outer_camber_deg: float
-    inner_camber_deg: float
-    rc_height_mm: float
-    rc_lateral_mm: float
-
-
-def compute_roll(kin: AxleKinematics, roll_deg: float) -> RollState:
-    phi = roll_deg * D2R
-
-    def patch_mismatch(b: float) -> float:
-        outer = kin.state_at_bump(+b)
-        inner = kin.state_at_bump(-b)
-        cp_o = rot2(-phi) @ outer.contact_patch
-        cp_i_mirrored = np.array([-inner.contact_patch[0], inner.contact_patch[1]])
-        cp_i = rot2(-phi) @ cp_i_mirrored
-        return cp_o[1] - cp_i[1]
-
-    guess = kin.inp.half_track_mm * np.tan(phi)
-    if abs(roll_deg) < 1e-12:
-        travel = 0.0
-    else:
-        travel = brentq(patch_mismatch, 0.2 * guess, 2.5 * guess, xtol=1e-10)
-
-    outer = kin.state_at_bump(+travel)
-    inner = kin.state_at_bump(-travel)
-
-    R = rot2(-phi)
-    mirror = np.array([-1.0, 1.0])
-
-    cp_o = R @ outer.contact_patch
-    ic_o = R @ outer.ic
-    cp_i = R @ (mirror * inner.contact_patch)
-    ic_i = R @ (mirror * inner.ic)
-    shift = np.array([0.0, -cp_o[1]])
-    cp_o, ic_o, cp_i, ic_i = cp_o + shift, ic_o + shift, cp_i + shift, ic_i + shift
-
-    rc = line_intersection(cp_o, ic_o, cp_i, ic_i)
-    rc_y = float(rc[0]) if rc is not None else np.nan
-    rc_z = float(rc[1]) if rc is not None else np.nan
-
-    return RollState(
-        roll_deg=roll_deg,
-        wheel_travel_mm=travel,
-        outer_camber_deg=outer.camber_deg + roll_deg,
-        inner_camber_deg=inner.camber_deg - roll_deg,
-        rc_height_mm=rc_z,
-        rc_lateral_mm=rc_y,
-    )
-
-
-# --------------------------------------------------------------------------- #
-# 5. ANTI-GEOMETRY SOLVER
 # --------------------------------------------------------------------------- #
 
 def dz_uca_for_anti(inp: AxleInputs, veh: VehicleData,
@@ -801,8 +652,8 @@ def build_corner(geo: AxleGeometry, side: Literal["left", "right"],
         lca_in_rear=p(geo.lca_in_rear_x_mm, float(geo.lca_in[0]),
                       geo.lca_in_rear_z_mm),
         lca_out=p(x_out, float(geo.lbj[0]), float(geo.lbj[1])),
-        wheel_centre=p(x_out, inp.half_track_mm, inp.loaded_radius_mm),
-        contact_patch=p(x_out, inp.half_track_mm, 0.0),
+        wheel_centre=p(x_out, float(inp.wheel_centre[0]), float(inp.wheel_centre[1])),
+        contact_patch=p(x_out, float(inp.contact_patch[0]), float(inp.contact_patch[1])),
     )
 
 
@@ -878,10 +729,31 @@ def vehicle_report(veh: VehicleData, res: VehicleResults) -> str:
     return "\n".join(L)
 
 
-def axle_report(geo: AxleGeometry, kin: AxleKinematics,
-                rates: SweepRates, alt_rates: SweepRates,
-                roll: RollState, section: str,
-                veh: VehicleData) -> str:
+def member_legs_mm(geo: AxleGeometry) -> dict[str, float]:
+    """True 3D length of each wishbone leg, off this script's own hardpoints.
+
+    The front-view ``lca_length_mm`` is a PROJECTION -- the right quantity for
+    the FVSA construction, but not the member anyone cuts, and not what decides
+    whether a leg is slender enough to buckle. On a swept rear wishbone the two
+    differ by 170 mm.
+
+    Caveat: these use the zero-caster outboard ball joints this script
+    synthesises. steering_geometry.py supersedes them with caster-corrected
+    points, so the merged summary's section 5 is the authority for the front
+    axle. The rear has zero caster, so the two agree there.
+    """
+    corner = build_corner(geo, "left", "FL")
+    lo = np.array(corner.lca_out)
+    uo = np.array(corner.uca_out)
+    return {
+        "LCA front leg": float(np.linalg.norm(lo - np.array(corner.lca_in_front))),
+        "LCA rear leg": float(np.linalg.norm(lo - np.array(corner.lca_in_rear))),
+        "UCA front leg": float(np.linalg.norm(uo - np.array(corner.uca_in_front))),
+        "UCA rear leg": float(np.linalg.norm(uo - np.array(corner.uca_in_rear))),
+    }
+
+
+def axle_report(geo: AxleGeometry, section: str, veh: VehicleData) -> str:
     inp, lim = geo.inputs, geo.inputs.limits
     L = ["", _RULE, f" {section}. {inp.name.upper()} SUSPENSION", _RULE]
 
@@ -916,10 +788,13 @@ def axle_report(geo: AxleGeometry, kin: AxleKinematics,
     L.append(_band("KPI", inp.kpi_deg, lim.kpi_deg, "deg"))
     L.append(_band("Kingpin length (LBJ-UBJ)", inp.kingpin_length_mm,
                    lim.kingpin_length_mm))
-    L.append(_band("LCA length", geo.lca_length_mm, lim.lca_length_mm))
     L.append(_band("UCA / LCA ratio", geo.uca_lca_ratio, lim.uca_lca_ratio, "-",
                    "8.3f"))
-    L.append(_band("Camber gain", abs(rates.camber_gain_deg_per_mm),
+    # Camber gain from the design FVSA: 57.2958 / FVSA is the exact rate for a
+    # wheel turning about an instant centre that far away. The SOLVED rate,
+    # which carries pivot-axis rake and 3D effects, is in section 3b of the
+    # merged summary (vdcore.analysis.axle).
+    L.append(_band("Camber gain (from FVSA)", R2D / inp.fvsa_length_mm,
                    lim.camber_gain_deg_per_mm, "deg/mm", "8.4f"))
     L.append(f"  {_flag(geo.fvic[0] < 0)}{'FVIC on the far side of the car':<32s}"
              f"{geo.fvic[0]:8.2f} mm")
@@ -931,48 +806,12 @@ def axle_report(geo: AxleGeometry, kin: AxleKinematics,
              f"window {rim_lo:.0f} to {rim_hi:.0f}")
 
     L.append("")
-    L.append(" RATES ABOUT STATIC")
-    if kin.legacy:
-        lc, rc_ = "legacy (PDF)", "corrected"
-    else:
-        lc, rc_ = "corrected", "legacy (PDF)"
-    L.append(f"   {'quantity':<32s}{lc:>14s}{rc_:>14s}")
-    for label, a, b in (
-        ("Camber gain [deg/mm]", rates.camber_gain_deg_per_mm,
-         alt_rates.camber_gain_deg_per_mm),
-        ("Roll centre migration [mm/mm]", rates.rc_migration_mm_per_mm,
-         alt_rates.rc_migration_mm_per_mm),
-        ("Half-track change [mm/mm]", rates.half_track_change_mm_per_mm,
-         alt_rates.half_track_change_mm_per_mm),
-        ("Camber at full bump [deg]", rates.camber_full_bump_deg,
-         alt_rates.camber_full_bump_deg),
-        ("Camber at full droop [deg]", rates.camber_full_droop_deg,
-         alt_rates.camber_full_droop_deg),
-    ):
-        L.append(f"   {label:<32s}{a:14.4f}{b:14.4f}")
-    L.append(f"   {'RC over the travel range [mm]':<32s}"
-             f"{rates.rc_min_mm:7.1f} to {rates.rc_max_mm:<4.1f}"
-             f"{alt_rates.rc_min_mm:8.1f} to {alt_rates.rc_max_mm:.1f}")
-    L.append(f"   (travel {inp.travel_bump_mm:.0f} mm bump / "
-             f"{inp.travel_droop_mm:.0f} mm droop; camber gain x {inp.travel_bump_mm:.0f} mm = "
-             f"{rates.camber_gain_deg_per_mm * inp.travel_bump_mm:+.2f} deg)")
+    L.append(" MEMBER LENGTHS   (true 3D, not the front-view projection)")
+    L.append(f"   front-view LCA projection is {geo.lca_length_mm:.2f} mm -- "
+             f"the FVSA quantity, not a member")
+    for leg_label, leg_len in member_legs_mm(geo).items():
+        L.append(_band(leg_label, leg_len, lim.lca_length_mm))
 
-    L.append("")
-    L.append(f" AT {roll.roll_deg:.1f} DEG OF ROLL   (camber relative to the ROAD)")
-    L.append(f"   Outer wheel                    {roll.outer_camber_deg:8.2f} deg   "
-             f"(static {inp.static_camber_deg:+.2f})")
-    L.append(f"   Inner wheel                    {roll.inner_camber_deg:8.2f} deg")
-    L.append(f"   Roll centre height             {roll.rc_height_mm:8.1f} mm   "
-             f"(design {inp.rc_height_mm:.1f})")
-    L.append(f"   Roll centre lateral migration  {roll.rc_lateral_mm:8.1f} mm")
-    L.append(f"   Wheel travel at that roll      {roll.wheel_travel_mm:8.2f} mm")
-    band = lim.outer_camber_in_roll_deg
-    ok = band[0] <= roll.outer_camber_deg <= band[1]
-    L.append(f"  {_flag(ok)}Outer wheel camber in the useful window "
-             f"({band[0]:.1f} to {band[1]:.1f} deg)")
-    if roll.outer_camber_deg > band[1]:
-        L.append("      -> outer wheel gone positive: add static negative camber "
-                 "or shorten the FVSA")
 
     L.append("")
     L.append(" LONGITUDINAL LAYOUT AND ANTI-GEOMETRY   (x positive REARWARD)")
@@ -1045,111 +884,86 @@ def hardpoints_report(model: ModelHardpoints) -> str:
             L.append(f"  {marker}{name:<16s}{x:11.2f}{y:11.2f}{z:11.2f}")
     L.append("")
     L.append(" (* reference points, not hardpoints)")
+    L.extend(_static_alignment_block(model))
     return "\n".join(L)
 
 
-def notes_report(front: AxleGeometry, legacy: bool) -> str:
+def _static_alignment_block(model: ModelHardpoints) -> list[str]:
+    """State the alignment the exported points actually carry.
+
+    Read back off the points themselves, not off the config: a consumer
+    recovers static camber from CONTACT_PATCH -> WHEEL_CENTER, so this is the
+    only place the deliverable can be checked against design intent. Until
+    the wheel centre was displaced by the camber, this table silently encoded
+    a zero-camber car while every rate table above assumed the design value.
+    """
+    L = ["", " STATIC ALIGNMENT CARRIED BY THIS TABLE",
+         "   recovered from CONTACT_PATCH -> WHEEL_CENTER, not restated from the config"]
+
+    for c in model.corners:
+        (_, wy, wz), (_, cy, cz) = c.wheel_centre, c.contact_patch
+        sy = 1.0 if c.side == "left" else -1.0
+        off = sy * (wy - cy)
+        cam = float(np.degrees(np.arctan2(off, wz - cz)))
+        where = "inboard" if off < 0 else "outboard"
+        L.append(f"   [{c.corner}]  camber {cam:+7.3f} deg    "
+                 f"wheel centre {abs(off):5.2f} mm {where} of the contact patch")
+
+    tracks: dict[str, tuple[float, float]] = {}
+    for c in model.corners:
+        if c.side != "left":
+            continue
+        tracks[c.axle] = (2.0 * abs(c.contact_patch[1]), 2.0 * abs(c.wheel_centre[1]))
+
+    L.append("")
+    L.append(f"   {'axle':<10s}{'ground track':>15s}{'wheel-centre track':>21s}")
+    for axle, (gt, wt) in tracks.items():
+        L.append(f"   {axle:<10s}{gt:12.1f} mm{wt:18.1f} mm")
+
+    L.append("")
+    L.append("   TRACK IS MEASURED AT THE CONTACT PATCHES. That is the number the")
+    L.append("   rules, the tilt test and lateral load transfer all use. The wheel")
+    L.append("   centres sit inboard of it by loaded_radius * tan(camber); wheel")
+    L.append("   offset and upright width have to absorb the difference.")
+    L.append("")
+    L.append("   Static camber is built into the UPRIGHT, so the ball joints, KPI")
+    L.append("   and kingpin length are the designed values and the 2 mm plates at")
+    L.append("   the upper arm trim +/-0.44 deg around this nominal.")
+    L.append("")
+    L.append("   Static TOE is zero by design. Note that a contact-patch /")
+    L.append("   wheel-centre pair CANNOT encode toe at all -- toe rotates the")
+    L.append("   wheel about a vertical axis and leaves both points where they")
+    L.append("   are. A consumer needing static toe must read it from the config.")
+    return L
+
+
+def notes_report(front: AxleGeometry) -> str:
     fvsa = front.inputs.fvsa_length_mm
-    mode = "corrected (default)" if not legacy else "legacy (reproduces the 2027 PDF)"
     L = ["", _RULE, " 5. NOTES", _RULE]
-    L.append(f" Sweep mode in use for the checks: {mode}.")
-    L.append(" The legacy column carries a sign error in the upright rigid-body")
-    L.append(" rotation of the original script. It changes the RATES only -- every")
-    L.append(" hardpoint and every static KPI above is identical in both modes.")
-    L.append(f" Corrected front camber gain = 57.2958 / FVSA = 57.2958 / {fvsa:.0f}")
-    L.append(f" = {R2D / fvsa:.4f} deg/mm, the textbook value for a wheel turning")
-    L.append(f" about an instant centre {fvsa:.0f} mm away. Run with --legacy to")
-    L.append(" switch to the original PDF mode.")
+    L.append(" THIS SCRIPT IS STATIC SYNTHESIS ONLY.")
+    L.append(" Rates, roll behaviour and the kinematic plots are solved in 3D by")
+    L.append(" vdcore.analysis.axle and printed in section 3b of the merged")
+    L.append(" summary (scripts/geometry_summary.py). They live there because")
+    L.append(" DWSolver needs the tie rod to close the sixth degree of freedom,")
+    L.append(" and the tie rod comes from steering_geometry.py -- only the merged")
+    L.append(" corner is complete.")
+    L.append("")
+    L.append(" The front-view four-bar that used to produce those tables here was")
+    L.append(" blind to dz_lca_mm / dz_uca_mm, so inclining the pivot axes for")
+    L.append(" anti-dive left every rate unchanged while the real geometry moved.")
+    L.append(" The --legacy flag went with it: it reproduced a known sign error in")
+    L.append(" the original script's upright rotation, and a deliberately wrong")
+    L.append(" code path has no place in the reference.")
+    L.append("")
+    L.append(f" Design camber gain = 57.2958 / FVSA = 57.2958 / {fvsa:.0f}")
+    L.append(f" = {R2D / fvsa:.4f} deg/mm, the textbook rate for a wheel turning")
+    L.append(f" about an instant centre {fvsa:.0f} mm away. The SOLVED rate carries")
+    L.append(" pivot rake and 3D effects and will differ slightly.")
     L.append("")
     L.append(" Values tagged design_intent (chosen, not measured or computed):")
     L.append("   static camber, roll centre heights, FVSA lengths, KPI, roll")
     L.append("   gradient target, chassis stiffness factors, brake bias.")
-    return "\n".join(L)
-
-
-# --------------------------------------------------------------------------- #
-# 9. PLOTTING
-# --------------------------------------------------------------------------- #
-
-def plot_all(front_spec: AxleInputs, rear_spec: AxleInputs,
-             front_geo: AxleGeometry, rear_geo: AxleGeometry,
-             path: str = "geometria.png") -> str:
-    """Generate a 6-panel chart of bump and roll kinematics."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(2, 3, figsize=(16, 9))
-    fig.suptitle("SLA Suspension Geometry -- Front View", fontsize=13)
-
-    for geo, color, label in [(front_geo, "tab:blue", "Front"),
-                              (rear_geo, "tab:red", "Rear")]:
-        kin = AxleKinematics(geo)
-        states = kin.sweep()
-
-        bumps = [s.bump_mm for s in states]
-        cambers = [s.camber_deg for s in states]
-        rcs = [s.rc_height_mm for s in states]
-        ht = [s.half_track_mm - geo.inputs.half_track_mm for s in states]
-
-        # construction
-        a = ax[0, 0]
-        a.plot([float(geo.lbj[0]), float(geo.lca_in[0])],
-               [float(geo.lbj[1]), float(geo.lca_in[1])],
-               "-o", color=color, lw=2, label=label)
-        a.plot([float(geo.ubj[0]), float(geo.uca_in[0])],
-               [float(geo.ubj[1]), float(geo.uca_in[1])],
-               "-o", color=color, lw=2)
-        a.plot([float(geo.lbj[0]), float(geo.ubj[0])],
-               [float(geo.lbj[1]), float(geo.ubj[1])],
-               "-", color=color, lw=3, alpha=0.5)
-        a.plot([geo.inputs.half_track_mm, float(geo.fvic[0])],
-               [0, float(geo.fvic[1])],
-               "--", color=color, lw=0.8, alpha=0.6)
-        a.plot(float(geo.fvic[0]), float(geo.fvic[1]), "x", color=color, ms=9)
-        a.plot(0, geo.inputs.rc_height_mm, "s", color=color, ms=7)
-
-        ax[0, 1].plot(cambers, bumps, color=color, label=label)
-        ax[0, 2].plot(rcs, bumps, color=color, label=label)
-        ax[1, 0].plot(ht, bumps, color=color, label=label)
-
-        # roll sweep
-        roll_kin = AxleKinematics(geo)
-        phis = np.linspace(0.0, 2.5, 21)
-        rc_z_r, rc_y_r, cam_out_r, cam_in_r = [], [], [], []
-        for phi_deg in phis:
-            rs = compute_roll(roll_kin, phi_deg)
-            rc_z_r.append(rs.rc_height_mm)
-            rc_y_r.append(rs.rc_lateral_mm)
-            cam_out_r.append(rs.outer_camber_deg)
-            cam_in_r.append(rs.inner_camber_deg)
-
-        ax[1, 1].plot(phis, rc_z_r, color=color, label=f"{label} height")
-        ax[1, 1].plot(phis, rc_y_r, "--", color=color, label=f"{label} lateral")
-        ax[1, 2].plot(phis, cam_out_r, color=color, label=f"{label} outer")
-        ax[1, 2].plot(phis, cam_in_r, "--", color=color, label=f"{label} inner")
-
-    ax[0, 0].axhline(0, color="k", lw=1)
-    ax[0, 0].axvline(0, color="k", lw=0.5, ls=":")
-    ax[0, 0].set(title="Construction (front view)", xlabel="y [mm]", ylabel="z [mm]")
-    ax[0, 0].set_aspect("equal")
-    ax[0, 0].legend(fontsize=8)
-
-    ax[0, 1].set(title="Camber vs bump", xlabel="camber [deg]", ylabel="bump [mm]")
-    ax[0, 2].set(title="Roll centre vs bump", xlabel="RC [mm]", ylabel="bump [mm]")
-    ax[1, 0].set(title="Half-track change", xlabel="scrub [mm]", ylabel="bump [mm]")
-    ax[1, 1].set(title="RC migration in roll", xlabel="roll [deg]", ylabel="RC [mm]")
-    ax[1, 2].set(title="Camber vs road in roll", xlabel="roll [deg]",
-                 ylabel="camber [deg]")
-
-    for a in ax.flat:
-        a.grid(alpha=0.3)
-        if a is not ax[0, 0]:
-            a.legend(fontsize=8)
-    fig.tight_layout()
-    fig.savefig(path, dpi=130)
-    plt.close(fig)
-    return path
+    return '\n'.join(L)
 
 
 # --------------------------------------------------------------------------- #
@@ -1221,8 +1035,7 @@ class DesignReport:
 
 def run(veh: VehicleData = VEHICLE_2027,
         front_in: AxleInputs = FRONT_2027,
-        rear_in: AxleInputs = REAR_2027,
-        *, legacy: bool = False, with_sweep: bool = True) -> DesignReport:
+        rear_in: AxleInputs = REAR_2027) -> DesignReport:
     front = solve_axle(front_in, veh)
     rear = solve_axle(rear_in, veh)
     model = build_model(front, rear)
@@ -1234,18 +1047,11 @@ def run(veh: VehicleData = VEHICLE_2027,
               " Double A-arm, front and rear. Lengths in mm, angles in deg.",
               _RULE, vehicle_report(veh, veh_res)]
 
-    if with_sweep:
-        for geo, section in ((front, "2"), (rear, "3")):
-            kin = AxleKinematics(geo, legacy_rotation_sign=legacy)
-            alt = AxleKinematics(geo, legacy_rotation_sign=not legacy)
-            chunks.append(axle_report(geo, kin, compute_rates(kin), compute_rates(alt),
-                                      compute_roll(kin, geo.inputs.roll_reference_deg),
-                                      section, veh))
-    else:
-        chunks.append("\n(sweep skipped: --no-sweep)")
+    for geo, section in ((front, "2"), (rear, "3")):
+        chunks.append(axle_report(geo, section, veh))
 
     chunks.append(hardpoints_report(model))
-    chunks.append(notes_report(front, legacy))
+    chunks.append(notes_report(front))
 
     return DesignReport(vehicle=veh, vehicle_results=veh_res, front=front, rear=rear,
                         model=model, text="\n".join(chunks) + "\n")
@@ -1257,19 +1063,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Edit VEHICLE_2027 / FRONT_2027 / REAR_2027 near the bottom of the "
                "file to change the design inputs.")
-    ap.add_argument("--legacy", action="store_true",
-                    help="use the legacy (buggy) upright rotation to reproduce "
-                         "the 2027 PDF rates (default is corrected)")
-    ap.add_argument("--no-sweep", action="store_true",
-                    help="static synthesis only, skip the kinematic sweep")
     ap.add_argument("--json", metavar="PATH", help="write the hardpoints to JSON")
     ap.add_argument("--csv", metavar="PATH", help="write the hardpoints to CSV")
-    ap.add_argument("--plot", nargs="?", const="geometria.png", metavar="PATH",
-                    help="generate the 6-panel chart (default: geometria.png)")
     ap.add_argument("--quiet", action="store_true", help="suppress the text report")
     args = ap.parse_args(argv)
 
-    rep = run(legacy=args.legacy, with_sweep=not args.no_sweep)
+    rep = run()
 
     if not args.quiet:
         print(rep.text)
@@ -1286,11 +1085,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             for corner, name, x, y, z in rep.model.rows():
                 w.writerow([corner, name, f"{x:.3f}", f"{y:.3f}", f"{z:.3f}"])
         print(f"hardpoints written to {args.csv}")
-
-    if args.plot:
-        path = plot_all(rep.front.inputs, rep.rear.inputs, rep.front, rep.rear,
-                        args.plot)
-        print(f"chart saved to {path}")
 
     return 0
 
