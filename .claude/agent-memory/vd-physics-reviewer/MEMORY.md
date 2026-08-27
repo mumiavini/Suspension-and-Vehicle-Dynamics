@@ -1,2 +1,4 @@
 - [Audit findings v1](audit-findings-v1.md) -- First comprehensive audit of vdcore geometry+analysis (2026-08-05)
 - [Audit roll centre v1](audit-roll-centre-v1.md) -- FVIC and RC construction audit: asymmetric RC bug, degenerate fallback, test comment (2026-08-05)
+- [Audit steering + anti-geometry](audit-steering-antigeometry-2026-08-26.md) -- Judge-facing review of sla/steering/axle: NO critical errors, numbers trustworthy (2026-08-26)
+- [Audit derived scrub/trail](audit-derived-scrub-trail-2026-08-26.md) -- derived.py scrub/trail/ground-intercept: signs+frames correct, 3-frame trail sign chain, no critical errors (2026-08-26)

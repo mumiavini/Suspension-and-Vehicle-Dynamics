@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FSAE Double Wishbone Suspension — Conceptualization &amp; Design</title>
+<style>
+  /* ===== Midnight theme, mirrored from legacy_app/ui/theme.py ===== */
+  :root{
+    --bg:#0A0A0A;
+    --panel:#181818;
+    --panel-2:#262626;
+    --stroke:#333333;
+    --text:#FAFAFA;
+    --muted:#A3A3A3;
+    --accent:#FBBF24;        /* primaryColor — amber */
+    --accent-dim:#B98910;
+    --good:#34D399;
+    --warn:#F59E0B;
+    --bad:#F87171;
+    --blue:#38BDF8;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--bg);color:var(--text);font-family:var(--font);
+    -webkit-font-smoothing:antialiased;line-height:1.5;}
+
+  /* ===== Deck chrome ===== */
+  .deck{max-width:1180px;margin:0 auto;padding:24px 20px 120px;}
+  .topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;
+    justify-content:space-between;gap:16px;padding:12px 16px;margin:-24px -20px 24px;
+    background:rgba(10,10,10,.82);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--stroke);}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px;}
+  .brand .dot{width:12px;height:12px;border-radius:3px;background:var(--accent);
+    box-shadow:0 0 14px var(--accent);}
+  .brand small{color:var(--muted);font-weight:500;margin-left:6px;}
+  .nav{display:flex;gap:8px;}
+  .nav button{background:var(--panel);color:var(--text);border:1px solid var(--stroke);
+    border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer;transition:.15s;}
+  .nav button:hover{border-color:var(--accent);color:var(--accent);}
+  .progress{height:3px;background:var(--panel-2);border-radius:2px;overflow:hidden;
+    margin:0 -20px 20px;}
+  .progress > span{display:block;height:100%;background:var(--accent);width:0;
+    transition:width .3s ease;}
+
+  /* ===== Slide card ===== */
+  .slide{background:linear-gradient(180deg,#141414,#0e0e0e);
+    border:1px solid var(--stroke);border-radius:18px;
+    padding:40px 44px;margin:0 0 26px;scroll-margin-top:80px;
+    box-shadow:0 18px 50px rgba(0,0,0,.45);position:relative;overflow:hidden;}
+  .slide::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;
+    background:linear-gradient(180deg,var(--accent),transparent);}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;
+    text-transform:uppercase;letter-spacing:.16em;color:var(--accent);
+    font-weight:700;margin-bottom:14px;}
+  .kicker .n{background:var(--accent);color:#111;border-radius:6px;
+    padding:1px 8px;font-variant-numeric:tabular-nums;}
+  .slide h2{font-size:30px;line-height:1.15;margin-bottom:6px;letter-spacing:-.01em;}
+  .slide h3{font-size:15px;color:var(--muted);font-weight:500;margin-bottom:22px;}
+  .slide p{margin-bottom:12px;color:#E6E6E6;}
+  .lead{font-size:18px;color:#EDEDED;}
+
+  ul.pts{list-style:none;margin:8px 0 4px;}
+  ul.pts li{position:relative;padding:8px 0 8px 30px;border-bottom:1px dashed #2a2a2a;}
+  ul.pts li:last-child{border-bottom:none;}
+  ul.pts li::before{content:"";position:absolute;left:6px;top:16px;width:8px;height:8px;
+    border-radius:2px;background:var(--accent);transform:rotate(45deg);}
+  ul.pts li strong{color:#fff;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr;}}
+
+  .card{background:var(--panel);border:1px solid var(--stroke);border-radius:12px;
+    padding:18px 18px;}
+  .card h4{font-size:14px;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--accent);margin-bottom:10px;}
+  .card.blue h4{color:var(--blue);}
+  .card p{font-size:14px;color:#D4D4D4;margin:0;}
+
+  /* callout / quote */
+  .callout{border-left:3px solid var(--accent);background:rgba(251,191,36,.06);
+    padding:14px 18px;border-radius:0 10px 10px 0;margin:18px 0;color:#F1E9D2;}
+  .callout.warn{border-color:var(--warn);background:rgba(245,158,11,.08);color:#FCE9C8;}
+  .callout .lbl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.14em;
+    color:var(--accent);margin-bottom:4px;font-weight:700;}
+  .callout.warn .lbl{color:var(--warn);}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse;margin:8px 0 4px;font-size:14px;}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid #262626;}
+  thead th{color:var(--accent);font-size:12px;text-transform:uppercase;
+    letter-spacing:.06em;border-bottom:1px solid var(--stroke);}
+  tbody tr:hover{background:rgba(255,255,255,.02);}
+  td.num{font-family:var(--mono);color:#fff;font-variant-numeric:tabular-nums;}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;}
+  .tag.gain{background:rgba(52,211,153,.14);color:var(--good);}
+  .tag.pay{background:rgba(248,113,113,.14);color:var(--bad);}
+
+  /* workflow chips */
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0;}
+  .flow .step{background:var(--panel);border:1px solid var(--stroke);border-radius:10px;
+    padding:10px 14px;font-size:13px;font-weight:600;position:relative;}
+  .flow .step b{display:block;color:var(--accent);font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;margin-bottom:2px;font-weight:700;}
+  .flow .arrow{color:var(--accent);font-size:20px;line-height:1;}
+
+  .notes{margin-top:22px;background:#0c0c0c;border:1px dashed #2f2f2f;border-radius:10px;
+    padding:14px 16px;}
+  .notes summary{cursor:pointer;color:var(--accent);font-size:12px;font-weight:700;
+    letter-spacing:.1em;text-transform:uppercase;list-style:none;}
+  .notes summary::before{content:"🎙 ";}
+  .notes[open] summary{margin-bottom:10px;}
+  .notes p{font-size:14px;color:#CFCFCF;font-style:italic;margin:0;}
+
+  .footer{color:var(--muted);font-size:12px;text-align:center;margin-top:40px;}
+  .footer a{color:var(--accent);text-decoration:none;}
+
+  /* Title slide */
+  .title-slide{padding:70px 44px 60px;text-align:left;}
+  .title-slide .big{font-size:clamp(34px,5.4vw,58px);line-height:1.05;letter-spacing:-.02em;
+    font-weight:800;background:linear-gradient(120deg,#fff 30%,var(--accent));
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .title-slide .sub{font-size:20px;color:var(--muted);margin-top:16px;}
+  .title-slide .meta{margin-top:34px;display:flex;gap:10px;flex-wrap:wrap;}
+  .chip{border:1px solid var(--stroke);border-radius:30px;padding:7px 16px;font-size:13px;
+    color:#ddd;background:var(--panel);}
+  .chip b{color:var(--accent);}
+
+  /* ===== Topology graph (Slide 10) ===== */
+  .topo-wrap{background:#0b0b0b;border:1px solid var(--stroke);border-radius:14px;
+    padding:8px;overflow-x:auto;}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:14px 2px 0;font-size:12px;color:#ccc;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .legend i{width:12px;height:12px;border-radius:3px;display:inline-block;}
+  svg text{font-family:var(--font);}
+</style>
+</head>
+<body>
+<div class="deck">
+
+  <!-- ===== Top bar ===== -->
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>FSAE Double Wishbone
+      <small>Conceptualization &amp; Design</small></div>
+    <div class="nav">
+      <button onclick="go(-1)">‹ Prev</button>
+      <button onclick="go(1)">Next ›</button>
+      <button onclick="toggleNotes()" id="ntoggle">🎙 Notes</button>
+    </div>
+  </div>
+  <div class="progress"><span id="pbar"></span></div>
+
+  <!-- ===== Slide 1 — Title ===== -->
+  <section class="slide title-slide" id="s1">
+    <div class="kicker"><span class="n">01</span> Title</div>
+    <div class="big">FSAE Double Wishbone Suspension</div>
+    <div class="sub">From tire data to hardpoints — a first-principles design workflow</div>
+    <div class="meta">
+      <span class="chip">🏎️ <b>PUCPR Racing</b> · Team&nbsp;#27</span>
+      <span class="chip">Season <b>FSAE26</b></span>
+      <span class="chip">Kinematics design-support · <b>not</b> a lap-time sim</span>
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“Good morning. Today I'll walk through how we conceptualize and design our double wishbone
+      suspension. The thread running through everything is simple: the car is only as fast as the four
+      contact patches let it be, so every decision traces back to the tire.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 2 — Philosophy ===== -->
+  <section class="slide" id="s2">
+    <div class="kicker"><span class="n">02</span> Design Philosophy</div>
+    <h2>The contact patch is the whole game</h2>
+    <h3>Every geometry decision is coupled — nothing is tuned in isolation.</h3>
+    <ul class="pts">
+      <li><strong>Tire-first.</strong> The contact patch is the only link between car and track; every geometry choice serves it.</li>
+      <li>Optimize <strong>camber control</strong>, <strong>roll-centre behaviour</strong>, and <strong>low unsprung mass</strong> simultaneously.</li>
+      <li>Double wishbone over MacPherson / multilink: independent camber &amp; roll-centre tuning in a light, packageable form.</li>
+    </ul>
+    <div class="callout">
+      <span class="lbl">Key takeaway</span>
+      You don't design a suspension — you design a system that keeps four tires in their happy zone.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“We start tire-first because the contact patch is the only link between the car and the track.
+      A double wishbone lets us tune camber control and roll-centre behaviour independently, which
+      MacPherson struts can't do in a light, packageable way. Remember one thing from this slide:
+      we don't design a suspension, we design a system that keeps four tires in their happy zone.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 3 — Targets ===== -->
+  <section class="slide" id="s3">
+    <div class="kicker"><span class="n">03</span> Requirements &amp; Targets</div>
+    <h2>Working targets — <span style="color:var(--accent)">design intent</span>, not measurements</h2>
+    <h3>Sourced from literature (Milliken RCVD, OptimumG, SAE) &amp; validated on track.</h3>
+    <table>
+      <thead><tr><th>Parameter</th><th>Typical FSAE target</th></tr></thead>
+      <tbody>
+        <tr><td>Static camber (front)</td><td class="num">−1.0° to −2.5°</td></tr>
+        <tr><td>Camber gain in roll</td><td class="num">≈ −0.7°/deg body roll</td></tr>
+        <tr><td>Roll-centre height (front)</td><td class="num">25–50 mm above ground</td></tr>
+        <tr><td>Roll-centre height (rear)</td><td class="num">slightly higher than front</td></tr>
+        <tr><td>Motion ratio</td><td class="num">≈ 0.9–1.1</td></tr>
+        <tr><td>Scrub radius</td><td class="num">small, slightly positive</td></tr>
+        <tr><td>Kingpin inclination (KPI)</td><td class="num">6°–10°</td></tr>
+      </tbody>
+    </table>
+    <div class="callout warn">
+      <span class="lbl">Provenance rule</span>
+      These are literature-derived. Every one carries <span class="mono">source="design_intent"</span> —
+      never presented as a measured or solver-computed value.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“These are our working targets, not arbitrary numbers. Static camber sits between one and
+      two-and-a-half degrees negative up front. We aim for roughly minus-point-seven degrees of camber
+      gain per degree of body roll to keep the outside tire flat under load. Roll centre stays low,
+      25 to 50 mm, and motion ratio near one so the damper does honest work. Every one of these came
+      out of literature and gets validated on track — none are presented as measured.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 4 — Workflow ===== -->
+  <section class="slide" id="s4">
+    <div class="kicker"><span class="n">04</span> The Conceptualization Workflow</div>
+    <h2>A loop, not a line</h2>
+    <h3>We go around this every season — track results feed the next tire target.</h3>
+    <div class="flow">
+      <div class="step"><b>Input</b>Tire data · TTC</div><span class="arrow">→</span>
+      <div class="step"><b>Spec</b>Target load &amp; slip window</div><span class="arrow">→</span>
+      <div class="step"><b>Goals</b>Camber &amp; roll-centre</div><span class="arrow">→</span>
+      <div class="step"><b>2D</b>Front-view kinematics</div><span class="arrow">→</span>
+      <div class="step"><b>3D</b>Hardpoints</div><span class="arrow">→</span>
+      <div class="step"><b>Build</b>FEA + packaging</div><span class="arrow">→</span>
+      <div class="step"><b>Prove</b>Validation &amp; test</div><span class="arrow" style="transform:rotate(90deg)">↺</span>
+    </div>
+    <p style="margin-top:14px;color:var(--muted)">The last arrow loops back to <em>Tire data</em> — every
+      test session sharpens the operating window we design against.</p>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“This is the loop. Tire data sets our load and slip window. That drives camber and roll-centre
+      goals, which we lay out in 2D front-view kinematics. We lift that into 3D hardpoints, run FEA and
+      packaging, then validate on track, and the results feed back into the next tire target. It's a
+      cycle, not a straight line — we go around it every season.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 5 — Tire ===== -->
+  <section class="slide" id="s5">
+    <div class="kicker"><span class="n">05</span> Step 1 · Tire as the Starting Point</div>
+    <h2>The tire writes the spec</h2>
+    <div class="grid3">
+      <div class="card"><h4>Pull the curves</h4><p>Grip vs. slip, camber, and vertical-load curves from Tire Test Consortium (TTC) data.</p></div>
+      <div class="card"><h4>Find the peak</h4><p>Identify the normal-load &amp; camber band where lateral grip actually peaks.</p></div>
+      <div class="card"><h4>Set the demand</h4><p>That window defines the camber gain and load transfer the geometry must deliver.</p></div>
+    </div>
+    <div class="callout">
+      <span class="lbl">Why it's first</span>
+      Downstream, the operating window <em>is</em> the specification. Skip it and you're tuning geometry against a guess.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“We pull grip-versus-slip, camber, and vertical-load curves from Tire Test Consortium data.
+      The goal is to find the normal-load and camber band where lateral grip actually peaks. That window
+      is the specification for everything downstream: how much camber gain we need and how much load
+      transfer the geometry has to manage.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 6 — Front-view kinematics ===== -->
+  <section class="slide" id="s6">
+    <div class="kicker"><span class="n">06</span> Step 2 · Kinematic Geometry (Front View)</div>
+    <h2>The instant centre sets two things at once</h2>
+    <ul class="pts">
+      <li>Position <strong>upper &amp; lower arm pivots</strong> to place the instant centre (IC).</li>
+      <li>IC location fixes <strong>roll-centre height</strong> <em>and</em> <strong>camber gain</strong> — the same knob.</li>
+      <li><strong>Trade-off:</strong> aggressive camber gain pulls the IC in, which tends to push the roll centre up.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="lbl">Coupled, not independent</span>
+      Roll-centre height and camber gain are two outputs of one IC. You balance them; you don't maximize either.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“In front view, the upper and lower arm pivots define the instant centre. Where that instant
+      centre sits fixes both roll-centre height and camber gain — they're linked, not separate knobs.
+      The tension here is real: aggressive camber gain tends to push the roll centre high, so we're
+      constantly balancing the two rather than maximizing either.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 7 — Roll centre & jacking ===== -->
+  <section class="slide" id="s7">
+    <div class="kicker"><span class="n">07</span> Step 3 · Roll Centre &amp; Jacking</div>
+    <h2>The classic trap</h2>
+    <ul class="pts">
+      <li>Roll-centre height drives <strong>lateral load-transfer distribution</strong> and <strong>body roll</strong>.</li>
+      <li>Tune front/rear <strong>roll-axis inclination</strong> for balanced handling.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="lbl">⚠ Watch roll-centre migration</span>
+      It moves in roll and heave. Too high → <strong>jacking forces</strong> that lift the car and make it
+      snap loose. High RC feels responsive right up until it bites.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“Roll-centre height sets how lateral load transfers and how much the body rolls. We tune the
+      front-to-rear roll-axis inclination for balanced handling. The warning matters: the roll centre
+      migrates during roll and heave, and if it climbs too high you get jacking forces that lift the car
+      and make it snap loose. A high roll centre feels responsive right up until it bites.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 8 — 3D hardpoints ===== -->
+  <section class="slide" id="s8">
+    <div class="kicker"><span class="n">08</span> Step 4 · Hardpoints &amp; Packaging (3D)</div>
+    <h2>2D geometry meets the real car</h2>
+    <div class="grid2">
+      <div class="card"><h4>Reconcile in CAD</h4><p>Lift the 2D geometry into 3D and resolve it against chassis nodes, upright, and driver space.</p></div>
+      <div class="card"><h4>Steering axis</h4><p>Set <strong>caster</strong>, <strong>KPI</strong>, and <strong>scrub radius</strong> — they define steering feel and self-aligning torque.</p></div>
+      <div class="card"><h4>Sweep the travel</h4><p>Verify wheel clears tire, brakes, and monocoque through full bump &amp; droop.</p></div>
+      <div class="card blue"><h4>ISO 8855</h4><p>X+ forward, <strong>Y+ LEFT</strong>, Z+ up. Left wheels positive Y — the native MF-Tyre frame.</p></div>
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“Now we take the 2D geometry into 3D CAD and reconcile it with real chassis nodes, the upright,
+      and driver space. This is where caster, kingpin inclination, and scrub radius get set — they define
+      steering feel and self-aligning torque. We sweep full bump and droop to confirm the wheel clears
+      the tire, brakes, and monocoque through the whole travel.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 9 — Structural ===== -->
+  <section class="slide" id="s9">
+    <div class="kicker"><span class="n">09</span> Step 5 · Structural &amp; Component Design</div>
+    <h2>Two-force members, minimum mass</h2>
+    <ul class="pts">
+      <li><strong>A-arms in tension/compression only</strong> (spherical / rod ends), sized by FEA for braking, cornering, bump.</li>
+      <li><strong>Minimize unsprung mass:</strong> thin-wall steel or CFRP tubes, lightweight uprights.</li>
+      <li>Design the <strong>motion ratio</strong> at the pushrod/pullrod for the target wheel rate and damper travel.</li>
+    </ul>
+    <div class="callout">
+      <span class="lbl">One-way street</span>
+      Unsprung mass has no upside — always minimize. It's the only line in the trade table with no “you gain” column.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“The A-arms carry tension and compression only through rod ends, so we size them with FEA against
+      braking, cornering, and bump cases. We minimize unsprung mass everywhere — thin-wall tube or carbon,
+      light uprights — because unsprung mass hurts bump response and grip. The motion ratio at the pushrod
+      sets wheel rate and how much damper travel we actually use.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 10 — Topology graph ===== -->
+  <section class="slide" id="s10">
+    <div class="kicker"><span class="n">10</span> Kinematic Assembly · Load-Path Topology</div>
+    <h2>Double Wishbone Hardpoint &amp; Load-Path Topology</h2>
+    <h3>Chassis pickups → A-arms → upright → contact patch, plus the pushrod-rocker-damper actuation branch.</h3>
+    <div class="topo-wrap">
+      <svg viewBox="0 0 1080 520" width="100%" role="img"
+           aria-label="Load path from chassis pickups through control arms and upright to the wheel, with pushrod-rocker-damper actuation branch">
+        <defs>
+          <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#8a8a8a"/>
+          </marker>
+          <marker id="arwA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#FBBF24"/>
+          </marker>
+          <style>
+            .node rect{rx:11;stroke-width:1.6;}
+            .node text{fill:#0c0c0c;font-weight:700;font-size:14px;text-anchor:middle;}
+            .node .sub{fill:#1a1a1a;font-weight:600;font-size:11px;}
+            .edge{stroke:#8a8a8a;stroke-width:2;fill:none;}
+            .edgeA{stroke:#FBBF24;stroke-width:2.4;fill:none;stroke-dasharray:6 4;}
+            .lbl{fill:#9a9a9a;font-size:11px;text-anchor:middle;}
+          </style>
+        </defs>
+
+        <!-- ===== EDGES (drawn first, under nodes) ===== -->
+        <!-- chassis -> arms -->
+        <path class="edge" marker-end="url(#arw)" d="M180,120 C280,120 300,150 360,155"/>
+        <path class="edge" marker-end="url(#arw)" d="M180,400 C280,400 300,370 360,360"/>
+        <!-- arms -> ball joints -->
+        <path class="edge" marker-end="url(#arw)" d="M480,150 C540,150 560,190 590,215"/>
+        <path class="edge" marker-end="url(#arw)" d="M480,360 C540,360 560,320 590,300"/>
+        <!-- ball joints -> upright -->
+        <path class="edge" marker-end="url(#arw)" d="M700,215 C740,225 745,240 748,250"/>
+        <path class="edge" marker-end="url(#arw)" d="M700,300 C740,290 745,275 748,262"/>
+        <!-- steering -> upright -->
+        <path class="edge" marker-end="url(#arw)" d="M360,258 C500,258 620,258 748,257"/>
+        <!-- upright -> hub -> wheel -> patch -->
+        <path class="edge" marker-end="url(#arw)" d="M860,256 L900,256"/>
+        <path class="edge" marker-end="url(#arw)" d="M980,290 C980,330 980,350 980,372"/>
+        <path class="edge" marker-end="url(#arw)" d="M980,440 C980,462 980,470 980,482"/>
+        <!-- ACTUATION branch: lower arm -> pushrod -> rocker -> damper -> chassis -->
+        <path class="edgeA" marker-end="url(#arwA)" d="M430,388 C430,430 300,440 250,452"/>
+        <path class="edgeA" marker-end="url(#arwA)" d="M170,452 C120,452 110,430 108,392"/>
+        <path class="edgeA" marker-end="url(#arwA)" d="M108,352 C108,320 108,300 108,282"/>
+        <path class="edgeA" marker-end="url(#arwA)" d="M108,242 C108,210 130,200 160,200"/>
+
+        <!-- edge labels -->
+        <text class="lbl" x="272" y="108">front + rear pickup</text>
+        <text class="lbl" x="272" y="418">front + rear pickup</text>
+        <text class="lbl" x="556" y="176">upper ball joint</text>
+        <text class="lbl" x="556" y="352">lower ball joint</text>
+        <text class="lbl" x="540" y="248">tie rod (6th DOF)</text>
+        <text class="lbl" x="322" y="430" fill="#FBBF24">pushrod</text>
+        <text class="lbl" x="128" y="336" fill="#FBBF24">rocker</text>
+
+        <!-- ===== NODES ===== -->
+        <!-- Chassis (upper/lower pickup) -->
+        <g class="node">
+          <rect x="60" y="98" width="120" height="46" fill="#38BDF8"/>
+          <text x="120" y="120">Chassis pickup</text><text x="120" y="136" class="sub">upper mounts</text>
+        </g>
+        <g class="node">
+          <rect x="60" y="378" width="120" height="46" fill="#38BDF8"/>
+          <text x="120" y="400">Chassis pickup</text><text x="120" y="416" class="sub">lower mounts</text>
+        </g>
+
+        <!-- Control arms -->
+        <g class="node">
+          <rect x="360" y="132" width="120" height="46" fill="#34D399"/>
+          <text x="420" y="154">Upper A-arm</text><text x="420" y="170" class="sub">UCA — 2-force</text>
+        </g>
+        <g class="node">
+          <rect x="360" y="338" width="120" height="46" fill="#34D399"/>
+          <text x="420" y="360">Lower A-arm</text><text x="420" y="376" class="sub">LCA — 2-force</text>
+        </g>
+
+        <!-- Ball joints -->
+        <g class="node">
+          <rect x="590" y="196" width="110" height="40" fill="#A78BFA"/>
+          <text x="645" y="220">Upper BJ</text>
+        </g>
+        <g class="node">
+          <rect x="590" y="282" width="110" height="40" fill="#A78BFA"/>
+          <text x="645" y="306">Lower BJ</text>
+        </g>
+
+        <!-- Steering -->
+        <g class="node">
+          <rect x="250" y="236" width="110" height="44" fill="#F59E0B"/>
+          <text x="305" y="258">Rack + tie rod</text><text x="305" y="273" class="sub">steering input</text>
+        </g>
+
+        <!-- Upright -->
+        <g class="node">
+          <rect x="748" y="230" width="112" height="52" fill="#FBBF24"/>
+          <text x="804" y="252">Upright</text><text x="804" y="268" class="sub">knuckle</text>
+        </g>
+
+        <!-- Hub / Wheel / Patch (right column) -->
+        <g class="node">
+          <rect x="900" y="234" width="80" height="44" fill="#FBBF24"/>
+          <text x="940" y="256">Hub</text><text x="940" y="271" class="sub">bearing</text>
+        </g>
+        <g class="node">
+          <rect x="930" y="372" width="100" height="46" fill="#E5E5E5"/>
+          <text x="980" y="394">Wheel</text><text x="980" y="410" class="sub">rim + tire</text>
+        </g>
+        <g class="node">
+          <rect x="912" y="482" width="136" height="30" fill="#F87171"/>
+          <text x="980" y="502" style="fill:#0c0c0c">Contact patch</text>
+        </g>
+
+        <!-- Actuation nodes -->
+        <g class="node">
+          <rect x="168" y="430" width="90" height="44" fill="#FBBF24" opacity="0.92"/>
+          <text x="213" y="452">Pushrod</text><text x="213" y="467" class="sub">tension</text>
+        </g>
+        <g class="node">
+          <rect x="60" y="352" width="96" height="42" fill="#FBBF24" opacity="0.92"/>
+          <text x="108" y="374">Rocker</text><text x="108" y="389" class="sub">bell crank</text>
+        </g>
+        <g class="node">
+          <rect x="60" y="200" width="100" height="46" fill="#FBBF24" opacity="0.92"/>
+          <text x="110" y="222">Spring /</text><text x="110" y="238">damper</text>
+        </g>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i style="background:#38BDF8"></i> Chassis</span>
+      <span><i style="background:#34D399"></i> Control arms</span>
+      <span><i style="background:#A78BFA"></i> Ball joints</span>
+      <span><i style="background:#F59E0B"></i> Steering</span>
+      <span><i style="background:#FBBF24"></i> Upright / hub / actuation</span>
+      <span><i style="background:#E5E5E5"></i> Wheel</span>
+      <span><i style="background:#F87171"></i> Contact patch</span>
+      <span><i style="background:#FBBF24;transform:skewX(-18deg)"></i> Actuation branch (dashed)</span>
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“This graph is the load path. Chassis pickups feed the upper and lower A-arms, which meet at the
+      upright through the ball joints. The upright carries the hub, and the hub carries the wheel and its
+      contact patch. Steering comes in through the tie rod to the upright. The actuation branch — lower arm
+      to pushrod to rocker to damper — is how wheel motion becomes spring and damper travel. Every colour is
+      a subsystem, and every arrow is a real joint we have to design and analyze.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 11 — Trade-offs ===== -->
+  <section class="slide" id="s11">
+    <div class="kicker"><span class="n">11</span> Design Trade-offs Summary</div>
+    <h2>Nothing here is free</h2>
+    <h3>Good design is choosing which prices you're willing to pay.</h3>
+    <table>
+      <thead><tr><th>If you increase…</th><th>You gain</th><th>You pay</th></tr></thead>
+      <tbody>
+        <tr><td>Camber gain</td><td><span class="tag gain">Better cornering grip</span></td><td><span class="tag pay">Roll centre rises · more jacking</span></td></tr>
+        <tr><td>Roll-centre height</td><td><span class="tag gain">Less body roll</span></td><td><span class="tag pay">More jacking · snappier</span></td></tr>
+        <tr><td>Caster</td><td><span class="tag gain">Stability · camber-on-steer</span></td><td><span class="tag pay">Heavier steering</span></td></tr>
+        <tr><td>Track width</td><td><span class="tag gain">More cornering grip</span></td><td><span class="tag pay">Wider car · packaging cost</span></td></tr>
+        <tr><td>Unsprung mass</td><td style="color:var(--muted)">— nothing, always minimize —</td><td><span class="tag pay">Worse bump response · grip loss</span></td></tr>
+      </tbody>
+    </table>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“Nothing here is free. More camber gain buys grip but raises the roll centre and adds jacking.
+      More caster stabilizes the straight line and adds camber-on-steer but weighs the steering down.
+      Wider track adds grip but costs packaging. The one exception is unsprung mass — there's no trade,
+      we always minimize it. Good design is choosing which prices you're willing to pay.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 12 — Validation ===== -->
+  <section class="slide" id="s12">
+    <div class="kicker"><span class="n">12</span> Validation</div>
+    <h2>Close the loop three ways</h2>
+    <div class="grid3">
+      <div class="card"><h4>Kinematic sim</h4><p>Sweep camber &amp; roll centre vs. travel — OptimumK, Adams Car, or in-house scripts.</p></div>
+      <div class="card"><h4>FEA</h4><p>A-arms, uprights, rockers against worst-case braking / cornering / bump loads.</p></div>
+      <div class="card"><h4>Track test</h4><p>Tire temps across the patch, skidpad, driver feedback — back to the tire targets.</p></div>
+    </div>
+    <div class="callout warn">
+      <span class="lbl">The tell</span>
+      Uneven tire temps across the patch mean the camber curve is wrong — go back to Slide 5 and re-spec.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“We validate three ways. Kinematic simulation sweeps camber and roll centre across travel.
+      FEA proves the arms, uprights, and rockers survive worst-case loads. Then track testing —
+      tire temperatures across the patch, skidpad numbers, and driver feedback — closes the loop back
+      to our tire targets. If the temps aren't even across the patch, our camber curve is wrong and we
+      go back to Slide 5.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Slide 13 — Closing ===== -->
+  <section class="slide" id="s13">
+    <div class="kicker"><span class="n">13</span> Closing</div>
+    <h2>Discipline beats assumption</h2>
+    <ul class="pts">
+      <li>The double wishbone gives us the <strong>tuning freedom</strong> to chase the tire's grip window.</li>
+      <li>Success = a disciplined workflow: <strong>tire → kinematics → hardpoints → structure → validation</strong>.</li>
+      <li>We iterate every season on <strong>real data, not assumptions</strong>.</li>
+    </ul>
+    <div class="callout">
+      <span class="lbl">One line to remember</span>
+      Keep four tires in their happy zone — everything else is bookkeeping.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“To wrap up: the double wishbone gives us the tuning freedom to chase the tire's grip window,
+      and success comes from disciplined workflow — tire to kinematics to hardpoints to structure to
+      validation. We iterate on real data every season, not assumptions. Happy to take questions.”</p>
+    </details>
+  </section>
+
+  <!-- ===== Appendix — Software comparison ===== -->
+  <section class="slide" id="s14">
+    <div class="kicker"><span class="n">A</span> Appendix · Kinematics Software Comparison</div>
+    <h2>Which tool, when</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Strengths</th><th>Limitations</th><th>Best for</th><th>Cost (FSAE)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>OptimumK</strong></td>
+          <td>Purpose-built vehicle kinematics · intuitive hardpoint editing · fast K&amp;C sweeps · strong FSAE adoption</td>
+          <td>Kinematics / quasi-static only · no transient dynamics or damper sim</td>
+          <td>Quick, focused geometry iteration</td>
+          <td>Free / discounted FSAE licence</td>
+        </tr>
+        <tr>
+          <td><strong>Adams Car (MSC)</strong></td>
+          <td>Full multibody dynamics · transient loads · compliance · controls co-sim</td>
+          <td>Steep learning curve · heavy setup · overkill early</td>
+          <td>Full-vehicle dynamic simulation</td>
+          <td>Free via student / FSAE program</td>
+        </tr>
+        <tr>
+          <td><strong>Lotus Shark</strong></td>
+          <td>Long-standing · clear front/side-view analysis · good for classic studies</td>
+          <td>Dated UI · less flexible on custom actuation</td>
+          <td>Teaching &amp; hand-off geometry studies</td>
+          <td>Low-cost / educational</td>
+        </tr>
+        <tr>
+          <td><strong>Custom scripts</strong><br><span style="color:var(--muted)">Python / MATLAB</span></td>
+          <td>Full transparency · tailored outputs · integrates with your tire pipeline · free</td>
+          <td>Build + validation time · you own every bug</td>
+          <td>Teams with strong analysis members</td>
+          <td>Free (labour cost)</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <span class="lbl">Recommendation</span>
+      Start in <strong>OptimumK</strong> for geometry; graduate to <strong>Adams Car</strong> only once you need
+      transient dynamics and controls co-sim. Back both with a <strong>Python layer tied to your TTC tire data</strong>
+      so kinematic outputs feed straight into grip predictions.
+    </div>
+    <details class="notes"><summary>Presenter script</summary>
+      <p>“We use OptimumK for day-to-day geometry and validate the final design in Adams before committing
+      hardpoints. The Python layer connects our kinematics back to tire data so we're never guessing whether
+      a geometry change actually helps grip.”</p>
+    </details>
+  </section>
+
+  <div class="footer">
+    FSAE Double Wishbone Suspension · Midnight theme (<code style="color:var(--accent)">#FBBF24</code> on
+    <code style="color:var(--accent)">#0A0A0A</code>) mirrored from <code>legacy_app/ui/theme.py</code> ·
+    <a href="javascript:window.print()">Print / export to PDF</a>
+  </div>
+</div>
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  let idx = 0;
+  function show(i){
+    idx = Math.max(0, Math.min(slides.length-1, i));
+    slides[idx].scrollIntoView({behavior:'smooth', block:'start'});
+    document.getElementById('pbar').style.width = ((idx+1)/slides.length*100)+'%';
+  }
+  function go(d){ show(idx+d); }
+  // sync progress bar to scroll position
+  const io = new IntersectionObserver((es)=>{
+    es.forEach(e=>{ if(e.isIntersecting){
+      idx = slides.indexOf(e.target);
+      document.getElementById('pbar').style.width = ((idx+1)/slides.length*100)+'%';
+    }});
+  }, {threshold:0.55});
+  slides.forEach(s=>io.observe(s));
+  // keyboard nav
+  addEventListener('keydown', e=>{
+    if(e.key==='ArrowRight'||e.key==='PageDown'){e.preventDefault();go(1);}
+    if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(-1);}
+  });
+  // toggle all presenter notes
+  let notesOpen=false;
+  function toggleNotes(){
+    notesOpen=!notesOpen;
+    document.querySelectorAll('.notes').forEach(n=> notesOpen? n.setAttribute('open',''): n.removeAttribute('open'));
+    document.getElementById('ntoggle').textContent = notesOpen ? '🎙 Hide notes' : '🎙 Notes';
+  }
+  document.getElementById('pbar').style.width = (1/slides.length*100)+'%';
+</script>
+</body>
+</html>
