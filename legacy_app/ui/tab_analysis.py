@@ -39,6 +39,11 @@ from analysis.kpis import (
     steer_ratio_from_pinion,
     roll_center_at_1g_lat,
 )
+from analysis.vdcore_bridge import (
+    BridgeConversionError,
+    CornerInputs,
+    compute_delegated_dynamic_kpis_cached,
+)
 from ui.shared import (
     load_hardpoints_from_state,
     render_empty_state,
@@ -315,6 +320,33 @@ def render() -> None:
                                               vs["brake_bias"],
                                               vs["c_factor_mm"], roll_stiff)
 
+        # ─── Delegate the DYNAMIC KPIs to the validated vdcore solver ─────────
+        # The legacy solver models each wishbone as a strut to the pivot
+        # midpoint, so its swept KPIs are wrong (see the app banner). Recompute
+        # camber gain, RC migration, roll camber and RC@roll on vdcore's DWSolver
+        # and overwrite the dynamic keys in-place. Static keys (KPI, caster,
+        # scrub, trail, static RC, sum-toe) and anti-geometry / Ackermann are
+        # left untouched — those are either correct or not derivable here.
+        # ``roll_stiff`` °/g × 1 g gives the body roll the legacy RC@1g used, so
+        # we probe vdcore at that same angle for a like-for-like RC@1g.
+        dynamic_source = "📐 vdcore (validated)"
+        try:
+            vd_inputs = CornerInputs.from_vehicle_setup(vs)
+            vd_dynamic = compute_delegated_dynamic_kpis_cached(
+                df, vd_inputs, roll_deg=float(roll_stiff), travel_mm=25.0,
+            )
+            front_data.update(vd_dynamic["front"])
+            rear_data.update(vd_dynamic["rear"])
+        except BridgeConversionError as exc:
+            # Fail honest, not silent: keep the legacy numbers but tell the user
+            # they are the wrong ones, so no vdcore value is faked.
+            dynamic_source = "⚠️ legacy solver (vdcore conversion failed)"
+            st.warning(
+                f"Could not run the loaded geometry through vdcore "
+                f"({exc}). The dynamic KPIs below fall back to the legacy "
+                "strut-to-midpoint solver and remain **unreliable**."
+            )
+
         # ─── Derived calculations that depend on USER inputs ─────────────────
         def _wheel_rate(spring_rate: float, mr: float) -> float:
             """Wheel rate (N/mm) = spring_rate × MR²."""
@@ -509,27 +541,27 @@ def render() -> None:
         add("Ride Camber (rate of change)",        "deg/m",
             fmt(front_data["ride_camber_dpm"], "+.2f"),
             fmt(rear_data["ride_camber_dpm"],  "+.2f"),
-            "📐 calculated")
+            dynamic_source)
         add("Roll Camber",                          "deg/deg",
             fmt(front_data["roll_camber"], "+.4f"),
             fmt(rear_data["roll_camber"],  "+.4f"),
-            "📐 calculated")
+            dynamic_source)
         add("Anti dive / Anti squat",               "%",
             fmt(front_data["anti_dive"],  "+.2f"),
             fmt(rear_data["anti_squat"], "+.2f"),
-            "📐 calculated (needs CG, brake bias)")
+            "⚠️ legacy (needs synthesised corner)")
         add("Roll center height above ground, static", "mm",
             fmt(front_data["rc_static"], "+.2f"),
             fmt(rear_data["rc_static"],  "+.2f"),
-            "📐 calculated")
-        add("Roll center @ 1g lateral acc — height",   "mm",
+            "📐 calculated (static)")
+        add("Roll center @ roll — height",             "mm",
             fmt(front_data["rc_1g_z"], "+.2f"),
             fmt(rear_data["rc_1g_z"],  "+.2f"),
-            f"📐 calculated (roll stiffness {roll_stiff}°/g)")
-        add("Roll center @ 1g lateral acc — lateral",  "mm",
+            f"{dynamic_source} @ {roll_stiff:.2f}° roll")
+        add("Roll center @ roll — lateral",            "mm",
             fmt(front_data["rc_1g_y"], "+.2f"),
             fmt(rear_data["rc_1g_y"],  "+.2f"),
-            f"📐 calculated (roll stiffness {roll_stiff}°/g)")
+            f"{dynamic_source} @ {roll_stiff:.2f}° roll")
 
         # Static alignment block (contiguous)
         category = "📐 Static alignment"
@@ -565,7 +597,7 @@ def render() -> None:
         add("Static Ackermann",                        "%",
             fmt(front_data["ackermann"], "+.2f"),
             "N/A",
-            "📐 calculated")
+            "⚠️ legacy (formula flagged — use steering_geometry.py)")
         add("Adjustable Ackermann?",                   "",
             ackermann_adj, "—",
             "⌨️ input")
@@ -623,9 +655,12 @@ def render() -> None:
         # Legend
         st.caption(
             "**Legend:** "
-            "📐 calculated from the hardpoints · "
+            "📐 vdcore (validated) — swept dynamic KPIs on the real linkage · "
+            "📐 calculated / calculated (static) — correct legacy static value · "
             "⌨️ user input · "
-            "🧮 derived (needs inputs in the expanders above)"
+            "🧮 derived (needs inputs in the expanders above) · "
+            "⚠️ legacy — the old strut-to-midpoint solver; **not reliable**, "
+            "needs a synthesised corner from `steering_geometry.py`"
         )
 
         # Download the table (always complete, regardless of the filter)

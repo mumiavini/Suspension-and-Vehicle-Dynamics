@@ -99,22 +99,26 @@ class TestStaticSynthesis:
         assert design.rear.lca_length_mm == pytest.approx(383.60, abs=0.01)
         assert design.rear.uca_length_mm == pytest.approx(351.42, abs=0.01)
 
-    def test_real_member_legs_rear_front_legs_are_over_length(
+    def test_real_member_legs_rear_within_limits(
         self, design: sla.DesignReport
     ) -> None:
-        """The rear front legs bust the 320-430 mm window and must keep saying so.
+        """Rear legs are within the 320-430 mm band.
 
-        This is the check that used to pass on a front-view PROJECTION of
-        383.60 mm while the leg anyone cuts is 554.21 mm.
+        Sweep = base/2 (e/a 1.0) holds the rearmost inboard pickup on the
+        rear-axle line, so no pickup sits behind the axle. Base is shrunk to
+        180/160 to keep the (now longer) front legs under 430 mm. Front and
+        rear legs are no longer equal because the arm is swept.
         """
         legs = sla.member_legs_mm(design.rear)
-        assert legs["LCA front leg"] == pytest.approx(554.21, abs=0.05)
-        assert legs["UCA front leg"] == pytest.approx(517.59, abs=0.05)
-        assert legs["LCA rear leg"] == pytest.approx(388.26, abs=0.05)
-        assert legs["UCA rear leg"] == pytest.approx(356.50, abs=0.05)
+        assert legs["LCA front leg"] == pytest.approx(423.73, abs=0.05)
+        assert legs["UCA front leg"] == pytest.approx(386.13, abs=0.05)
+        assert legs["LCA rear leg"] == pytest.approx(383.60, abs=0.05)
+        assert legs["UCA rear leg"] == pytest.approx(351.42, abs=0.05)
         lo, hi = design.rear.inputs.limits.lca_length_mm
-        assert not (lo <= legs["LCA front leg"] <= hi)
-        assert not (lo <= legs["UCA front leg"] <= hi)
+        assert lo <= legs["LCA front leg"] <= hi
+        assert lo <= legs["UCA front leg"] <= hi
+        assert lo <= legs["LCA rear leg"] <= hi
+        assert lo <= legs["UCA rear leg"] <= hi
 
     def test_anti_geometry_is_exactly_zero(self, design: sla.DesignReport) -> None:
         """Every pivot axis is horizontal, so the SVIC is at infinity.

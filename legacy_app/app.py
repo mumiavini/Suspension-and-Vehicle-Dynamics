@@ -22,7 +22,14 @@ from __future__ import annotations
 
 import streamlit as st
 
-from ui import tab_analysis, tab_compare, tab_inputs, tab_synthesis, tab_view3d
+from ui import (
+    tab_analysis,
+    tab_compare,
+    tab_inputs,
+    tab_synthesis,
+    tab_vdcore,
+    tab_view3d,
+)
 from ui.sidebar import render_sidebar
 from ui.theme import init_theme, inject_css, render_header
 
@@ -37,28 +44,32 @@ init_theme()
 inject_css()
 render_header()
 
-st.error(
-    "**Dynamic KPIs on this app are known to be wrong. Do not quote them.**\n\n"
-    "The 3D solver models each wishbone as a single strut to the midpoint "
-    "between the two chassis pivots, so the ball joint rides a sphere instead "
-    "of a circle about the pivot axis. That leaves 3 of 9 degrees of freedom "
-    "closed by a numerical regularisation rather than by the linkage. Confirmed "
-    "wrong: anti-dive (reports +200%, actually 0%), anti-squat (+83.74%, "
-    "actually 0%), Ackermann (+173%, actually ~70% — the formula is the "
-    "reciprocal of its own docstring), roll-centre migration under roll "
-    "(reports ~1 mm, actually 110 mm front), rear camber gain (27% low) and "
-    "mechanical trail (sign inverted).\n\n"
-    "Static values — KPI, caster, scrub, roll-centre height — are correct.\n\n"
-    "For anything dynamic use `sla_geometry.py` and `steering_geometry.py`, "
-    "or section 3b of `scripts/geometry_summary.py`, which solve in 3D via "
-    "`vdcore.analysis.axle` and are covered by the test suite.",
-    icon="🚨",
+st.warning(
+    "**The Analysis tab's dynamic KPIs came from a solver that is wrong.** "
+    "It modelled each wishbone as a single strut to the midpoint between the two "
+    "chassis pivots, so the ball joint rode a sphere instead of a circle about "
+    "the pivot axis, leaving 3 of 9 degrees of freedom closed by a numerical "
+    "regularisation rather than by the linkage.\n\n"
+    "**Now fixed by delegation.** The swept dynamic KPIs — camber gain, "
+    "roll-centre migration and height, roll cambers — are computed by the "
+    "validated `vdcore` 3D solver (`vdcore.analysis.axle`, covered by the test "
+    "suite). Open the new **🔬 vdcore (validated)** tab to run the same loaded "
+    "geometry through it and compare side by side.\n\n"
+    "**Still flagged.** Anti-dive / anti-squat, Ackermann, scrub and mechanical "
+    "trail cannot be recomputed from loaded hardpoints alone — they need a "
+    "synthesised corner. Do not quote those from the Analysis tab; use "
+    "`sla_geometry.py` / `steering_geometry.py` or section 3b of "
+    "`scripts/geometry_summary.py`.\n\n"
+    "Static values — KPI, caster, scrub, roll-centre height — were always "
+    "correct.",
+    icon="🔧",
 )
 
 render_sidebar()
 
-t_inputs, t_analysis, t_3d, t_synthesis, t_compare = st.tabs([
-    "✏️ Inputs", "📊 Analysis", "🌐 View 3D", "🎯 Synthesis / Optimization", "🔄 Comparison",
+t_inputs, t_analysis, t_vdcore, t_3d, t_synthesis, t_compare = st.tabs([
+    "✏️ Inputs", "📊 Analysis", "🔬 vdcore (validated)", "🌐 View 3D",
+    "🎯 Synthesis / Optimization", "🔄 Comparison",
 ])
 
 with t_inputs:
@@ -66,6 +77,9 @@ with t_inputs:
 
 with t_analysis:
     tab_analysis.render()
+
+with t_vdcore:
+    tab_vdcore.render()
 
 with t_3d:
     tab_view3d.render()

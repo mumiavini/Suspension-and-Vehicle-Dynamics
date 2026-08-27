@@ -279,8 +279,8 @@ def vehicle_section(doc, veh: sla.VehicleData, res: sla.VehicleResults,
               f"{wide:.0f} mm on the other axle.")
 
 
-def axle_section(doc, geo: sla.AxleGeometry, rates: sla.SweepRates,
-                 roll: sla.RollState, number: str) -> None:
+def axle_section(doc, geo: sla.AxleGeometry, rates: "gs.AxleRates",
+                 roll: "gs.AxleRollState", number: str) -> None:
     inp, lim = geo.inputs, geo.inputs.limits
     heading(doc, f"{number}. {inp.name} suspension")
 
@@ -613,10 +613,26 @@ def build_docx() -> Path:
     provenance(doc, hp)
     vehicle_section(doc, design.vehicle, design.vehicle_results, design.front, design.rear)
 
-    for geo, number in ((design.front, "2"), (design.rear, "3")):
-        kin = sla.AxleKinematics(geo, legacy_rotation_sign=False)
-        axle_section(doc, geo, sla.compute_rates(kin),
-                     sla.compute_roll(kin, geo.inputs.roll_reference_deg), number)
+    # Rates and roll are solved in 3D by vdcore.analysis.axle on the merged
+    # corners -- the same path geometry_summary.py uses. The old
+    # sla.AxleKinematics front-view four-bar was removed in the vdcore refactor
+    # (it was blind to pivot-axis rake); this mirrors the source-of-truth script.
+    for geo, number, sides in (
+        (design.front, "2", ("FL", "FR")),
+        (design.rear, "3", ("RL", "RR")),
+    ):
+        inp = geo.inputs
+        axle = gs.Axle(
+            left=gs._vdcore_corner(hp, sides[0], inp),
+            right=gs._vdcore_corner(hp, sides[1], inp),
+        )
+        rates = gs.axle_rates(
+            axle,
+            travel_bump_mm=inp.travel_bump_mm,
+            travel_droop_mm=inp.travel_droop_mm,
+        )
+        roll = gs.axle_roll(axle, inp.roll_reference_deg)
+        axle_section(doc, geo, rates, roll, number)
 
     steering_section(doc, steer, stg.STEERING_2027)
     members_section(doc, hp)

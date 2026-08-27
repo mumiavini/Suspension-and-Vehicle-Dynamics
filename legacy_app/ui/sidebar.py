@@ -118,10 +118,29 @@ def render_sidebar() -> None:
             "brake_bias": 0.60,
             "c_factor_mm": 100.0,
             "steering_wheel_lock_deg": 270.0,
+            "static_camber_deg": -1.5,
+            "loaded_radius_mm": 245.0,
         })
         vs = st.session_state["vehicle_setup"]
+        # Backfill keys for sessions created before these inputs existed.
+        vs.setdefault("static_camber_deg", -1.5)
+        vs.setdefault("loaded_radius_mm", 245.0)
         vs["brake_bias"] = st.slider("Brake bias front", 0.0, 1.0, vs["brake_bias"],
                                        step=0.05, help="Fraction at the front")
+        with st.expander("🔬 vdcore inputs (dynamic KPIs)"):
+            st.caption(
+                "Static camber and tyre loaded radius are not in the hardpoints "
+                "file; the validated `vdcore` solver reads them from here."
+            )
+            vs["static_camber_deg"] = st.number_input(
+                "Static camber (°)", value=float(vs["static_camber_deg"]),
+                step=0.1, format="%.2f",
+                help="Design variable, built into the upright.",
+            )
+            vs["loaded_radius_mm"] = st.number_input(
+                "Tyre loaded radius (mm)", value=float(vs["loaded_radius_mm"]),
+                step=1.0,
+            )
         with st.expander("🔧 Steering"):
             vs["c_factor_mm"] = st.number_input("c-factor (mm/rev)",
                                                   value=vs["c_factor_mm"], step=1.0,

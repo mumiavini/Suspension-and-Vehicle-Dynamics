@@ -734,8 +734,9 @@ def member_legs_mm(geo: AxleGeometry) -> dict[str, float]:
 
     The front-view ``lca_length_mm`` is a PROJECTION -- the right quantity for
     the FVSA construction, but not the member anyone cuts, and not what decides
-    whether a leg is slender enough to buckle. On a swept rear wishbone the two
-    differ by 170 mm.
+    whether a leg is slender enough to buckle. On a swept wishbone the front
+    leg is longer than that projection (e.g. the rear LCA front leg is ~40 mm
+    over its front-view length at the current e/a of 1.0).
 
     Caveat: these use the zero-caster outboard ball joints this script
     synthesises. steering_geometry.py supersedes them with caster-corrected
@@ -1013,8 +1014,12 @@ REAR_2027 = AxleInputs(
     rc_height_mm=55.0,
     fvsa_length_mm=1400.0,
     axle_x_mm=1540.0,
-    lca_base_mm=340.0, lca_sweep_mm=230.0,
-    uca_base_mm=320.0, uca_sweep_mm=220.0,
+    # Rear pickup held on the rear-axle line (no pickup behind the axle):
+    # sweep = base/2 places the rearmost pickup at x = axle_x exactly.
+    # This forces e/a = 1.0; base is shrunk to 180/160 to keep both front
+    # legs under the 430 mm limit. See docs/GEOMETRY_AUDIT_2026-08-26_rev3.md.
+    lca_base_mm=180.0, lca_sweep_mm=90.0,
+    uca_base_mm=160.0, uca_sweep_mm=80.0,
     limits=CheckLimits(kpi_deg=(3.0, 10.0)),
 )
 

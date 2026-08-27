@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 
+from vdcore.geometry.solver import SolverResult
 from vdcore.models.hardpoint import Axle, Corner, DerivedPoint, Vehicle
 
 
@@ -95,3 +96,103 @@ def wheelbase_mm(vehicle: Vehicle) -> float:
     cp_front = contact_patch_uncambered(vehicle.front.left)
     cp_rear = contact_patch_uncambered(vehicle.rear.left)
     return cp_front.x_mm - cp_rear.x_mm
+
+
+def _kingpin_ground_intercept(result: SolverResult) -> tuple[float, float, float]:
+    """Point where the kingpin axis pierces the ground plane (z = 0).
+
+    The kingpin axis is the line through the two solved ball joints, from the
+    lower (LBJ) toward the upper (UBJ). We walk along it from the LBJ by the
+    parameter ``t`` that drives z to zero and return the (x, y, z) intercept.
+
+    ISO 8855: X+ forward, Y+ LEFT, Z+ up; the contact patch sits at z = 0, so
+    this intercept and the patch are compared in the same ground plane.
+
+    Args:
+        result: A solved corner (carries UBJ, LBJ, contact patch).
+
+    Returns:
+        (x_mm, y_mm, z_mm) of the ground intercept; z_mm is 0 by construction.
+
+    Raises:
+        ValueError: if the kingpin axis is (near) horizontal, so it never
+            reaches the ground plane -- returning a number here would be a
+            silent fiction, so we refuse.
+    """
+    ubj = result.ubj
+    lbj = result.lbj
+    kp_x = ubj.x_mm - lbj.x_mm
+    kp_y = ubj.y_mm - lbj.y_mm
+    kp_z = ubj.z_mm - lbj.z_mm
+    if abs(kp_z) < 1e-10:
+        raise ValueError(
+            "Kingpin axis is horizontal (UBJ and LBJ at equal height); it "
+            "never intercepts the ground plane, so scrub radius and mechanical "
+            "trail are undefined."
+        )
+    t = -lbj.z_mm / kp_z
+    return (lbj.x_mm + t * kp_x, lbj.y_mm + t * kp_y, 0.0)
+
+
+def scrub_radius_mm(result: SolverResult) -> float:
+    """Scrub radius: lateral offset from the kingpin ground intercept to the
+    contact patch, in the ground plane.
+
+    ISO 8855: Y+ is LEFT. Defined as ``contact_patch_y - kingpin_ground_y`` on
+    the LEFT corner and its mirror on the RIGHT, so a positive value always
+    means the contact patch sits OUTBOARD of the kingpin ground point (the
+    common FSAE "positive scrub" convention). This matches the OptimumK-
+    correlated derivation pinned at +15.08 mm on the 2027 front-left corner.
+
+    The sign is corner-dependent because "outboard" is +Y on the left and -Y on
+    the right; we fold that in here so both sides report positive for an
+    outboard patch. Negative static camber moves the patch outboard (see
+    :func:`contact_patch`), increasing scrub on both sides.
+
+    Args:
+        result: A solved corner (:class:`SolverResult`).
+
+    Returns:
+        Scrub radius in mm; positive = contact patch outboard of the kingpin.
+
+    Raises:
+        ValueError: if the kingpin axis never reaches the ground plane.
+    """
+    _, kp_ground_y, _ = _kingpin_ground_intercept(result)
+    cp_y = result.contact_patch.y_mm
+    # Left corner: outboard is +Y, so outboard patch => cp_y > kp_ground_y > 0.
+    # Right corner: outboard is -Y, so outboard patch => cp_y < kp_ground_y < 0.
+    # Flipping the right-side difference makes "outboard" positive on both sides.
+    is_left = result.contact_patch.y_mm >= 0.0
+    delta = cp_y - kp_ground_y
+    return delta if is_left else -delta
+
+
+def mechanical_trail_mm(result: SolverResult) -> float:
+    """Mechanical trail: longitudinal offset from the contact patch to the
+    kingpin ground intercept, in the ground plane.
+
+    ISO 8855: X+ is FORWARD. Defined as ``kingpin_ground_x - contact_patch_x``
+    so a POSITIVE value means the kingpin ground intercept lies AHEAD of the
+    contact patch -- i.e. the tyre trails behind the steer axis, the
+    self-aligning ("positive trail") case. This reproduces the +21.43 mm pinned
+    on the 2027 front geometry.
+
+    NOTE ON FRAME: the root ``steering_geometry.py`` computes trail in the
+    design frame (X+ REARWARD) as ``cp_x - kp_gnd_x``. Here X+ is FORWARD, so
+    the equivalent "intercept ahead of patch = positive" expression flips to
+    ``kp_gnd_x - cp_x``. Do not copy the legacy app's
+    ``model_3d.mechanical_trail_mm`` -- its sign is inverted for this frame.
+
+    Args:
+        result: A solved corner (:class:`SolverResult`).
+
+    Returns:
+        Mechanical trail in mm; positive = kingpin ground point ahead of patch.
+
+    Raises:
+        ValueError: if the kingpin axis never reaches the ground plane.
+    """
+    kp_ground_x, _, _ = _kingpin_ground_intercept(result)
+    cp_x = result.contact_patch.x_mm
+    return kp_ground_x - cp_x
