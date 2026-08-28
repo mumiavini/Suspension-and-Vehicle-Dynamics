@@ -33,3 +33,6 @@ _shot.py
 
 # Generated Altair API stubs (scripts/gen_altair_stubs.py)
 typings/
+
+# Altair MotionSolve cross-check cache (machine-specific, regenerable)
+altair_model/.kpi_cache/

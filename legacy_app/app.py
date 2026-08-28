@@ -20,10 +20,20 @@ HOW TO RUN:
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# `streamlit run` puts THIS file's directory on sys.path, which finds `ui/`,
+# `analysis/` and `geometry/` but not the repo root -- so `import vdcore` fails
+# and the Analysis and vdcore tabs cannot load. Put the repo root on the path
+# before importing anything that reaches for it.
+_REPO = Path(__file__).resolve().parent.parent
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
 import streamlit as st
 
 from ui import (
-    tab_analysis,
     tab_compare,
     tab_inputs,
     tab_synthesis,
@@ -67,8 +77,13 @@ st.warning(
 
 render_sidebar()
 
-t_inputs, t_analysis, t_vdcore, t_3d, t_synthesis, t_compare = st.tabs([
-    "✏️ Inputs", "📊 Analysis", "🔬 vdcore (validated)", "🌐 View 3D",
+# The old "Analysis" and "vdcore (validated)" tabs were merged. They showed the
+# same KPIs from two solvers, and the Analysis side was wrong on several: static
+# camber read 0 instead of -1.5, right-side scrub and mechanical trail had
+# inverted signs, and every sweep chart ran on the strut-to-midpoint solver
+# (camber gain came out with the wrong SIGN). One tab now, all of it on DWSolver.
+t_inputs, t_analysis, t_3d, t_synthesis, t_compare = st.tabs([
+    "✏️ Inputs", "📊 Analysis", "🌐 View 3D",
     "🎯 Synthesis / Optimization", "🔄 Comparison",
 ])
 
@@ -76,9 +91,6 @@ with t_inputs:
     tab_inputs.render()
 
 with t_analysis:
-    tab_analysis.render()
-
-with t_vdcore:
     tab_vdcore.render()
 
 with t_3d:

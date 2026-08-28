@@ -21,6 +21,7 @@ the tyre works in.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -28,15 +29,22 @@ from pydantic import BaseModel
 from scipy.optimize import brentq
 
 from vdcore.analysis.roll_centre import front_view_instant_centre
-from vdcore.geometry.solver import DWSolver, SolverResult
+from vdcore.geometry.solver import CornerSolver, DWSolver, SolverResult
 from vdcore.models.hardpoint import Axle, Corner, DerivedPoint
 
 Arr = NDArray[np.float64]
+
+# How a Corner is turned into something that can solve it. Defaults to
+# DWSolver everywhere; the Altair MotionSolve cross-check substitutes a replay
+# of MotionSolve's own positions so both answers run through identical KPI
+# formulas and differ only in the underlying kinematics.
+SolverFactory = Callable[[Corner], CornerSolver]
 
 __all__ = [
     "AxleRates",
     "AxleRollState",
     "CornerSample",
+    "SolverFactory",
     "axle_rates",
     "axle_roll",
     "sample_corner",
@@ -108,7 +116,7 @@ def _line_intersection(p1: Arr, p2: Arr, p3: Arr, p4: Arr) -> Arr | None:
 
 def sample_corner(
     corner: Corner,
-    solver: DWSolver,
+    solver: CornerSolver,
     wheel_travel_mm: float,
 ) -> CornerSample:
     """Solve one corner at a wheel travel and reduce it to the front view.
@@ -173,6 +181,7 @@ def axle_rates(
     travel_bump_mm: float = 25.0,
     travel_droop_mm: float = 25.0,
     sweep_steps: int = 41,
+    solver_factory: SolverFactory = DWSolver,
 ) -> AxleRates:
     """Rates about static, from a central difference on the left corner.
 
@@ -182,11 +191,16 @@ def axle_rates(
     Sign convention: ``camber_gain_deg_per_mm`` is per mm of BUMP, and is
     negative for a geometry that gains negative camber in bump.
 
+    Args:
+        solver_factory: How to build the corner solver. Defaults to
+            :class:`DWSolver`; the Altair cross-check passes a replay of
+            MotionSolve's positions so both columns share these formulas.
+
     Raises:
         ConvergenceError: if any solve in the sweep fails.
     """
     corner = axle.left
-    solver = DWSolver(corner)
+    solver = solver_factory(corner)
     step = travel_bump_mm / 20.0
 
     up = sample_corner(corner, solver, +step)
@@ -212,12 +226,22 @@ def axle_rates(
     )
 
 
-def axle_roll(axle: Axle, roll_deg: float) -> AxleRollState:
+def axle_roll(
+    axle: Axle,
+    roll_deg: float,
+    *,
+    solver_factory: SolverFactory = DWSolver,
+) -> AxleRollState:
     """Solve the axle at a chassis roll angle with both wheels on the road.
 
     The wheel travel per side is found by requiring both contact patches to
     lie on the tilted road plane. Camber is returned relative to the ROAD:
     the outer wheel loses the roll angle, the inner gains it.
+
+    Args:
+        solver_factory: How to build each corner solver. Defaults to
+            :class:`DWSolver`; the Altair cross-check substitutes a replay of
+            MotionSolve's positions.
 
     Raises:
         ConvergenceError: if any solve fails.
@@ -229,8 +253,8 @@ def axle_roll(axle: Axle, roll_deg: float) -> AxleRollState:
     # (left +Y, right -Y), so no mirroring is applied -- unlike the design-frame
     # implementation this replaces, where both sides carried positive Y.
     outer_corner, inner_corner = axle.left, axle.right
-    outer_solver = DWSolver(outer_corner)
-    inner_solver = DWSolver(inner_corner)
+    outer_solver = solver_factory(outer_corner)
+    inner_solver = solver_factory(inner_corner)
 
     def patch_mismatch(travel: float) -> float:
         o = sample_corner(outer_corner, outer_solver, +travel)

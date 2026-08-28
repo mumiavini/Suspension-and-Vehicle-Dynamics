@@ -21,6 +21,7 @@ Numerical Jacobian. Non-convergence returns converged=False.
 from __future__ import annotations
 
 import math
+from typing import Protocol
 
 import numpy as np
 import numpy.typing as npt
@@ -50,6 +51,32 @@ class SolverResult(BaseModel, frozen=True):
     residual_norm: float
     nfev: int
     njev: int
+
+
+class CornerSolver(Protocol):
+    """Anything that can place one corner's upright at a given wheel state.
+
+    :class:`DWSolver` is the implementation used everywhere in production. The
+    protocol exists so an *external* kinematics source can be substituted into
+    the axle analysis without duplicating the KPI formulas: the Altair
+    MotionSolve cross-check replays solved positions through the very same
+    ``sample_corner`` / ``axle_rates`` / ``axle_roll`` code, so the only thing
+    that differs between the two answers is where the upright ended up.
+
+    An implementation must honour DWSolver's frame and sign conventions
+    exactly: ISO 8855 (X+ forward, Y+ LEFT, Z+ up), travel positive in bump,
+    and the returned points expressed with the CHASSIS displaced by
+    ``-wheel_travel_mm`` (i.e. the wheel centre stays near its static height).
+    """
+
+    def solve(
+        self,
+        wheel_travel_mm: float = 0.0,
+        roll_deg: float = 0.0,
+        rack_mm: float = 0.0,
+    ) -> SolverResult:
+        """Solve for the displaced upright positions."""
+        ...
 
 
 class DWSolver:

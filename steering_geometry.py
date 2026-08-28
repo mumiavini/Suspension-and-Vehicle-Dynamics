@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
@@ -301,6 +302,31 @@ def _geometric_ackermann_pct(
     Measured in the top-view (x-y plane in the design frame, where x is
     +rearward and y is +outboard). 100% Ackermann means the TRO–kingpin
     line, extended, crosses the rear axle centreline.
+
+    THE PERCENTAGE IS RECIPROCAL IN THE CROSSING DISTANCE, not proportional.
+        Ackermann % is the ratio of the actual steering-arm angle to the ideal
+        one, in the usual linear-in-tangent approximation::
+
+            %Ack = 100 * tan(theta_actual) / tan(theta_ideal)
+
+        The arm starts at the kingpin (y = kp_y) and crosses the centreline at
+        x_cross, so tan(theta) = kp_y / x_cross; the ideal arm crosses at the
+        rear axle, tan(theta_ideal) = kp_y / L. The kingpin offset cancels::
+
+            %Ack = 100 * L / x_cross
+
+        This function previously returned ``100 * x_cross / L`` -- the
+        reciprocal. That is correct only at exactly 100 %, where a number
+        equals its own reciprocal, and inverts the TREND everywhere else: it
+        rose as Ackermann fell, and passed through a singularity at parallel
+        steer, reporting 0 % for both parallel steer and a 90-degree arm. The
+        shipped 2027 design sat at 101.1 % (true value 98.9 %), close enough to
+        the fixed point that the inversion was invisible. Do not "simplify"
+        this back.
+
+        ``_ackermann_at_steer`` is the rigorous measure (it solves the linkage
+        and compares actual toe-out on turns with the ideal); this one is the
+        small-angle construction and will read higher.
     """
     # project to top view (x, y) — design frame
     kp_mid = (lbj_3d + ubj_3d) / 2.0
@@ -310,21 +336,24 @@ def _geometric_ackermann_pct(
 
     # direction from kp to tro
     d = tro_xy - kp_xy
-    if abs(d[0]) < 1e-12:
+
+    # Arm parallel to the centreline: it never reaches y=0, x_cross is infinite
+    # and the ratio L/x_cross is zero. This is parallel steer, 0 % by
+    # convention -- the one case where returning 0.0 is right.
+    if abs(d[1]) < 1e-12:
         return 0.0
 
     # where does the line kp→tro cross y=0?
-    t = (0.0 - kp_xy[1]) / d[1] if abs(d[1]) > 1e-12 else np.nan
-    if np.isnan(t):
-        return 0.0
-
+    t = (0.0 - kp_xy[1]) / d[1]
     x_cross = kp_xy[0] + t * d[0]
-    x_ideal = veh.wheelbase_mm
 
-    # Ackermann % = 100 if the line crosses the rear axle centre
-    if abs(x_ideal) < 1e-12:
+    if abs(veh.wheelbase_mm) < 1e-12:
         return 0.0
-    return float(100.0 * x_cross / x_ideal)
+    if abs(x_cross) < 1e-9:
+        # Arm points at the front axle centre: infinite Ackermann. Report it
+        # rather than folding it to a plausible-looking finite number.
+        return math.inf
+    return float(100.0 * veh.wheelbase_mm / x_cross)
 
 
 def synthesize_steering(

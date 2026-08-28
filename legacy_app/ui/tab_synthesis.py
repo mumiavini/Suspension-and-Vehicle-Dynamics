@@ -151,6 +151,25 @@ def render() -> None:
     """
     st.header("Geometry synthesis — Reverse engineering")
 
+    st.error(
+        "⚠️ **This optimizer still runs the legacy solver, and its camber-gain "
+        "sign is inverted.**\n\n"
+        "`analysis/optimizer.py` scores each candidate with `KinematicSolver3D`, "
+        "which models each wishbone as a strut to the midpoint of its two "
+        "chassis pivots. On the 2027 front corner it reports camber gain as "
+        "**+0.0388 °/mm where the true value is −0.0384**, and a roll-centre "
+        "swing of 70 mm against a true 19.6 mm.\n\n"
+        "So a camber-gain target is pursued in the **wrong direction**: ask for "
+        "−0.04 °/mm and the optimizer will hunt for geometry whose *legacy* "
+        "number is −0.04, i.e. whose real gain is roughly +0.04. Treat any "
+        "result here as a starting sketch and re-check it on the Analysis tab "
+        "before trusting a single number.\n\n"
+        "Not yet ported because `DWSolver` is ~33× slower per sweep "
+        "(1.3 s vs 39 ms), which would take a run from ~2 minutes to over an "
+        "hour. Fixing it needs the cost function reworked to use far fewer "
+        "solves, not a drop-in swap."
+    )
+
     df = load_hardpoints_from_state()
     if df is None:
         render_empty_state(

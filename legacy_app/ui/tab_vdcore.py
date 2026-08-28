@@ -1,15 +1,28 @@
 """
 ui/tab_vdcore.py
 ================
-The "vdcore (validated)" tab — a second option that runs the SAME loaded
-geometry through the validated ``vdcore`` 3D solver instead of the legacy
-strut-to-midpoint solver.
+The 📊 **Analysis** tab — setup sheet, sweeps, and the Altair cross-check.
 
-This tab is the honest counterpart to the Analysis tab. It shows the dynamic
-KPIs the legacy solver gets wrong (camber gain, roll-centre migration, RC
-height, roll cambers) computed by ``vdcore.geometry.solver.DWSolver``, which
-constrains all six DOF with the real linkage and is covered by the test suite.
-A side-by-side delta table makes the correction visible.
+Every geometry row runs the loaded hardpoints through
+``vdcore.geometry.solver.DWSolver``, which constrains all six DOF with the real
+linkage, is covered by the test suite, and agrees with Altair MotionSolve to
+~1e-7 mm.
+
+HISTORY — this absorbed the old ``tab_analysis.py`` (deleted 2026-08-27).
+    The app used to carry two tabs showing the same KPIs from two solvers. The
+    Analysis side was wrong on six of them: static camber read 0.000 instead of
+    -1.500 (the legacy model cannot infer camber from hardpoints, and that error
+    cascaded into the contact patch, scrub and RC), right-side scrub radius and
+    mechanical trail had inverted signs, and every sweep chart ran on the
+    strut-to-midpoint solver — which produced camber gain with the SIGN
+    INVERTED (+0.0388 vs the true -0.0384 deg/mm) and a roll-centre swing of
+    70 mm against a true 19.6 mm.
+
+    Anti-dive/anti-squat and Ackermann were also wrong at the source (+200 % and
+    +173 %); both are fixed and now appear here with real values.
+
+The legacy-vs-vdcore delta table is kept deliberately: it is the evidence for
+why the old solver was retired, and it is quotable in Design Event.
 
 Everything comes from ``analysis/vdcore_bridge.py``; this module is presentation
 only (Streamlit + plotly). Plotly is allowed here — this is ``legacy_app/``, an
@@ -19,15 +32,37 @@ application layer, not the pure ``vdcore/`` library.
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 import streamlit as st
-
-from analysis.io_hardpoints import build_vehicle_from_dataframe
-from analysis.sweeps import SweepRunner, camber_gain_per_mm, rc_migration_range
+from analysis.altair_bridge import (
+    AltairKPIs,
+    AltairRunError,
+    AltairUnavailableError,
+    run_altair,
+)
+from analysis.altair_bridge import (
+    availability as altair_availability,
+)
+from analysis.altair_bridge import (
+    geometry_signature as altair_signature,
+)
+from analysis.altair_bridge import (
+    load_cached as load_altair_cached,
+)
+from analysis.io_hardpoints import VALID_CORNERS, build_vehicle_from_dataframe
+from analysis.kpis import ackermann_geometry, steer_ratio_from_pinion
+from analysis.sweeps import (
+    SweepRunner,
+    camber_gain_per_mm,
+    plot_bump_steer,
+    plot_camber_vs_heave,
+    plot_caster_kpi_vs_steer,
+    plot_rc_migration,
+    rc_migration_range,
+)
 from analysis.vdcore_bridge import (
     AxleVdcoreKPIs,
     BridgeConversionError,
@@ -35,26 +70,26 @@ from analysis.vdcore_bridge import (
     VdcoreKPIs,
     compute_vdcore_kpis_cached,
     compute_vdcore_setup_sheet_cached,
+    df_to_vdcore_axles,
+    rack_mm_per_wheel_deg,
+    solved_ackermann_pct,
+    vdcore_roll_sweep,
+    vdcore_sweep,
 )
 from geometry import KinematicSolver3D
-from ui.shared import load_hardpoints_from_state, render_empty_state
 
-# KPIs that vdcore does NOT cover from loaded hardpoints alone. Kept in the UI
-# so the tab tells the designer why they are absent rather than silently omitting
-# them (they need a synthesised corner from sla_geometry / steering_geometry).
-# Scrub radius and mechanical trail were moved OUT of this list: they are now
-# computed by ``vdcore.geometry.derived`` and appear on the setup sheet below.
-_NOT_COVERED = (
-    "anti-dive", "anti-squat", "Ackermann",
-)
+from ui.shared import load_hardpoints_from_state, render_empty_state
 
 # Source label used for every geometry row the validated solver produces.
 _VDCORE_SRC = "📐 vdcore (validated)"
-# Source label for the rows that genuinely need a synthesised corner.
-_NOT_VDCORE_SRC = "⚠️ not vdcore — needs synthesised corner (steering_geometry.py)"
+
+# Shown when the Altair column has no number for a row. Distinguishes "Altair
+# cannot produce this" from "Altair produced zero", which matters on rows like
+# rear mechanical trail where zero is the correct answer.
+_NO_ALTAIR = "—"
 
 
-def _fmt(value: Optional[float], digits: int = 4, unit: str = "") -> str:
+def _fmt(value: float | None, digits: int = 4, unit: str = "") -> str:
     """Format a metric, showing an em dash for None / NaN."""
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return "—"
@@ -65,7 +100,7 @@ def _fmt(value: Optional[float], digits: int = 4, unit: str = "") -> str:
 def _legacy_dynamic_kpis(df: pl.DataFrame) -> dict[str, dict[str, float]]:
     """Recompute the legacy dynamic KPIs for the delta table.
 
-    Mirrors the heave-sweep block of ``tab_analysis._compute_axle_cached`` so the
+    Mirrors the heave-sweep block of the deleted ``tab_analysis`` so the
     numbers shown as "legacy" are exactly what the Analysis tab produces. Returns
     ``{"front": {...}, "rear": {...}}`` with camber gain (deg/mm) and RC
     migration Z range (mm). Any failure degrades to NaN, never a crash.
@@ -91,6 +126,99 @@ def _legacy_dynamic_kpis(df: pl.DataFrame) -> dict[str, dict[str, float]]:
                 "rc_migration_z_mm": float("nan"),
             }
     return out
+
+
+def _render_altair_controls(
+    df: pl.DataFrame,
+    inputs: CornerInputs,
+    *,
+    roll_deg: float,
+    travel_mm: float,
+    sweep_steps: int = 41,
+) -> AltairKPIs | None:
+    """Status, run button and cache handling for the Altair cross-check column.
+
+    Returns the KPIs when a run matching the CURRENT geometry and inputs is
+    cached, otherwise None. A run made against different hardpoints is never
+    returned: a second opinion on a different geometry is worse than none.
+    """
+    usable, reason = altair_availability()
+    signature = altair_signature(
+        df,
+        static_camber_deg=inputs.static_camber_deg,
+        loaded_radius_mm=inputs.loaded_radius_mm,
+        static_toe_deg_per_side=inputs.static_toe_deg_per_side,
+        roll_deg=roll_deg,
+        travel_mm=travel_mm,
+        sweep_steps=sweep_steps,
+    )
+    cached = load_altair_cached(signature) if usable else None
+
+    with st.expander(
+        "🅰️ Altair MotionSolve cross-check"
+        + ("" if cached is None else " — ✅ current"),
+        expanded=cached is None and usable,
+    ):
+        st.caption(
+            "An independent second opinion on the same hardpoints. MotionSolve "
+            "assembles revolute/spherical/universal joints into an index-3 DAE "
+            "and integrates it with DASPK; `vdcore` writes nine distance "
+            "residuals and drives them to zero with `least_squares`. The two "
+            "share **nothing but the geometry**, so agreement is real evidence. "
+            "Both columns are then reduced to KPIs by *vdcore's own* formulas, "
+            "so a difference is always a kinematics difference, never a "
+            "definition difference."
+        )
+
+        if not usable:
+            st.info(f"ℹ️ {reason}")
+            return None
+
+        if cached is not None:
+            st.success(
+                f"Showing a MotionSolve run for exactly this geometry and these "
+                f"inputs (took {cached.elapsed_s:.0f} s). Worst roll-travel "
+                f"patch residual **{cached.roll_patch_residual_mm:.1e} mm**."
+            )
+        else:
+            st.warning(
+                "No MotionSolve run for the current geometry. The Altair column "
+                "is hidden rather than showing numbers from a different "
+                "geometry."
+            )
+
+        st.caption(
+            "A full four-corner pass runs MotionSolve about a dozen times and "
+            "takes ~150 s. The result is cached against the geometry **and** "
+            "the design inputs, so it reappears instantly until one of them "
+            "changes."
+        )
+        if st.button(
+            "▶️ Run MotionSolve cross-check"
+            + (" again" if cached is not None else ""),
+            key="vd_altair_run",
+            type="primary" if cached is None else "secondary",
+        ):
+            with st.spinner("Running Altair MotionSolve on all four corners…"):
+                try:
+                    run_altair(
+                        df,
+                        static_camber_deg=inputs.static_camber_deg,
+                        loaded_radius_mm=inputs.loaded_radius_mm,
+                        static_toe_deg_per_side=inputs.static_toe_deg_per_side,
+                        roll_deg=roll_deg,
+                        travel_mm=travel_mm,
+                        sweep_steps=sweep_steps,
+                    )
+                except AltairUnavailableError as exc:
+                    st.error(f"❌ {exc}")
+                    return None
+                except AltairRunError as exc:
+                    st.error(f"❌ MotionSolve failed: {exc}")
+                    return None
+            st.rerun()
+
+    return cached
 
 
 def _render_axle_cards(kpi: AxleVdcoreKPIs) -> None:
@@ -154,8 +282,17 @@ def _render_axle_cards(kpi: AxleVdcoreKPIs) -> None:
                    "averages the two sides and the lateral terms cancel.")
 
 
-def _render_delta_table(vd: VdcoreKPIs, legacy: dict[str, dict[str, float]]) -> None:
-    """Side-by-side legacy-vs-vdcore table for the two overlapping KPIs."""
+def _render_delta_table(
+    vd: VdcoreKPIs,
+    legacy: dict[str, dict[str, float]],
+    altair: AltairKPIs | None = None,
+) -> None:
+    """Side-by-side legacy-vs-vdcore table for the two overlapping KPIs.
+
+    When a current MotionSolve run exists, an Altair column and a
+    vdcore-minus-Altair delta are appended — the independent check on the two
+    KPIs the legacy solver got most wrong.
+    """
     st.markdown("#### Legacy vs vdcore — the correction, made visible")
 
     def rows_for(axle_name: str, vd_axle: AxleVdcoreKPIs) -> list[dict]:
@@ -163,20 +300,28 @@ def _render_delta_table(vd: VdcoreKPIs, legacy: dict[str, dict[str, float]]) -> 
         rates = vd_axle.rates
         vd_cg = rates.camber_gain_deg_per_mm if rates else float("nan")
         vd_rc = (rates.rc_max_mm - rates.rc_min_mm) if rates else float("nan")
-        return [
-            {
+
+        spec = (
+            ("Camber gain (°/mm)", "camber_gain_deg_per_mm", "camber_gain", vd_cg, 4),
+            ("RC migration Z range (mm)", "rc_migration_z_mm", "rc_dz", vd_rc, 2),
+        )
+        out: list[dict] = []
+        for label, legacy_key, altair_key, vd_value, digits in spec:
+            row = {
                 "Axle": vd_axle.label,
-                "KPI": "Camber gain (°/mm)",
-                "Legacy": _fmt(leg.get("camber_gain_deg_per_mm"), 4),
-                "vdcore": _fmt(vd_cg, 4),
-            },
-            {
-                "Axle": vd_axle.label,
-                "KPI": "RC migration Z range (mm)",
-                "Legacy": _fmt(leg.get("rc_migration_z_mm"), 2),
-                "vdcore": _fmt(vd_rc, 2),
-            },
-        ]
+                "KPI": label,
+                "Legacy": _fmt(leg.get(legacy_key), digits),
+                "vdcore": _fmt(vd_value, digits),
+            }
+            if altair is not None:
+                alt = altair.get(axle_name, altair_key)
+                row["Altair"] = _fmt(alt, digits)
+                row["vdcore − Altair"] = (
+                    _NO_ALTAIR if alt is None or math.isnan(vd_value)
+                    else f"{vd_value - alt:.2e}"
+                )
+            out.append(row)
+        return out
 
     rows = rows_for("front", vd.front) + rows_for("rear", vd.rear)
     st.dataframe(pl.DataFrame(rows), hide_index=True, width="stretch")
@@ -184,6 +329,11 @@ def _render_delta_table(vd: VdcoreKPIs, legacy: dict[str, dict[str, float]]) -> 
         "The legacy strut-to-midpoint solver barely rotates the arms under "
         "travel, so its RC migration collapses toward ~1 mm and its camber gain "
         "reads low. vdcore constrains the real linkage."
+        + (
+            "  **Altair** is Altair MotionSolve on the same hardpoints — an "
+            "independent DAE solver, not a re-run of vdcore."
+            if altair is not None else ""
+        )
     )
 
 
@@ -239,6 +389,174 @@ def _render_rc_migration_plot(vd: VdcoreKPIs) -> None:
     st.plotly_chart(fig, width="stretch")
 
 
+def _render_detailed_sweeps(df: pl.DataFrame, inputs: CornerInputs) -> None:
+    """Per-corner heave / steer sweeps and the axle roll sweep, on DWSolver.
+
+    These charts used to run on ``KinematicSolver3D``, whose camber gain came
+    out with the SIGN INVERTED (+0.0388 vs the true -0.0384 deg/mm) and whose
+    roll-centre swing read 70 mm against a true 19.6 mm. They now run the real
+    linkage.
+
+    Roll is handled at AXLE level rather than per corner. Solving one corner at
+    fixed travel under roll is degenerate -- ``DWSolver``'s travel constraint is
+    chassis-referenced, so the wheel just rolls with the car and camber tracks
+    roll at exactly -1.000 deg/deg. ``vdcore_roll_sweep`` instead solves the
+    travel that keeps both patches on the tilted road, which is the real corner
+    case and matches the setup sheet's roll-camber figure.
+    """
+    st.markdown("### 📈 Detailed sweeps")
+
+    with st.expander("Show sweep charts", expanded=False):
+        sweep_type = st.radio(
+            "Sweep", ["Heave", "Steer", "Roll (axle)"],
+            horizontal=True, key="vd_sweep_type",
+        )
+
+        if sweep_type == "Roll (axle)":
+            axle_name = st.selectbox("Axle", ["Front", "Rear"], key="vd_sweep_axle")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                lo = st.number_input("Min (°)", value=-3.0, key="vd_rmin")
+            with c2:
+                hi = st.number_input("Max (°)", value=3.0, key="vd_rmax")
+            with c3:
+                step = st.number_input("Step (°)", value=0.25, min_value=0.01,
+                                       key="vd_rstep")
+            try:
+                front_axle, rear_axle = df_to_vdcore_axles(df, inputs)
+            except BridgeConversionError as exc:
+                st.error(f"❌ {exc}")
+                return
+            axle = front_axle if axle_name == "Front" else rear_axle
+            with st.spinner("Roll sweep…"):
+                roll = vdcore_roll_sweep(axle, float(lo), float(hi), float(step))
+            if not roll.roll_deg:
+                st.warning(
+                    "No roll angle in this range could be solved with both "
+                    "contact patches on the road."
+                )
+                return
+
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=roll.roll_deg, y=roll.outer_camber_deg,
+                                         mode="lines", name="Outer wheel"))
+                fig.add_trace(go.Scatter(x=roll.roll_deg, y=roll.inner_camber_deg,
+                                         mode="lines", name="Inner wheel"))
+                fig.update_layout(
+                    title=f"{axle_name} camber vs chassis roll (road-relative)",
+                    xaxis_title="Chassis roll (°)", yaxis_title="Camber (°)",
+                    height=360, margin=dict(l=10, r=10, t=40, b=10),
+                )
+                st.plotly_chart(fig, width="stretch")
+            with cc2:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=roll.roll_deg, y=roll.rc_height_mm,
+                                         mode="lines", name="RC height"))
+                fig.add_trace(go.Scatter(x=roll.roll_deg, y=roll.rc_lateral_mm,
+                                         mode="lines", name="RC lateral"))
+                fig.update_layout(
+                    title=f"{axle_name} roll centre vs chassis roll (ground-ref)",
+                    xaxis_title="Chassis roll (°)", yaxis_title="Position (mm)",
+                    height=360, margin=dict(l=10, r=10, t=40, b=10),
+                )
+                st.plotly_chart(fig, width="stretch")
+
+            st.caption(
+                "Both wheels are held on the tilted road, so the wheel travel "
+                "per side is solved, not assumed — the outer/inner split and "
+                "the sideways roll-centre migration both come out of that."
+            )
+            with st.expander("📋 Sweep data"):
+                st.dataframe(pl.DataFrame({
+                    "roll_deg": roll.roll_deg,
+                    "wheel_travel_mm": roll.wheel_travel_mm,
+                    "outer_camber_deg": roll.outer_camber_deg,
+                    "inner_camber_deg": roll.inner_camber_deg,
+                    "rc_height_mm": roll.rc_height_mm,
+                    "rc_lateral_mm": roll.rc_lateral_mm,
+                }), width="stretch", hide_index=True)
+            return
+
+        # ---- per-corner heave / steer ------------------------------------- #
+        corner_choice = st.selectbox("Corner", list(VALID_CORNERS),
+                                     key="vd_sweep_corner")
+        c1, c2, c3 = st.columns(3)
+        if sweep_type == "Heave":
+            with c1:
+                lo = st.number_input("Min (mm)", value=-25.0, key="vd_hmin")
+            with c2:
+                hi = st.number_input("Max (mm)", value=25.0, key="vd_hmax")
+            with c3:
+                step = st.number_input("Step (mm)", value=1.0, min_value=0.05,
+                                       key="vd_hstep")
+        else:
+            with c1:
+                lo = st.number_input("Min (mm)", value=-30.0, key="vd_smin")
+            with c2:
+                hi = st.number_input("Max (mm)", value=30.0, key="vd_smax")
+            with c3:
+                step = st.number_input("Step (mm)", value=1.0, min_value=0.05,
+                                       key="vd_sstep")
+
+        try:
+            corner = _corner_from_df(df, corner_choice, inputs)
+        except BridgeConversionError as exc:
+            st.error(f"❌ {exc}")
+            return
+
+        with st.spinner(f"{sweep_type} sweep…"):
+            sweep = vdcore_sweep(corner, sweep_type, (float(lo), float(hi), float(step)))
+
+        if not bool(sweep["converged"].all()):
+            st.warning(
+                f"⚠️ {int((~sweep['converged']).sum())} of {len(sweep)} points did "
+                "not converge and are shown as gaps, never as interpolated values."
+            )
+
+        if sweep_type == "Heave":
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                st.plotly_chart(plot_camber_vs_heave(sweep), width="stretch")
+            with pc2:
+                st.plotly_chart(plot_bump_steer(sweep), width="stretch")
+            st.plotly_chart(plot_rc_migration(sweep), width="stretch")
+            st.caption(
+                "Roll-centre height here is **chassis-referenced**, the same "
+                "frame as the rate table. Ground-referenced values differ by "
+                "exactly 1 mm per mm of travel. Lateral RC migration is zero by "
+                "construction for a single corner — the axle-level figure is on "
+                "the roll sweep."
+            )
+        else:
+            st.plotly_chart(plot_caster_kpi_vs_steer(sweep), width="stretch")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=sweep["rack_mm"], y=sweep["toe_deg"],
+                                     mode="lines", name="Toe"))
+            fig.update_layout(
+                title=f"{corner_choice} toe vs rack travel",
+                xaxis_title="Rack travel (mm)", yaxis_title="Toe per side (°)",
+                height=360, margin=dict(l=10, r=10, t=40, b=10),
+            )
+            st.plotly_chart(fig, width="stretch")
+
+        with st.expander("📋 Sweep data"):
+            st.dataframe(
+                pl.DataFrame({n: sweep[n] for n in sweep.dtype.names}),
+                width="stretch",
+            )
+
+
+def _corner_from_df(
+    df: pl.DataFrame, corner_id: str, inputs: CornerInputs
+):
+    """One vdcore Corner from the loaded geometry."""
+    from analysis.vdcore_bridge import df_to_vdcore_corner
+
+    return df_to_vdcore_corner(df, corner_id, inputs)
+
+
 def _wheel_rate(spring_rate: float, mr: float) -> float:
     """Wheel rate (N/mm) = spring_rate × MR². NaN if inputs missing."""
     if spring_rate <= 0 or mr <= 0:
@@ -250,7 +568,7 @@ def _roll_rate(wheel_rate: float, track_mm: float) -> float:
     """Roll rate per wheel (Nm/°) from wheel rate and track. NaN if missing.
 
     K_roll = (1/2) × K_wheel × T² × (π/180), K_wheel in N/m, T in m.
-    Mirrors ``tab_analysis._roll_rate`` so the two sheets agree.
+    Kept from the deleted ``tab_analysis`` so exported sheets stay comparable.
     """
     if math.isnan(wheel_rate) or track_mm <= 0:
         return float("nan")
@@ -266,7 +584,7 @@ def _natural_freq(wheel_rate: float, sprung_per_corner: float) -> float:
     return (1.0 / (2.0 * math.pi)) * math.sqrt(k / sprung_per_corner)
 
 
-def _fmt_pair(v_l: Optional[float], v_r: Optional[float], digits: int = 3) -> str:
+def _fmt_pair(v_l: float | None, v_r: float | None, digits: int = 3) -> str:
     """Format 'L / R' for a per-wheel quantity, em dash for None/NaN."""
     return f"{_fmt(v_l, digits)} / {_fmt(v_r, digits)}"
 
@@ -277,6 +595,7 @@ def _render_setup_sheet(
     *,
     roll_deg: float,
     travel_mm: float,
+    altair: AltairKPIs | None = None,
 ) -> None:
     """Full documentation setup sheet, geometry rows sourced from vdcore.
 
@@ -338,6 +657,11 @@ def _render_setup_sheet(
                                            value=0.0, step=1.0, key="vd_sheet_spring_r")
                 mr_r = st.number_input("Motion Ratio — REAR", 0.0, value=0.0,
                                        step=0.05, format="%.3f", key="vd_sheet_mr_r")
+            arb_adj = st.text_input(
+                "Suspension adjustment methods (other)", value="",
+                placeholder="e.g. ARB with 3 positions, variable preload",
+                key="vd_sheet_susp_methods",
+            )
         with t_mass:
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -350,6 +674,11 @@ def _render_setup_sheet(
             with c3:
                 unsprung = st.number_input("Unsprung mass per corner (kg)", 0.0,
                                            value=0.0, step=0.5, key="vd_sheet_unsprung")
+            cg_height_mm = st.number_input(
+                "CG height (mm)", 0.0, value=320.0, step=5.0, key="vd_sheet_cgh",
+                help="Sets the anti-dive / anti-squat scale: %anti is "
+                     "proportional to wheelbase / CG height.",
+            )
         with t_damp:
             c1, c2 = st.columns(2)
             with c1:
@@ -384,7 +713,53 @@ def _render_setup_sheet(
 
     # ─── Derived rows that depend on the user inputs above ────────────────────
     from analysis.io_hardpoints import build_vehicle_from_dataframe
-    vehicle, _ = build_vehicle_from_dataframe(df)
+    vehicle, tie_rods = build_vehicle_from_dataframe(df)
+
+    # Anti-geometry, Ackermann and the steering-arm rows. These used to live
+    # only on the old Analysis tab; both anti-dive and Ackermann were wrong
+    # there (+200 % and +173 %) and are now fixed at the source. Ackermann comes
+    # from an actual rack sweep on DWSolver, not the plan-view construction --
+    # see analysis.vdcore_bridge.solved_ackermann_pct for why that construction
+    # is unusable on a car with 10 deg KPI.
+    vs = st.session_state.get("vehicle_setup", {})
+    brake_bias = float(vs.get("brake_bias", 0.6))
+    c_factor_mm = float(vs.get("c_factor_mm", 0.0))
+    try:
+        anti_dive = vehicle.front_left.anti_dive_percent(
+            brake_bias=brake_bias, wheelbase_mm=vehicle.wheelbase_mm,
+            cg_height_mm=cg_height_mm,
+        )
+        anti_squat = vehicle.rear_left.anti_dive_percent(
+            brake_bias=1.0, wheelbase_mm=vehicle.wheelbase_mm,
+            cg_height_mm=cg_height_mm,
+        )
+    except Exception:
+        anti_dive = anti_squat = float("nan")
+
+    try:
+        front_axle, _ = df_to_vdcore_axles(df, inputs)
+        ackermann_pct = solved_ackermann_pct(front_axle, vehicle.wheelbase_mm)
+    except Exception:
+        ackermann_pct = float("nan")
+
+    try:
+        ack_info = ackermann_geometry(
+            vehicle.front_left, tie_rods["FL"],
+            vehicle.front_right, tie_rods["FR"], vehicle.rear_left,
+        )
+        steer_arm_l = ack_info["steer_arm_length_left"]
+        steer_arm_r = ack_info["steer_arm_length_right"]
+        # Steer ratio on DWSolver, not the legacy solver: the latter reads
+        # 10.2 % high because it mis-places the outboard ball joints and so
+        # swings the wrong steering-arm length.
+        rack_per_deg = rack_mm_per_wheel_deg(front_axle.left)
+        steer_ratio = (
+            steer_ratio_from_pinion(rack_per_deg, c_factor_mm)
+            if c_factor_mm > 0 else float("nan")
+        )
+    except Exception:
+        steer_arm_l = steer_arm_r = steer_ratio = float("nan")
+
     wr_f, wr_r = _wheel_rate(spring_f, mr_f), _wheel_rate(spring_r, mr_r)
     rr_f = _roll_rate(wr_f, vehicle.track_front_mm)
     rr_r = _roll_rate(wr_r, vehicle.track_rear_mm)
@@ -397,13 +772,42 @@ def _render_setup_sheet(
             sprung_r_pc = sprung_total * (1.0 - wd) / 2.0
     nf_f, nf_r = _natural_freq(wr_f, sprung_f_pc), _natural_freq(wr_r, sprung_r_pc)
 
-    # ─── Build the table (mirrors tab_analysis category order and labels) ─────
+    # ─── Build the table (category order and labels from the old Analysis tab) ─
     rows: list[dict[str, str]] = []
     category = "General"
+    show_altair = altair is not None
 
-    def add(param: str, unit: str, f_val: str, r_val: str, origin: str) -> None:
-        rows.append({"Category": category, "Parameter": param, "Unit": unit,
-                     "Front": f_val, "Rear": r_val, "Source": origin})
+    def add(param: str, unit: str, f_val: str, r_val: str, origin: str,
+            *, f_alt: str = _NO_ALTAIR, r_alt: str = _NO_ALTAIR) -> None:
+        """One sheet row. Altair columns are omitted entirely when no run exists.
+
+        Keeping them out (rather than filling a column with em dashes) means the
+        sheet looks exactly as it did before the cross-check was added until
+        there is something real to show.
+        """
+        row = {"Category": category, "Parameter": param, "Unit": unit,
+               "Front": f_val}
+        if show_altair:
+            row["Front (Altair)"] = f_alt
+        row["Rear"] = r_val
+        if show_altair:
+            row["Rear (Altair)"] = r_alt
+        row["Source"] = origin
+        rows.append(row)
+
+    def alt(axle_key: str, sheet_key: str, digits: int = 4) -> str:
+        """Altair's value for one setup-sheet key, or an em dash."""
+        if altair is None:
+            return _NO_ALTAIR
+        return _fmt(altair.get(axle_key, sheet_key), digits)
+
+    def alt_pair(axle_key: str, key_l: str, key_r: str, digits: int = 3) -> str:
+        """Altair's 'L / R' pair for one setup-sheet key, or an em dash."""
+        if altair is None:
+            return _NO_ALTAIR
+        return _fmt_pair(
+            altair.get(axle_key, key_l), altair.get(axle_key, key_r), digits
+        )
 
     category = "🛞 Tires & Wheels"
     add("Tire size, compound, make", "", tire_size or "—", tire_size or "—",
@@ -434,54 +838,85 @@ def _render_setup_sheet(
     add("Motion ratio", "x:1",
         _fmt(mr_f if mr_f > 0 else None, 3),
         _fmt(mr_r if mr_r > 0 else None, 3), "⌨️ input")
+    add("Suspension adjustment methods", "",
+        arb_adj or "—", arb_adj or "—", "⌨️ input")
 
     category = "🎢 Kinematics"
     add("Ride Camber (rate of change)", "deg/m",
         _fmt(front.get("ride_camber_dpm"), 2), _fmt(rear.get("ride_camber_dpm"), 2),
-        _VDCORE_SRC)
+        _VDCORE_SRC,
+        f_alt=alt("front", "ride_camber_dpm", 2),
+        r_alt=alt("rear", "ride_camber_dpm", 2))
     add("Roll Camber", "deg/deg",
         _fmt(front.get("roll_camber"), 4), _fmt(rear.get("roll_camber"), 4),
-        _VDCORE_SRC)
-    add("Anti dive / Anti squat", "%", "—", "—", _NOT_VDCORE_SRC)
+        _VDCORE_SRC,
+        f_alt=alt("front", "roll_camber", 4), r_alt=alt("rear", "roll_camber", 4))
+    add("Anti dive / Anti squat", "%",
+        _fmt(anti_dive, 2), _fmt(anti_squat, 2),
+        "📐 pivot-axis rake (cross-checked vs 3D linkage)")
     add("Roll center height above ground, static", "mm",
-        _fmt(front.get("rc_static"), 2), _fmt(rear.get("rc_static"), 2), _VDCORE_SRC)
+        _fmt(front.get("rc_static"), 2), _fmt(rear.get("rc_static"), 2), _VDCORE_SRC,
+        f_alt=alt("front", "rc_static", 2), r_alt=alt("rear", "rc_static", 2))
     add("Roll center @ roll — height", "mm",
         _fmt(front.get("rc_1g_z"), 2), _fmt(rear.get("rc_1g_z"), 2),
-        f"{_VDCORE_SRC} @ {roll_deg:.2f}° roll")
+        f"{_VDCORE_SRC} @ {roll_deg:.2f}° roll",
+        f_alt=alt("front", "rc_1g_z", 2), r_alt=alt("rear", "rc_1g_z", 2))
     add("Roll center @ roll — lateral", "mm",
         _fmt(front.get("rc_1g_y"), 2), _fmt(rear.get("rc_1g_y"), 2),
-        f"{_VDCORE_SRC} @ {roll_deg:.2f}° roll")
+        f"{_VDCORE_SRC} @ {roll_deg:.2f}° roll",
+        f_alt=alt("front", "rc_1g_y", 2), r_alt=alt("rear", "rc_1g_y", 2))
 
     category = "📐 Static alignment"
     add("Kingpin Inclination (L / R)", "deg",
         _fmt_pair(front.get("kpi_l"), front.get("kpi_r")),
-        _fmt_pair(rear.get("kpi_l"), rear.get("kpi_r")), _VDCORE_SRC)
+        _fmt_pair(rear.get("kpi_l"), rear.get("kpi_r")), _VDCORE_SRC,
+        f_alt=alt_pair("front", "kpi_l", "kpi_r"),
+        r_alt=alt_pair("rear", "kpi_l", "kpi_r"))
     add("Caster (L / R)", "deg",
         _fmt_pair(front.get("caster_l"), front.get("caster_r")),
-        _fmt_pair(rear.get("caster_l"), rear.get("caster_r")), _VDCORE_SRC)
+        _fmt_pair(rear.get("caster_l"), rear.get("caster_r")), _VDCORE_SRC,
+        f_alt=alt_pair("front", "caster_l", "caster_r"),
+        r_alt=alt_pair("rear", "caster_l", "caster_r"))
     add("Scrub radius (L / R)", "mm",
         _fmt_pair(front.get("scrub_l"), front.get("scrub_r"), 2),
-        _fmt_pair(rear.get("scrub_l"), rear.get("scrub_r"), 2), _VDCORE_SRC)
+        _fmt_pair(rear.get("scrub_l"), rear.get("scrub_r"), 2), _VDCORE_SRC,
+        f_alt=alt_pair("front", "scrub_l", "scrub_r", 2),
+        r_alt=alt_pair("rear", "scrub_l", "scrub_r", 2))
     add("Mechanical trail (L / R)", "mm",
         _fmt_pair(front.get("trail_l"), front.get("trail_r"), 2),
-        _fmt_pair(rear.get("trail_l"), rear.get("trail_r"), 2), _VDCORE_SRC)
+        _fmt_pair(rear.get("trail_l"), rear.get("trail_r"), 2), _VDCORE_SRC,
+        f_alt=alt_pair("front", "trail_l", "trail_r", 2),
+        r_alt=alt_pair("rear", "trail_l", "trail_r", 2))
     add("Static Sum Toe (− out, + in)", "deg",
-        _fmt(front.get("sum_toe"), 4), _fmt(rear.get("sum_toe"), 4), _VDCORE_SRC)
+        _fmt(front.get("sum_toe"), 4), _fmt(rear.get("sum_toe"), 4), _VDCORE_SRC,
+        f_alt=alt("front", "sum_toe", 4), r_alt=alt("rear", "sum_toe", 4))
     add("Static camber (L / R)", "deg",
         _fmt_pair(front.get("camber_l"), front.get("camber_r")),
-        _fmt_pair(rear.get("camber_l"), rear.get("camber_r")), _VDCORE_SRC)
+        _fmt_pair(rear.get("camber_l"), rear.get("camber_r")), _VDCORE_SRC,
+        f_alt=alt_pair("front", "camber_l", "camber_r"),
+        r_alt=alt_pair("rear", "camber_l", "camber_r"))
     add("Static camber adjustment method", "", susp_adj or "—", susp_adj or "—",
         "⌨️ input")
 
     category = "🕹️ Steering"
-    add("Static Ackermann", "%", "—", "N/A", _NOT_VDCORE_SRC)
+    add("Static Ackermann", "%", _fmt(ackermann_pct, 2), "N/A",
+        f"{_VDCORE_SRC} — rack sweep @ 10° outer steer")
     add("Adjustable Ackermann?", "", ackermann_adj, "—", "⌨️ input")
+    add("Steer Ratio", "x:1", _fmt(steer_ratio, 2), "N/A",
+        f"🧮 derived from c-factor = {c_factor_mm:.0f} mm/rev")
+    add("C-factor", "mm/rev", _fmt(c_factor_mm if c_factor_mm > 0 else None, 1),
+        "N/A", "⌨️ input (sidebar)")
+    add("Steer Arm Length (L / R)", "mm",
+        _fmt_pair(steer_arm_l, steer_arm_r, 2), "N/A", "📐 calculated")
 
     category = "⚖️ Masses"
     if total_mass > 0:
         add("Total mass w/ driver", "kg", f"{total_mass:.1f}", f"{total_mass:.1f}",
             "⌨️ input")
         if not math.isnan(sprung_f_pc):
+            add("Total sprung mass", "kg",
+                f"{total_mass - 4.0 * unsprung:.1f}",
+                f"{total_mass - 4.0 * unsprung:.1f}", "🧮 derived")
             add("Sprung mass per corner", "kg",
                 _fmt(sprung_f_pc, 1), _fmt(sprung_r_pc, 1), "🧮 derived")
         add("Unsprung mass per corner", "kg", f"{unsprung:.1f}", f"{unsprung:.1f}",
@@ -503,6 +938,13 @@ def _render_setup_sheet(
         f"{_VDCORE_SRC} — geometry from the real linkage · "
         "🧮 derived (needs the inputs above) · ⌨️ user input · "
         "⚠️ not vdcore — needs a synthesised corner from `steering_geometry.py`"
+        + (
+            "  ·  **(Altair)** — the same row from Altair MotionSolve on the "
+            "same hardpoints. Rows that are not geometry have no Altair value; "
+            "so do anti-dive/anti-squat and Ackermann, which MotionSolve is "
+            "not being asked for here."
+            if show_altair else ""
+        )
     )
     st.download_button(
         "⬇️ Download setup sheet (CSV)",
@@ -572,13 +1014,18 @@ def render() -> None:
             "are shown as `—`, never as a plausible-looking number."
         )
 
+    altair = _render_altair_controls(
+        df, inputs, roll_deg=float(roll_deg), travel_mm=float(travel_mm),
+    )
+    st.divider()
+
     _render_axle_cards(vd.front)
     st.divider()
     _render_axle_cards(vd.rear)
     st.divider()
 
     legacy = _legacy_dynamic_kpis(df)
-    _render_delta_table(vd, legacy)
+    _render_delta_table(vd, legacy, altair)
     st.divider()
 
     c_left, c_right = st.columns(2)
@@ -588,15 +1035,24 @@ def render() -> None:
         _render_rc_migration_plot(vd)
 
     st.divider()
+    _render_detailed_sweeps(df, inputs)
+
+    st.divider()
     _render_setup_sheet(
         df, inputs, roll_deg=float(roll_deg), travel_mm=float(travel_mm),
+        altair=altair,
     )
 
     st.info(
-        "**Still flagged.** vdcore does not compute "
-        + ", ".join(_NOT_COVERED)
-        + " from loaded hardpoints — those need a synthesised corner from "
-        "`sla_geometry.py` / `steering_geometry.py`, so the setup sheet above "
-        "marks them ⚠️. Scrub radius and mechanical trail, by contrast, are now "
-        "computed by `vdcore` and appear on the sheet."
+        "**What this tab does and does not claim.** Every geometry row is "
+        "solved on the real linkage by `vdcore`'s `DWSolver`, which agrees with "
+        "Altair MotionSolve to ~1e-7 mm and whose sign conventions are pinned "
+        "by known-answer tests. Anti-dive/anti-squat come from the pivot-axis "
+        "rake, cross-checked against the same 3D linkage; Ackermann comes from "
+        "an actual rack sweep, **not** the plan-view construction — that "
+        "construction assumes a vertical kingpin and swings ~150 points across "
+        "defensible reference heights on a car with 10° KPI.\n\n"
+        "Not derivable from loaded hardpoints: wheel rate, motion ratio, "
+        "frequencies and damping (they need the pushrod/spring package), and "
+        "anything requiring tyre data. Those rows are inputs or blank."
     )

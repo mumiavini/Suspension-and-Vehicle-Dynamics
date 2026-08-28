@@ -38,10 +38,12 @@ imported by anything under ``vdcore/``.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.optimize import brentq
 
 from vdcore.analysis.axle import (
     AxleRates,
@@ -53,8 +55,8 @@ from vdcore.analysis.axle import (
 from vdcore.analysis.camber import CamberSweepResult, camber_sweep
 from vdcore.analysis.roll_centre import (
     RollCentreMigrationResult,
-    roll_centre_migration,
     roll_centre_height,
+    roll_centre_migration,
 )
 from vdcore.geometry.derived import mechanical_trail_mm, scrub_radius_mm
 from vdcore.geometry.solver import DWSolver, SolverResult
@@ -118,7 +120,7 @@ class CornerInputs:
     tire_tol_mm: float = DEFAULT_TIRE_TOL_MM
 
     @classmethod
-    def from_vehicle_setup(cls, vehicle_setup: Optional[dict]) -> "CornerInputs":
+    def from_vehicle_setup(cls, vehicle_setup: dict | None) -> CornerInputs:
         """Build inputs from the app's ``st.session_state['vehicle_setup']``.
 
         Missing keys fall back to the module defaults, so an older session that
@@ -144,9 +146,9 @@ class CornerInputs:
 
 
 def df_to_vdcore_corner(
-    df: "pl.DataFrame",
+    df: pl.DataFrame,
     corner_id: str,
-    inputs: Optional[CornerInputs] = None,
+    inputs: CornerInputs | None = None,
 ) -> Corner:
     """Convert the loaded hardpoints DataFrame for ONE corner into a Corner.
 
@@ -232,8 +234,8 @@ def df_to_vdcore_corner(
 
 
 def df_to_vdcore_axles(
-    df: "pl.DataFrame",
-    inputs: Optional[CornerInputs] = None,
+    df: pl.DataFrame,
+    inputs: CornerInputs | None = None,
 ) -> tuple[Axle, Axle]:
     """Convert the loaded DataFrame into (front, rear) vdcore Axles.
 
@@ -285,18 +287,18 @@ class AxleVdcoreKPIs:
     """
 
     label: str  # "Front" or "Rear"
-    rates: Optional[AxleRates]
-    roll: Optional[AxleRollState]
+    rates: AxleRates | None
+    roll: AxleRollState | None
     roll_deg: float
-    camber_sweep_left: Optional[CamberSweepResult]
-    rc_migration: Optional[RollCentreMigrationResult]
-    rc_height_sweep: Optional[RcHeightSweep] = None
-    error: Optional[str] = None
+    camber_sweep_left: CamberSweepResult | None
+    rc_migration: RollCentreMigrationResult | None
+    rc_height_sweep: RcHeightSweep | None = None
+    error: str | None = None
 
 
 def _rc_height_sweep(
     axle: Axle, *, travel_mm: float, sweep_steps: int
-) -> Optional[RcHeightSweep]:
+) -> RcHeightSweep | None:
     """Chassis-referenced RC-height-vs-travel curve for the left corner.
 
     Uses ``sample_corner`` (chassis frame) so the plotted curve agrees with
@@ -352,7 +354,7 @@ def _axle_kpis(
             error=f"axle_rates failed: {exc}",
         )
 
-    roll: Optional[AxleRollState]
+    roll: AxleRollState | None
     try:
         roll = axle_roll(axle, roll_deg)
     except (RuntimeError, ValueError):
@@ -388,8 +390,8 @@ def _axle_kpis(
 
 
 def compute_vdcore_kpis(
-    df: "pl.DataFrame",
-    inputs: Optional[CornerInputs] = None,
+    df: pl.DataFrame,
+    inputs: CornerInputs | None = None,
     *,
     roll_deg: float = 1.5,
     travel_mm: float = 25.0,
@@ -418,7 +420,7 @@ def compute_vdcore_kpis(
 # =============================================================================
 # Delegation for the legacy Analysis tab
 # =============================================================================
-# The legacy Analysis tab builds a per-axle dict of KPIs (``tab_analysis.
+# The legacy Analysis tab built a per-axle dict of KPIs (that tab is gone;
 # _compute_axle_cached``). Its DYNAMIC entries come from the wrong strut-to-
 # midpoint solver. This section recomputes exactly those entries with vdcore, in
 # the SAME keys and the SAME units/sign the legacy table already expects, so the
@@ -436,6 +438,358 @@ def compute_vdcore_kpis(
 # match the legacy roll sweep's fitted range (-2 .. +2 deg) so the delegated
 # number lands on the same slope the legacy column used to show.
 _ROLL_CAMBER_PROBE_DEG: float = 2.0
+
+
+def vdcore_sweep(
+    corner: Corner,
+    sweep_type: str,
+    params: tuple[float, float, float],
+) -> np.ndarray:
+    """Run a heave / roll / steer sweep on ``DWSolver``, in the legacy dtype.
+
+    Returns a ``analysis.sweeps.SWEEP_DTYPE`` array, so every existing plot
+    function (``plot_camber_vs_heave``, ``plot_bump_steer``,
+    ``plot_rc_migration``, ``plot_caster_kpi_vs_steer``, ``plot_camber_vs_roll``,
+    ``plot_toe_vs_roll``, ``plot_rc_migration_roll``) consumes it unchanged.
+
+    WHY THIS EXISTS
+        The sweep charts used to run on ``KinematicSolver3D``, which models each
+        wishbone as a strut to the midpoint of its two chassis pivots and leaves
+        3 of 9 DOF to a numerical regularisation. Its swept KPIs are wrong (see
+        the app banner), so every chart drawn from it was wrong too — the same
+        solver whose camber gain and RC migration the delta table exists to
+        correct. These sweeps run the real linkage instead.
+
+    ROLL CENTRE CONVENTION
+        ``rc_z_mm`` is the per-corner construction: the contact-patch-to-FVIC
+        line intersected with the chassis centreline, CHASSIS-referenced, which
+        is the same path ``axle_rates`` uses and the benchmark pins.
+        ``rc_y_mm`` is 0 by construction — a single corner's line is
+        intersected WITH the centreline, so it cannot report a lateral offset.
+        The axle-level roll centre, which does move sideways under roll, is on
+        the setup sheet via :func:`axle_roll` (``rc_1g_y``).
+
+    Non-converged points are marked ``converged=False`` with NaN angles rather
+    than dropped, so a gap in a chart is visible instead of silently smoothed.
+    """
+    from analysis.sweeps import SWEEP_DTYPE
+
+    lo, hi, step = (float(p) for p in params)
+    if step <= 0.0:
+        raise ValueError("sweep step must be positive")
+    n = max(2, int(round((hi - lo) / step)) + 1)
+    values = np.linspace(lo, hi, n)
+
+    solver = DWSolver(corner)
+    out = np.zeros(n, dtype=SWEEP_DTYPE)
+
+    for i, v in enumerate(values):
+        heave = roll = rack = 0.0
+        if sweep_type == "Heave":
+            heave = float(v)
+        elif sweep_type == "Roll":
+            roll = float(v)
+        else:
+            rack = float(v)
+
+        out[i]["heave_mm"] = heave
+        out[i]["roll_deg"] = roll
+        out[i]["rack_mm"] = rack
+
+        try:
+            res = solver.solve(
+                wheel_travel_mm=heave, roll_deg=roll, rack_mm=rack
+            )
+        except (RuntimeError, ValueError):
+            out[i]["camber_deg"] = np.nan
+            out[i]["toe_deg"] = np.nan
+            out[i]["caster_deg"] = np.nan
+            out[i]["kpi_deg"] = np.nan
+            out[i]["rc_y_mm"] = np.nan
+            out[i]["rc_z_mm"] = np.nan
+            out[i]["residual"] = np.nan
+            out[i]["converged"] = False
+            continue
+
+        out[i]["camber_deg"] = res.camber_deg
+        out[i]["toe_deg"] = res.toe_deg_per_side
+        out[i]["caster_deg"] = res.caster_deg
+        out[i]["kpi_deg"] = res.kpi_deg
+        out[i]["wc_x_mm"] = res.wheel_center.x_mm
+        out[i]["wc_y_mm"] = res.wheel_center.y_mm
+        out[i]["wc_z_mm"] = res.wheel_center.z_mm
+        out[i]["residual"] = res.residual_norm
+        out[i]["converged"] = res.converged
+
+        # Chassis-referenced roll centre, matching axle_rates' construction.
+        try:
+            sample = sample_corner(corner, solver, heave)
+            out[i]["rc_y_mm"] = 0.0
+            out[i]["rc_z_mm"] = sample.rc_height_mm
+        except (RuntimeError, ValueError):
+            out[i]["rc_y_mm"] = np.nan
+            out[i]["rc_z_mm"] = np.nan
+
+    return out
+
+
+@dataclass(frozen=True)
+class RollSweepResult:
+    """Axle response to chassis roll, both wheels kept on the road.
+
+    All angles road-relative, all lengths mm. ``rc_height_mm`` is
+    ground-referenced (``axle_roll``'s convention), unlike the chassis-
+    referenced heave sweep -- the two differ by 1 mm per mm of travel.
+    """
+
+    roll_deg: list[float]
+    outer_camber_deg: list[float]
+    inner_camber_deg: list[float]
+    rc_height_mm: list[float]
+    rc_lateral_mm: list[float]
+    wheel_travel_mm: list[float]
+
+
+def vdcore_roll_sweep(
+    axle: Axle, roll_min: float, roll_max: float, step: float
+) -> RollSweepResult:
+    """Sweep chassis roll with both contact patches on the tilted road.
+
+    WHY NOT A FIXED-TRAVEL ROLL SWEEP
+        ``DWSolver``'s travel constraint is CHASSIS-referenced, so solving at
+        ``roll_deg=phi, wheel_travel_mm=0`` holds the wheel at constant height
+        *in the chassis frame* -- the wheel simply rolls with the car and camber
+        tracks roll at exactly -1.000 deg/deg. True, and useless: it describes a
+        car with no suspension travel.
+
+        ``axle_roll`` instead solves for the wheel travel at which both patches
+        land on the tilted road, which is what actually happens in a corner, and
+        is the measure behind the setup sheet's roll-camber figure
+        (-0.4153 deg/deg on the 2027 front, not -1.0).
+
+    This is an AXLE-level sweep: roll is a property of the pair, and the lateral
+    roll-centre migration it reports has no single-corner meaning.
+
+    Points that fail to converge or cannot be bracketed are skipped, so a gap in
+    the chart is visible rather than interpolated over.
+    """
+    if step <= 0.0:
+        raise ValueError("roll step must be positive")
+    n = max(2, int(round((roll_max - roll_min) / step)) + 1)
+
+    rolls: list[float] = []
+    outer: list[float] = []
+    inner: list[float] = []
+    rc_z: list[float] = []
+    rc_y: list[float] = []
+    travel: list[float] = []
+
+    for value in np.linspace(roll_min, roll_max, n):
+        angle = float(value)
+        try:
+            state = axle_roll(axle, angle)
+        except (RuntimeError, ValueError):
+            continue
+        rolls.append(angle)
+        outer.append(state.outer_camber_deg)
+        inner.append(state.inner_camber_deg)
+        rc_z.append(state.rc_height_mm)
+        rc_y.append(state.rc_lateral_mm)
+        travel.append(state.wheel_travel_mm)
+
+    return RollSweepResult(
+        roll_deg=rolls,
+        outer_camber_deg=outer,
+        inner_camber_deg=inner,
+        rc_height_mm=rc_z,
+        rc_lateral_mm=rc_y,
+        wheel_travel_mm=travel,
+    )
+
+
+def legacy_corner_to_vdcore(
+    legacy_corner: object,
+    tie_rod: object,
+    corner_id: str,
+    inputs: Optional[CornerInputs] = None,
+) -> Corner:
+    """Convert a legacy ``SuspensionCorner`` + ``TieRod`` into a vdcore Corner.
+
+    The DataFrame path (:func:`df_to_vdcore_corner`) covers geometry loaded from
+    a file. This covers geometry that only exists as legacy objects — most
+    importantly the Comparison tab's "B" side, which can be the seed or the
+    result of an optimization rather than anything on disk.
+
+    Both frames are ISO 8855 (X+ forward, Y+ LEFT, Z+ up), so this is a straight
+    coordinate copy with no sign flip, exactly like the DataFrame path.
+    """
+    inputs = inputs or CornerInputs()
+    if corner_id not in ("FL", "FR", "RL", "RR"):
+        raise BridgeConversionError(f"Invalid corner_id: {corner_id!r}")
+
+    def hp(name: str, point: object) -> Hardpoint:
+        return Hardpoint(
+            name=name,
+            x_mm=float(point.x), y_mm=float(point.y), z_mm=float(point.z),
+            source="estimate", tol_mm=inputs.hardpoint_tol_mm,
+        )
+
+    try:
+        return Corner(
+            corner_id=corner_id,  # type: ignore[arg-type]
+            uca_inboard_front=hp("uca_inboard_front",
+                                 legacy_corner.upper_arm.inboard_front),
+            uca_inboard_rear=hp("uca_inboard_rear",
+                                legacy_corner.upper_arm.inboard_rear),
+            uca_outboard=hp("uca_outboard", legacy_corner.upper_arm.outboard),
+            lca_inboard_front=hp("lca_inboard_front",
+                                 legacy_corner.lower_arm.inboard_front),
+            lca_inboard_rear=hp("lca_inboard_rear",
+                                legacy_corner.lower_arm.inboard_rear),
+            lca_outboard=hp("lca_outboard", legacy_corner.lower_arm.outboard),
+            tie_rod_inboard=hp("tie_rod_inboard", tie_rod.inboard),
+            tie_rod_outboard=hp("tie_rod_outboard", tie_rod.outboard),
+            wheel_center=hp("wheel_center", legacy_corner.wheel_center),
+            tire=TirePackage(
+                loaded_radius_mm=inputs.loaded_radius_mm,
+                source="estimate", tol_mm=inputs.tire_tol_mm,
+            ),
+            static_camber_deg=inputs.static_camber_deg,
+            static_toe_deg_per_side=inputs.static_toe_deg_per_side,
+        )
+    except (ValueError, AttributeError) as exc:
+        raise BridgeConversionError(
+            f"Corner {corner_id} could not be converted: {exc}"
+        ) from exc
+
+
+def rack_mm_per_wheel_deg(corner: Corner, rack_test_mm: float = 5.0) -> float:
+    """Rack travel needed for one degree of wheel steer, on the real linkage.
+
+    The steering ratio follows as ``c_factor / 360 / this``.
+
+    Replaces ``analysis.kpis.steer_ratio_and_cfactor``, which measured the same
+    thing on ``KinematicSolver3D`` and came out **10.2 % high** on the 2027
+    geometry (1.379 vs 1.251 mm/deg, i.e. a ratio of 4.97 rather than 4.51).
+    The strut-to-midpoint solver mis-places the outboard ball joints, so the
+    steering arm it swings is the wrong length.
+
+    Returns ``inf`` when the rack does not steer the wheel at all, so the
+    caller's ``c_factor / 360 / inf`` degrades to 0 rather than dividing by 0.
+    """
+    solver = DWSolver(corner)
+    static = solver.solve()
+    steered = solver.solve(rack_mm=rack_test_mm)
+    if not (static.converged and steered.converged):
+        return float("nan")
+
+    d_toe = abs(steered.toe_deg_per_side - static.toe_deg_per_side)
+    if d_toe < 1e-9:
+        return float("inf")
+    return abs(rack_test_mm) / d_toe
+
+
+_ACKERMANN_OUTER_STEER_DEG: float = 10.0
+_ACKERMANN_MAX_RACK_MM: float = 35.0
+
+
+def solved_ackermann_pct(
+    axle: Axle,
+    wheelbase_mm: float,
+    *,
+    outer_steer_deg: float = _ACKERMANN_OUTER_STEER_DEG,
+    max_rack_mm: float = _ACKERMANN_MAX_RACK_MM,
+) -> float:
+    """Ackermann % from an actual rack sweep on the real linkage.
+
+    Sweeps the rack until the OUTER wheel reaches ``outer_steer_deg``, then
+    compares the inner wheel's steer with the Ackermann-ideal inner angle::
+
+        cot(delta_outer) - cot(delta_inner_ideal) = track / wheelbase
+        %Ack = 100 * (delta_inner - delta_outer)
+                   / (delta_inner_ideal - delta_outer)
+
+    0 % is parallel steer, 100 % is true Ackermann. Mirrors
+    ``steering_geometry.SteeringKinematics._ackermann_at_steer`` and reproduces
+    it to 3 decimals on the 2027 geometry.
+
+    WHY NOT THE PLAN-VIEW CONSTRUCTION
+        The classic "extend the steering arms to the rear axle" rule assumes a
+        VERTICAL kingpin, which projects to a single point in plan whatever
+        height you measure at. With this car's 10 deg KPI and 5 deg caster the
+        axis leans, its plan-view position moves with height, and the answer
+        swings ~150 points across defensible reference choices::
+
+            kingpin @ ground        -58.5 %      kingpin @ wheel-centre  92.6 %
+            perpendicular foot       52.4 %      kingpin midpoint        98.9 %
+            kingpin @ TRO height     57.7 %
+            real linkage (zero-steer limit)      71.2 %
+
+        None is close, so the construction was dropped rather than tuned. It
+        also cannot see the tie rod's 3D inclination, which genuinely affects
+        the steer ratio.
+
+    Track is measured between the SOLVED contact patches, so static camber is
+    included the same way the rest of this module treats it.
+
+    Returns NaN (never a plausible wrong number) if the rack cannot reach the
+    requested steer angle, or if a solve fails.
+    """
+    left, right = DWSolver(axle.left), DWSolver(axle.right)
+
+    try:
+        l0, r0 = left.solve(), right.solve()
+        if not (l0.converged and r0.converged):
+            return float("nan")
+    except (RuntimeError, ValueError):
+        return float("nan")
+
+    track_mm = abs(l0.contact_patch.y_mm - r0.contact_patch.y_mm)
+    if track_mm <= 0.0 or wheelbase_mm <= 0.0:
+        return float("nan")
+
+    def steer(rack_mm: float) -> tuple[float, float]:
+        ls = left.solve(rack_mm=rack_mm)
+        rs = right.solve(rack_mm=rack_mm)
+        if not (ls.converged and rs.converged):
+            raise RuntimeError("steer solve did not converge")
+        return (abs(ls.toe_deg_per_side - l0.toe_deg_per_side),
+                abs(rs.toe_deg_per_side - r0.toe_deg_per_side))
+
+    try:
+        # Which side is OUTER depends on the rack sign convention, so decide it
+        # from the geometry rather than assuming: in a turn the inner wheel
+        # steers MORE, so the outer is whichever moves less at a probe rack.
+        probe_l, probe_r = steer(1.0)
+        left_is_outer = probe_l <= probe_r
+
+        def outer_error(rack_mm: float) -> float:
+            sl, sr = steer(rack_mm)
+            return (sl if left_is_outer else sr) - outer_steer_deg
+
+        lo, hi = 0.01, max_rack_mm
+        if outer_error(lo) * outer_error(hi) > 0.0:
+            return float("nan")     # requested steer not reachable on this rack
+        rack = float(brentq(outer_error, lo, hi, xtol=1e-8))
+
+        sl, sr = steer(rack)
+    except (RuntimeError, ValueError):
+        return float("nan")
+
+    delta_outer = sl if left_is_outer else sr
+    delta_inner = sr if left_is_outer else sl
+    if delta_outer < 1e-12:
+        return 0.0
+
+    cot_inner_ideal = 1.0 / math.tan(math.radians(delta_outer)) - track_mm / wheelbase_mm
+    if abs(cot_inner_ideal) < 1e-12:
+        return float("nan")
+    delta_inner_ideal = math.degrees(math.atan(1.0 / cot_inner_ideal))
+
+    denom = delta_inner_ideal - delta_outer
+    if abs(denom) < 1e-12:
+        return float("nan")
+    return float(100.0 * (delta_inner - delta_outer) / denom)
 
 
 def roll_camber_deg_per_deg(axle: Axle, *, probe_deg: float = _ROLL_CAMBER_PROBE_DEG) -> float:
@@ -468,7 +822,7 @@ def delegated_axle_dynamic_kpis(
 ) -> dict[str, float]:
     """vdcore values for the legacy tab's DYNAMIC KPI keys, one axle.
 
-    Returns a dict keyed exactly as ``tab_analysis._compute_axle_cached``'s
+    Returns a dict keyed exactly as the old ``tab_analysis._compute_axle_cached``'s
     dynamic entries, so the tab can ``dict.update`` it over the legacy values:
 
         ``ride_camber_dpm``  deg/m   -- camber gain x 1000 (per-metre)
@@ -538,8 +892,8 @@ def delegated_axle_dynamic_kpis(
 
 
 def compute_delegated_dynamic_kpis(
-    df: "pl.DataFrame",
-    inputs: Optional[CornerInputs] = None,
+    df: pl.DataFrame,
+    inputs: CornerInputs | None = None,
     *,
     roll_deg: float = 1.5,
     travel_mm: float = 25.0,
@@ -653,8 +1007,8 @@ def delegated_axle_static_kpis(axle: Axle) -> dict[str, float]:
 
 
 def compute_vdcore_setup_sheet(
-    df: "pl.DataFrame",
-    inputs: Optional[CornerInputs] = None,
+    df: pl.DataFrame,
+    inputs: CornerInputs | None = None,
     *,
     roll_deg: float = 1.5,
     travel_mm: float = 25.0,
@@ -699,8 +1053,8 @@ def compute_vdcore_setup_sheet(
 
 
 def compute_vdcore_kpis_cached(
-    df: "pl.DataFrame",
-    inputs: Optional[CornerInputs] = None,
+    df: pl.DataFrame,
+    inputs: CornerInputs | None = None,
     *,
     roll_deg: float = 1.5,
     travel_mm: float = 25.0,
@@ -758,8 +1112,8 @@ def compute_vdcore_kpis_cached(
 
 
 def compute_delegated_dynamic_kpis_cached(
-    df: "pl.DataFrame",
-    inputs: Optional[CornerInputs] = None,
+    df: pl.DataFrame,
+    inputs: CornerInputs | None = None,
     *,
     roll_deg: float = 1.5,
     travel_mm: float = 25.0,
@@ -818,8 +1172,8 @@ def compute_delegated_dynamic_kpis_cached(
 
 
 def compute_vdcore_setup_sheet_cached(
-    df: "pl.DataFrame",
-    inputs: Optional[CornerInputs] = None,
+    df: pl.DataFrame,
+    inputs: CornerInputs | None = None,
     *,
     roll_deg: float = 1.5,
     travel_mm: float = 25.0,

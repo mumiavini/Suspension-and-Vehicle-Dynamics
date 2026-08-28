@@ -31,8 +31,11 @@ real parts, which have not been massed.
 
 Frame: ISO 8855 -- X+ forward, Y+ LEFT, Z+ up. Units: MMKS.
 
-Runs under Altair's Python 3.10 with the MotionSolve environment set; use
-`run_msolve.py` (project venv) to drive it rather than calling it directly.
+Runs under Altair's Python 3.10 with the MotionSolve environment set. Drive it
+from the project venv rather than calling it directly -- `msolve_driver.py`
+owns the environment recipe, and its two callers are `validate_kinematics.py`
+(differences this against DWSolver and exits non-zero on disagreement) and
+`kpi_runner.py` (turns these positions into the app's Altair column).
 """
 
 import argparse

@@ -409,36 +409,65 @@ class SuspensionCorner:
         ADJUST for your vehicle to get a precise value.
 
         TYPICAL FSAE: 0% to 30% (anti-dive); negative = pro-dive
+
+        CONSTRUCTION — the side-view IC comes from the PIVOT AXIS RAKE.
+            The arm rotates about the line through its two INBOARD pickups. An
+            axis of side-view slope ``m = dz/dx`` moves the ball joint with
+            velocity slope ``-m`` (the arm length cancels), so the instant
+            centre lies on the line through the BALL JOINT at slope ``m``.
+
+            This used to intersect ``effective_inboard → outboard`` in side
+            view. Those two points sit at nearly the same X on a wishbone whose
+            pivot axis runs fore-aft, so the projected "lines" were degenerate
+            and the intersection was noise — which is why this returned exactly
+            +200.00% (the old saturation clamp) on the 2027 geometry, whose
+            true anti-dive is 0%. The same construction, corrected, lives in
+            ``sla_geometry._side_view_anti`` and is pinned against the full 3D
+            linkage in tests/benchmarks/test_anti_geometry_and_ackermann.py.
+
+            Horizontal pivot axes (no rake) give ``m = 0`` on both arms, hence
+            exactly 0% — the correct answer for the current car.
+
+        The old ±200% saturation clamp is gone. Clamping turns a nonsense
+        geometry into a plausible-looking number, which is exactly what hid
+        this bug; an extreme value now reads as extreme.
         """
-        from geometry.primitives import line_intersection_2d
+        def axis_slope(arm: ControlArm) -> float | None:
+            """Side-view (X-Z) slope of the arm's inboard pivot axis."""
+            run = arm.inboard_rear.x - arm.inboard_front.x
+            if abs(run) < 1e-9:
+                return None     # pickups coincide in side view
+            return (arm.inboard_rear.z - arm.inboard_front.z) / run
 
-        uca_in_2d  = self.upper_arm.effective_inboard.project_xz()
-        uca_out_2d = self.upper_arm.outboard.project_xz()
-        lca_in_2d  = self.lower_arm.effective_inboard.project_xz()
-        lca_out_2d = self.lower_arm.outboard.project_xz()
-
-        try:
-            ic_lat = line_intersection_2d(
-                uca_in_2d, uca_out_2d, lca_in_2d, lca_out_2d,
-            )
-        except ValueError:
-            return 0.0   # parallel arms: IC at infinity → 0%
-
-        cp_2d = self.contact_patch.project_xz()
-        dx = ic_lat.u - cp_2d.u
-        dz = ic_lat.v - cp_2d.v
-
-        if abs(dx) < 1e-6 or cg_height_mm < 1e-6:
+        m_uca = axis_slope(self.upper_arm)
+        m_lca = axis_slope(self.lower_arm)
+        if m_uca is None or m_lca is None or cg_height_mm < 1e-6:
             return 0.0
 
-        # tan(θ) = dz / |dx|, with sign coming from dz
-        tan_theta = dz / abs(dx)
+        ubj = self.upper_arm.outboard
+        lbj = self.lower_arm.outboard
 
-        # Anti-dive % accounting for the longitudinal transfer
-        anti_dive = brake_bias * tan_theta * (wheelbase_mm / cg_height_mm) * 100.0
+        if abs(m_uca - m_lca) < 1e-15:
+            # Parallel axes: swing arm at infinity but still inclined, so
+            # tan(theta) tends to the shared slope. Zero rake gives zero anti.
+            tan_theta = m_lca
+        else:
+            x = ((ubj.z - lbj.z) + m_lca * lbj.x - m_uca * ubj.x) / (m_lca - m_uca)
+            z = lbj.z + m_lca * (x - lbj.x)
+            dx = x - self.contact_patch.x
+            if abs(dx) < 1e-9:
+                return 0.0
+            tan_theta = z / dx
 
-        # Reasonable physical saturation
-        return float(max(-200.0, min(200.0, anti_dive)))
+        # ISO 8855: X+ is FORWARD. A FRONT-axle instant centre must sit BEHIND
+        # the axle (dx < 0) to resist dive, so the front branch flips sign; the
+        # rear axle looks the other way along X and does not.
+        # `+ 0.0` clears the negative zero the flip produces on a flat axle,
+        # which would otherwise print as "-0.00 %".
+        if self.corner_id in ("FL", "FR"):
+            tan_theta = -tan_theta + 0.0
+
+        return float(brake_bias * tan_theta * (wheelbase_mm / cg_height_mm) * 100.0) + 0.0
 
     def anti_squat_percent(self, drive_fraction: float = 1.0) -> float:
         """

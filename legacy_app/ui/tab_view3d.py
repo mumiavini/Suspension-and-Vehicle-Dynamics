@@ -107,6 +107,14 @@ def render() -> None:
 
         # ─── MODE 3: SWEEP ANIMATION ─────────────────────────────────────────
         else:  # 🎬 Sweep animation
+            st.warning(
+                "⚠️ The animation is driven by the **legacy** solver "
+                "(`analysis/viz3d.py` → `KinematicSolver3D`), which models each "
+                "wishbone as a strut to its pivot midpoint. The upright's path "
+                "is therefore approximate — use it to understand the layout, "
+                "not to read camber or toe off the screen. Every number on the "
+                "**Analysis** tab comes from the validated solver instead."
+            )
             ctrl1, ctrl2, ctrl3 = st.columns([1, 1, 2])
             with ctrl1:
                 corner_choice = st.selectbox("Corner", VALID_CORNERS,

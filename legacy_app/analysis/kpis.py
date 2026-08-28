@@ -253,8 +253,34 @@ def ackermann_geometry(
 
     fl_tro = fl_tie_rod.outboard
     fr_tro = fr_tie_rod.outboard
-    kpi_l = kpi_at_height(front_left_corner,  fl_tro.z)
-    kpi_r = kpi_at_height(front_right_corner, fr_tro.z)
+
+    # KINGPIN REFERENCE HEIGHT — a convention, and the answer is sensitive to it.
+    #
+    # The classic Ackermann construction assumes a vertical kingpin, which
+    # projects to one point in plan whatever height you pick. With real KPI and
+    # caster the axis leans, so its plan-view position moves with height and the
+    # construction needs a stated convention. On the 2027 front corner the two
+    # obvious choices sit 14 mm apart in Y and disagree badly:
+    #
+    #     kingpin at TRO height   -> arm crosses y=0 at 2669 mm ->  57.7 %
+    #     kingpin midpoint        -> arm crosses y=0 at 1557 mm ->  98.9 %
+    #
+    # We take the MIDPOINT of the two ball joints, matching
+    # steering_geometry._geometric_ackermann_pct, which CLAUDE.md designates as
+    # the source of truth for Ackermann. One definition across the project beats
+    # a better-motivated one that disagrees with the report.
+    #
+    # Either way this is the small-angle GEOMETRIC construction. The rigorous
+    # number solves the linkage and compares actual toe-out on turns with the
+    # ideal (steering_geometry.SteeringKinematics._ackermann_at_steer, 70.0 % on
+    # this geometry); it needs a rack model the app does not have.
+    def kingpin_midpoint_xy(corner: SuspensionCorner) -> tuple[float, float]:
+        lbj = corner.lower_arm.outboard
+        ubj = corner.upper_arm.outboard
+        return (0.5 * (lbj.x + ubj.x), 0.5 * (lbj.y + ubj.y))
+
+    kpi_l = kingpin_midpoint_xy(front_left_corner)
+    kpi_r = kingpin_midpoint_xy(front_right_corner)
 
     # --- Kingpin → TRO lines in the XY plane, extended rearward ---
     # Line equation: P(t) = KPI + t · (TRO - KPI)
@@ -283,15 +309,32 @@ def ackermann_geometry(
     else:
         # Take the average X of the front kingpins as the front-axle reference
         x_front = 0.5 * (kpi_l[0] + kpi_r[0])
-        x_rear_target = front_left_corner.wheel_center.x - wb  # rear axle
         x_inter = intersect[0]
 
-        # Ackermann% = (front_axle - x_inter) / (front_axle - rear_axle) × 100
-        denom = x_front - x_rear_target
-        if abs(denom) < 1e-9:
-            ackermann_pct = 0.0
+        # Ackermann % is RECIPROCAL in the crossing distance, not proportional.
+        #
+        #   %Ack = 100 * tan(theta_actual) / tan(theta_ideal)
+        #
+        # The steering arm leaves the kingpin at half-track and the lines cross
+        # the centreline a distance d behind the front axle, so
+        # tan(theta) = half_track / d; the ideal arm crosses at the rear axle,
+        # tan(theta_ideal) = half_track / wheelbase. The track cancels:
+        #
+        #   %Ack = 100 * wheelbase / d
+        #
+        # which is what the docstring above says. This previously computed
+        # d / wheelbase -- the reciprocal -- which is correct ONLY at exactly
+        # 100%, where a number equals its own reciprocal, and inverts the trend
+        # everywhere else. It reported +173% on the 2027 geometry. The same bug
+        # was fixed in steering_geometry._geometric_ackermann_pct; see
+        # tests/benchmarks/test_anti_geometry_and_ackermann.py.
+        distance_to_crossing = x_front - x_inter   # X+ forward, so crossing is behind
+        if abs(distance_to_crossing) < 1e-9:
+            # Lines cross at the front axle: infinite Ackermann. Report it
+            # rather than folding it to a plausible finite number.
+            ackermann_pct = float("inf")
         else:
-            ackermann_pct = float((x_front - x_inter) / denom * 100.0)
+            ackermann_pct = float(100.0 * wb / distance_to_crossing)
 
     return {
         "ackermann_percent":       ackermann_pct,

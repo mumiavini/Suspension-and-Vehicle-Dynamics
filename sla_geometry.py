@@ -422,7 +422,9 @@ def solve_axle(inp: AxleInputs, veh: VehicleData) -> AxleGeometry:
     is_front = inp.axle_x_mm < veh.wheelbase_mm / 2.0
     svic, anti = _side_view_anti(inp, veh, is_front,
                                  (lca_xf, lca_z_front), (lca_xr, lca_z_rear),
-                                 (uca_xf, uca_z_front), (uca_xr, uca_z_rear))
+                                 (uca_xf, uca_z_front), (uca_xr, uca_z_rear),
+                                 (inp.axle_x_mm, float(lbj[1])),
+                                 (inp.axle_x_mm, float(ubj[1])))
 
     return AxleGeometry(
         inputs=inp,
@@ -452,33 +454,76 @@ def _side_view_anti(inp: AxleInputs, veh: VehicleData, is_front: bool,
                     lca_rear_xz: tuple[float, float],
                     uca_front_xz: tuple[float, float],
                     uca_rear_xz: tuple[float, float],
+                    lbj_xz: tuple[float, float],
+                    ubj_xz: tuple[float, float],
                     ) -> tuple[Vec2 | None, float]:
     """Side view instant centre and anti-dive / anti-squat percentage.
 
     With non-zero dz the pivot axes are inclined, the SVIC is finite, and
     anti-geometry is a live design variable.
-    """
-    p1 = np.array(lca_front_xz)
-    p2 = np.array(lca_rear_xz)
-    p3 = np.array(uca_front_xz)
-    p4 = np.array(uca_rear_xz)
-    svic = line_intersection(p1, p2, p3, p4)
 
-    if svic is None:
+    CONSTRUCTION -- the lines pass through the BALL JOINTS, not the pickups.
+        An arm rotating about an inboard axis of side-view slope ``m = dz/base``
+        moves its ball joint with velocity slope ``dx/dz = -m`` (the arm length
+        cancels: v = omega * n_hat x r, and both components scale with the same
+        lateral offset). The instant centre must therefore lie on the line
+        through the BALL JOINT perpendicular to that velocity -- i.e. slope
+        ``m`` through the ball joint.
+
+        The inboard pickups fix only the axis DIRECTION. Intersecting the two
+        pickup lines instead puts the SVIC on lines parallel to the right ones
+        but offset by the pickup-to-ball-joint height difference, which is
+        wrong: with ``dz_lca = 0`` the LBJ moves purely vertically, so the SVIC
+        must sit at the LBJ height (130 mm here), not at the LCA pickup height
+        (117.4 mm). That error was worth 0.9 % to 50 % of the reported anti
+        across a 20-geometry sweep. The corrected construction reproduces the
+        instant centre measured from the full 3D linkage (``DWSolver``) exactly
+        -- see tests/benchmarks/test_anti_geometry_and_ackermann.py.
+
+    PARALLEL AXES are not zero anti. Equal slopes put the SVIC at infinity, but
+    the swing arm is still inclined, and ``z/dx -> m`` in the limit, so
+    ``tan(theta) = m``. Returning 0 % there (as this function used to, via
+    ``line_intersection`` returning None) is a discontinuity: a hair off
+    parallel already gives the full value.
+    """
+    def axis_slope(front_xz: tuple[float, float],
+                   rear_xz: tuple[float, float]) -> float | None:
+        run = rear_xz[0] - front_xz[0]
+        if abs(run) < 1e-12:
+            return None          # pickups coincident in side view
+        return (rear_xz[1] - front_xz[1]) / run
+
+    m_lca = axis_slope(lca_front_xz, lca_rear_xz)
+    m_uca = axis_slope(uca_front_xz, uca_rear_xz)
+    if m_lca is None or m_uca is None:
         return None, 0.0
 
-    dx = svic[0] - inp.axle_x_mm
-    if abs(dx) < 1e-9:
-        return svic, 0.0
-
-    if is_front:
-        tan_theta = svic[1] / dx
+    svic: Vec2 | None
+    if abs(m_lca - m_uca) < 1e-15:
+        # Parallel: swing arm at infinity, inclined at the shared slope.
+        svic = None
+        tan_theta = m_lca
     else:
-        tan_theta = svic[1] / (-dx)
+        x = ((ubj_xz[1] - lbj_xz[1]) + m_lca * lbj_xz[0] - m_uca * ubj_xz[0]) \
+            / (m_lca - m_uca)
+        z = lbj_xz[1] + m_lca * (x - lbj_xz[0])
+        svic = np.array([x, z])
+        dx = x - inp.axle_x_mm
+        if abs(dx) < 1e-9:
+            return svic, 0.0
+        tan_theta = z / dx
+
+    # theta is measured at the contact patch. The rear axle looks the other way
+    # along X, so its angle flips sign. `+ 0.0` clears the negative zero that
+    # flip produces on a flat axle, which would otherwise print "-0.00 %".
+    if not is_front:
+        tan_theta = -tan_theta + 0.0
 
     h_over_l = veh.cg_height_mm / veh.wheelbase_mm
     if is_front:
+        # Only the front share of the braking force reacts through this axle.
         return svic, float(100.0 * veh.brake_bias_front * tan_theta / h_over_l)
+    # Anti-squat: all drive torque goes to the rear, so no bias factor.
     return svic, float(100.0 * tan_theta / h_over_l)
 
 

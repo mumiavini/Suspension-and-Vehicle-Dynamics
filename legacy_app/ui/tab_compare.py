@@ -13,11 +13,18 @@ import plotly.graph_objects as go
 
 from analysis.io_hardpoints import VALID_CORNERS
 from analysis.sweeps import camber_gain_per_mm, bump_steer_per_mm
+from analysis.vdcore_bridge import (
+    BridgeConversionError,
+    CornerInputs,
+    legacy_corner_to_vdcore,
+    vdcore_sweep,
+)
+from vdcore.geometry.derived import mechanical_trail_mm, scrub_radius_mm
+from vdcore.geometry.solver import DWSolver
 from ui.shared import (
     load_hardpoints_from_state,
     render_empty_state,
     build_corner_safe,
-    run_sweep_cached,
 )
 
 
@@ -77,16 +84,37 @@ def render() -> None:
     st.markdown("---")
     st.markdown("### Static KPIs")
 
+    # Static KPIs come from DWSolver, not the legacy Corner methods. Those
+    # reported static camber as 0.000 whatever the design (the legacy model
+    # cannot infer it from hardpoints), did not fold right-side scrub, and had
+    # mechanical trail sign-inverted for this frame — so a side-by-side built on
+    # them could show two geometries as identical when they were not.
+    inputs = CornerInputs.from_vehicle_setup(st.session_state.get("vehicle_setup", {}))
+    try:
+        vd_a = legacy_corner_to_vdcore(corner_a, tie_rod_a, corner_a.corner_id, inputs)
+        vd_b = legacy_corner_to_vdcore(corner_b, tie_rod_b, corner_b.corner_id, inputs)
+        res_a, res_b = DWSolver(vd_a).solve(), DWSolver(vd_b).solve()
+    except (BridgeConversionError, RuntimeError, ValueError) as exc:
+        st.error(f"❌ Could not solve one of the geometries: {exc}")
+        st.stop()
+
+    def _derived(result, fn):
+        try:
+            return fn(result)
+        except ValueError:
+            return float("nan")
+
     metrics = [
-        ("Caster (°)",          corner_a.static_caster_deg(),         corner_b.static_caster_deg()),
-        ("KPI (°)",             corner_a.static_kpi_deg(),            corner_b.static_kpi_deg()),
-        ("Static camber (°)",   corner_a.static_camber_deg(),         corner_b.static_camber_deg()),
-        ("Scrub (mm)",          corner_a.static_scrub_radius_mm(),    corner_b.static_scrub_radius_mm()),
-        ("Trail (mm)",          corner_a.static_mechanical_trail_mm(),corner_b.static_mechanical_trail_mm()),
-        ("Kingpin Offset (mm)", corner_a.static_kingpin_offset_mm(),  corner_b.static_kingpin_offset_mm()),
+        ("Caster (°)",          res_a.caster_deg,            res_b.caster_deg),
+        ("KPI (°)",             res_a.kpi_deg,               res_b.kpi_deg),
+        ("Static camber (°)",   res_a.camber_deg,            res_b.camber_deg),
+        ("Toe per side (°)",    res_a.toe_deg_per_side,      res_b.toe_deg_per_side),
+        ("Scrub (mm)",          _derived(res_a, scrub_radius_mm),
+                                _derived(res_b, scrub_radius_mm)),
+        ("Trail (mm)",          _derived(res_a, mechanical_trail_mm),
+                                _derived(res_b, mechanical_trail_mm)),
         ("Steer Arm (mm)",      corner_a.steer_arm_length_mm(tie_rod_a.outboard),
                                  corner_b.steer_arm_length_mm(tie_rod_b.outboard)),
-        ("RC Height (mm)",      corner_a.roll_center_height_mm(),     corner_b.roll_center_height_mm()),
     ]
     static_cmp = pl.DataFrame([
         {"Parameter": n, "A": f"{a:+.3f}", "B": f"{b:+.3f}",
@@ -100,11 +128,13 @@ def render() -> None:
     with hsc2: cmp_h_max  = st.number_input("Max", value= 25.0, key="cmp_hmax")
     with hsc3: cmp_h_step = st.number_input("Step",value=  1.0, key="cmp_hstep")
 
+    # Sweeps on DWSolver. The legacy sweep returned camber gain with the SIGN
+    # INVERTED (+0.0388 where the truth is -0.0384 deg/mm), so an A/B comparison
+    # built on it could rank two geometries backwards.
     with st.spinner("Running sweeps..."):
-        sweep_a = run_sweep_cached(corner_a, tie_rod_a, "Heave",
-                                    (cmp_h_min, cmp_h_max, cmp_h_step))
-        sweep_b = run_sweep_cached(corner_b, tie_rod_b, "Heave",
-                                    (cmp_h_min, cmp_h_max, cmp_h_step))
+        params = (cmp_h_min, cmp_h_max, cmp_h_step)
+        sweep_a = vdcore_sweep(vd_a, "Heave", params)
+        sweep_b = vdcore_sweep(vd_b, "Heave", params)
 
     kc = st.columns(4)
     cg_a, cg_b = camber_gain_per_mm(sweep_a), camber_gain_per_mm(sweep_b)

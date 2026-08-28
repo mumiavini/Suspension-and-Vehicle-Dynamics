@@ -32,10 +32,6 @@ Frame: ISO 8855 -- X+ forward, Y+ LEFT, Z+ up. Units: mm, deg.
 from __future__ import annotations
 
 import argparse
-import csv
-import math
-import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -45,157 +41,17 @@ import numpy as np
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+from altair_model.msolve_driver import (  # noqa: E402
+    DEFAULT_CSV,
+    build_corner,
+    read_csv_points,
+    run_motionsolve,
+    static_camber_from_csv,
+)
 from vdcore.geometry.solver import DWSolver  # noqa: E402
-from vdcore.models.hardpoint import Corner, Hardpoint, TirePackage  # noqa: E402
+from vdcore.models.hardpoint import Corner  # noqa: E402
 
-DEFAULT_CSV = REPO / "Geometry Summary" / "hardpoints_2027_merged.csv"
-MSOLVE_SCRIPT = Path(__file__).resolve().parent / "msolve_corner.py"
-
-ALTAIR_ROOT = Path(r"C:\Program Files\Altair\2026.1")
-
-# The hardpoint CSV carries no provenance or tolerance columns. These stand in
-# so the pydantic models validate; nothing in a kinematic cross-check reads
-# either field, and neither is a claim about the real parts.
-CSV_SOURCE = "design_intent"
-CSV_TOL_MM = 0.0
-
-CORNER_POINTS = {
-    "uca_inboard_front": "UCA_IN_FRONT",
-    "uca_inboard_rear": "UCA_IN_REAR",
-    "uca_outboard": "UCA_OUT",
-    "lca_inboard_front": "LCA_IN_FRONT",
-    "lca_inboard_rear": "LCA_IN_REAR",
-    "lca_outboard": "LCA_OUT",
-    "tie_rod_inboard": "TIE_ROD_IN",
-    "tie_rod_outboard": "TIE_ROD_OUT",
-    "wheel_center": "WHEEL_CENTER",
-}
-
-
-# --------------------------------------------------------------------------- #
-# building the corner from the CSV
-# --------------------------------------------------------------------------- #
-
-def read_csv_points(csv_path: Path) -> dict[str, dict[str, tuple[float, float, float]]]:
-    """Return {corner: {point_name: (x, y, z)}} in mm."""
-    out: dict[str, dict[str, tuple[float, float, float]]] = {}
-    with open(csv_path, newline="", encoding="utf-8-sig") as handle:
-        for row in csv.DictReader(handle):
-            corner = row["corner"].strip().upper()
-            out.setdefault(corner, {})[row["point"].strip().upper()] = (
-                float(row["x_mm"]), float(row["y_mm"]), float(row["z_mm"]),
-            )
-    return out
-
-
-def static_camber_from_csv(points: dict[str, tuple[float, float, float]],
-                           is_left: bool) -> tuple[float, float]:
-    """Recover (static camber deg, loaded radius mm) from WHEEL_CENTER/CONTACT_PATCH.
-
-    Inverts vdcore.geometry.solver's contact-patch construction, where for a
-    left corner ``cp_y = wc_y - r*tan(camber)`` and ``cp_z = wc_z - r``. Taking
-    the camber from the geometry keeps the CSV the single source of truth
-    instead of restating -1.50 deg as a literal here.
-    """
-    wc = points["WHEEL_CENTER"]
-    cp = points["CONTACT_PATCH"]
-    radius = wc[2] - cp[2]
-    if radius <= 0.0:
-        raise ValueError("CONTACT_PATCH is not below WHEEL_CENTER")
-    dy = cp[1] - wc[1]
-    camber = math.degrees(math.atan2(dy, radius))
-    return (-camber if is_left else camber), radius
-
-
-def build_corner(corner_id: str, points: dict[str, tuple[float, float, float]],
-                 static_toe_deg: float) -> Corner:
-    is_left = corner_id in ("FL", "RL")
-    camber_deg, radius_mm = static_camber_from_csv(points, is_left)
-
-    hardpoints = {
-        field: Hardpoint(
-            name=name,
-            x_mm=points[name][0], y_mm=points[name][1], z_mm=points[name][2],
-            source=CSV_SOURCE, tol_mm=CSV_TOL_MM,
-        )
-        for field, name in CORNER_POINTS.items()
-    }
-    return Corner(
-        corner_id=corner_id,
-        tire=TirePackage(
-            loaded_radius_mm=radius_mm, source=CSV_SOURCE, tol_mm=CSV_TOL_MM,
-        ),
-        static_camber_deg=camber_deg,
-        static_toe_deg_per_side=static_toe_deg,
-        **hardpoints,
-    )
-
-
-# --------------------------------------------------------------------------- #
-# driving MotionSolve
-# --------------------------------------------------------------------------- #
-
-def altair_env() -> dict[str, str]:
-    """Environment for the MotionSolve interpreter (mirrors motionsolve_jupyter.bat)."""
-    python_home = ALTAIR_ROOT / "common" / "python" / "python3.10" / "win64"
-    msolve_base = ALTAIR_ROOT / "hwsolvers" / "motionsolve"
-    dll_dir = msolve_base / "bin" / "win64"
-
-    env = dict(os.environ)
-    env["PYTHONHOME"] = str(python_home)
-    env["MSOLVE_BASE_DIR"] = str(msolve_base)
-    env["NUSOL_DLL_DIR"] = str(dll_dir)
-    env["PYTHONPATH"] = os.pathsep.join([str(msolve_base), str(dll_dir)])
-    env["PATH"] = os.pathsep.join(
-        [str(dll_dir), str(msolve_base), str(python_home), env.get("PATH", "")]
-    )
-    return env
-
-
-def run_motionsolve(csv_path: Path, corner_id: str, spin_axis: np.ndarray,
-                    droop: float, bump: float, steps: int,
-                    workdir: Path) -> list[dict[str, float]]:
-    """Run the corner sweep in MotionSolve. Return one dict per output step."""
-    python_exe = ALTAIR_ROOT / "common" / "python" / "python3.10" / "win64" / "python.exe"
-    if not python_exe.is_file():
-        raise FileNotFoundError(
-            f"Altair Python not found at {python_exe} -- is Altair 2026.1 installed?"
-        )
-
-    out_csv = workdir / f"msolve_{corner_id.lower()}.csv"
-    # `--opt=value` rather than `--opt value`: the spin axis round-trips through
-    # the upright body frame, so a nominally zero component can come back as
-    # -1e-17 and argparse would read the leading minus as another option.
-    cmd = [
-        str(python_exe), str(MSOLVE_SCRIPT),
-        f"--csv={csv_path}",
-        f"--corner={corner_id}",
-        "--spin=" + ",".join(f"{v:.17g}" for v in spin_axis),
-        f"--droop={droop}",
-        f"--bump={bump}",
-        f"--steps={steps}",
-        f"--out={out_csv}",
-    ]
-    proc = subprocess.run(
-        cmd, cwd=workdir, env=altair_env(),
-        capture_output=True, text=True, timeout=900,
-    )
-    if proc.returncode != 0 or not out_csv.is_file():
-        raise RuntimeError(
-            f"MotionSolve failed for {corner_id} (exit {proc.returncode}).\n"
-            f"--- stdout ---\n{proc.stdout[-3000:]}\n--- stderr ---\n{proc.stderr[-3000:]}"
-        )
-
-    with open(out_csv, newline="", encoding="utf-8") as handle:
-        rows = [{k: float(v) for k, v in row.items()} for row in csv.DictReader(handle)]
-
-    # MotionSolve emits the initial state twice (assembly, then first step).
-    deduped: list[dict[str, float]] = []
-    for row in rows:
-        if deduped and abs(row["time"] - deduped[-1]["time"]) < 1e-12:
-            continue
-        deduped.append(row)
-    return deduped
+__all__ = ["build_corner", "read_csv_points", "static_camber_from_csv"]
 
 
 # --------------------------------------------------------------------------- #
