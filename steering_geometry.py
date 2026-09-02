@@ -1217,7 +1217,10 @@ STEERING_2027 = SteeringInputs(
     steer_arm_length_mm=80.0,          # was 90.0 — shorter arm for ratio ~4.6:1
     steer_arm_angle_deg=-12.0,         # was 15.0 — rotated for ~101% geometric Ackermann
     rack_x_mm=30.0,
-    rack_z_mm=158.3,                   # was 100.0 — solved for zero bump steer
+    rack_z_mm=157.3915,                # solved for zero bump steer; re-solved
+                                       # 2026-09-01 from 158.3 after the front
+                                       # UCA pivot axis was raked for anti-dive
+                                       # (which alone left -0.0022 deg/mm/side)
     rack_half_length_mm=270.0,         # was 230.0 — wider rack shortens tie rod below 350 mm
     pinion_radius_mm=16.0,             # was 20.0
     max_rack_travel_mm=38.0,           # was 25.0

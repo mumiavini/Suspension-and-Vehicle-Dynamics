@@ -78,7 +78,11 @@ from analysis.vdcore_bridge import (
 )
 from geometry import KinematicSolver3D
 
-from ui.shared import load_hardpoints_from_state, render_empty_state
+from ui.shared import (
+    DESIGN_BRAKE_BIAS_FRONT,
+    load_hardpoints_from_state,
+    render_empty_state,
+)
 
 # Source label used for every geometry row the validated solver produces.
 _VDCORE_SRC = "📐 vdcore (validated)"
@@ -722,7 +726,7 @@ def _render_setup_sheet(
     # see analysis.vdcore_bridge.solved_ackermann_pct for why that construction
     # is unusable on a car with 10 deg KPI.
     vs = st.session_state.get("vehicle_setup", {})
-    brake_bias = float(vs.get("brake_bias", 0.6))
+    brake_bias = float(vs.get("brake_bias", DESIGN_BRAKE_BIAS_FRONT))
     c_factor_mm = float(vs.get("c_factor_mm", 0.0))
     try:
         anti_dive = vehicle.front_left.anti_dive_percent(
@@ -853,7 +857,19 @@ def _render_setup_sheet(
         f_alt=alt("front", "roll_camber", 4), r_alt=alt("rear", "roll_camber", 4))
     add("Anti dive / Anti squat", "%",
         _fmt(anti_dive, 2), _fmt(anti_squat, 2),
-        "📐 pivot-axis rake (cross-checked vs 3D linkage)")
+        f"📐 pivot-axis rake (cross-checked vs 3D linkage), bias {brake_bias:.2f}")
+    # Two bump-steer rows, not one: nulling the linear rate leaves a quadratic,
+    # so a tie rod solved for "zero bump steer" still toes at full travel. The
+    # 2027 front reads -0.00002 deg/mm and peaks at 0.16 deg.
+    add("Bump steer (linear, per side)", "deg/mm",
+        _fmt(front.get("bump_steer"), 5), _fmt(rear.get("bump_steer"), 5),
+        _VDCORE_SRC,
+        f_alt=alt("front", "bump_steer", 5), r_alt=alt("rear", "bump_steer", 5))
+    add("Bump steer (peak over travel, per side)", "deg",
+        _fmt(front.get("bump_steer_peak"), 4), _fmt(rear.get("bump_steer_peak"), 4),
+        _VDCORE_SRC,
+        f_alt=alt("front", "bump_steer_peak", 4),
+        r_alt=alt("rear", "bump_steer_peak", 4))
     add("Roll center height above ground, static", "mm",
         _fmt(front.get("rc_static"), 2), _fmt(rear.get("rc_static"), 2), _VDCORE_SRC,
         f_alt=alt("front", "rc_static", 2), r_alt=alt("rear", "rc_static", 2))

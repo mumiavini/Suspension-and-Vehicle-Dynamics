@@ -252,9 +252,25 @@ class TestAntiGeometryFollowsPivotRake:
     def test_horizontal_pivot_axes_give_exactly_zero_anti(
         self, design: sla.DesignReport
     ) -> None:
+        """Zero rake must give exactly zero anti, on whichever axle has it.
+
+        The rear still runs both axes horizontal. The front no longer does
+        (7.5 % anti-dive from UCA rake since 2026-09-01), so it is flattened
+        here rather than dropped -- the invariant is about the construction,
+        not about which axle happens to be flat this revision.
+        """
+        from dataclasses import replace
+
         for geo in (design.front, design.rear):
-            assert geo.inputs.dz_lca_mm == 0.0 and geo.inputs.dz_uca_mm == 0.0
-            assert geo.anti_percent == pytest.approx(0.0, abs=1e-9)
+            flat = sla.solve_axle(
+                replace(geo.inputs, dz_lca_mm=0.0, dz_uca_mm=0.0), design.vehicle
+            )
+            assert flat.svic is None
+            assert flat.anti_percent == pytest.approx(0.0, abs=1e-9)
+
+        assert design.rear.inputs.dz_lca_mm == 0.0
+        assert design.rear.inputs.dz_uca_mm == 0.0
+        assert design.rear.anti_percent == pytest.approx(0.0, abs=1e-9)
 
     def test_raking_the_pivots_changes_anti(self, design: sla.DesignReport) -> None:
         from dataclasses import replace

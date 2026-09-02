@@ -58,6 +58,7 @@ from vdcore.analysis.roll_centre import (
     roll_centre_height,
     roll_centre_migration,
 )
+from vdcore.analysis.toe import bump_steer
 from vdcore.geometry.derived import mechanical_trail_mm, scrub_radius_mm
 from vdcore.geometry.solver import DWSolver, SolverResult
 from vdcore.models.hardpoint import Axle, Corner, Hardpoint, TirePackage
@@ -833,15 +834,30 @@ def delegated_axle_dynamic_kpis(
         ``rc_1g_z``          mm      -- RC height at ``roll_deg`` of body roll
         ``rc_1g_y``          mm      -- RC lateral shift at ``roll_deg`` of roll
 
+        ``bump_steer``       deg/mm  -- linear toe rate per side over bump
+        ``bump_steer_peak``  deg     -- peak |toe| per side over the travel range
+
     ``rc_1g_*`` are taken from a single ``axle_roll`` at ``roll_deg`` (the app's
     roll-stiffness-implied body roll at 1 g), which is the honest vdcore analogue
     of the legacy ``roll_center_at_1g_lat`` estimate.
 
     Any per-KPI vdcore failure degrades THAT key to NaN (never a wrong number);
-    the rest of the row is still returned. ``bump_steer`` is deliberately absent:
-    the legacy tie-rod is loaded but vdcore's swept toe needs the rack model that
-    only ``steering_geometry.py`` owns, so the tab keeps its own bump-steer value
-    flagged rather than delegating a half-derived one.
+    the rest of the row is still returned.
+
+    BUMP STEER was previously excluded here on the grounds that "vdcore's swept
+    toe needs the rack model that only steering_geometry.py owns". That reason
+    does not hold: bump steer is toe over pure heave with the rack HELD, and the
+    tie rod that determines it is already loaded (DWSolver needs it to close the
+    sixth DOF). ``vdcore.analysis.toe.bump_steer`` therefore needs no rack. The
+    exclusion left the app showing the legacy sweep's value, which on the
+    shipped 2027 rear was +0.00155 deg/mm against a true -0.00015 -- inverted.
+
+    TWO bump-steer numbers are returned because one is not enough. Nulling the
+    linear rate leaves a quadratic, so the toe curve is a parabola about ride
+    height and the wheel toes the SAME way in bump and droop; a straight-line
+    fit through that reads zero. The 2027 front sits at a linear rate of
+    -0.00002 deg/mm and a peak of 0.16 deg -- reporting only the rate would call
+    it "zero bump steer".
     """
     row: dict[str, float] = {}
 
@@ -887,6 +903,16 @@ def delegated_axle_dynamic_kpis(
     except (RuntimeError, ValueError):
         row["rc_1g_z"] = float("nan")
         row["rc_1g_y"] = float("nan")
+
+    try:
+        bs = bump_steer(
+            axle.left, wheel_travel_range_mm=travel_mm, steps=sweep_steps
+        )
+        row["bump_steer"] = bs.linear_deg_per_mm_per_side
+        row["bump_steer_peak"] = bs.peak_abs_deg_per_side
+    except (RuntimeError, ValueError):
+        row["bump_steer"] = float("nan")
+        row["bump_steer_peak"] = float("nan")
 
     return row
 

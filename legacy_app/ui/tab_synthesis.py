@@ -27,11 +27,16 @@ from analysis.optimizer import (
     HardpointBounds,
     validate_against_targets,
 )
+from analysis.vdcore_bridge import (
+    BridgeConversionError,
+    CornerInputs,
+    df_to_vdcore_corner,
+    vdcore_sweep,
+)
 from ui.shared import (
     load_hardpoints_from_state,
     render_empty_state,
     build_corner_safe,
-    run_sweep_cached,
 )
 
 MIRROR_CORNER = {"FL": "FR", "FR": "FL", "RL": "RR", "RR": "RL"}
@@ -191,8 +196,32 @@ def render() -> None:
 
     with kpi_col:
         st.caption("**Current seed values** — use as a reference when defining the targets")
-        seed_sweep = run_sweep_cached(seed_corner, seed_tie_rod, "Heave",
-                                       (-25.0, 25.0, 5.0))
+        # Dynamic seed KPIs run on DWSolver, not the legacy strut-to-midpoint
+        # solver. On the shipped 2027 rear the legacy sweep reported bump steer
+        # as +0.00155 deg/mm against a true -0.00015 -- SIGN INVERTED -- and it
+        # inverts camber gain too, so these two metrics were actively
+        # misleading as a reference for setting targets. Static values below
+        # (caster/KPI/camber/RC) are unaffected: the legacy solver's STATIC
+        # numbers are correct, only its sweeps are not.
+        seed_sweep = None
+        try:
+            vd_seed = df_to_vdcore_corner(
+                df, seed_corner_id,
+                CornerInputs.from_vehicle_setup(
+                    st.session_state.get("vehicle_setup", {})
+                ),
+            )
+            seed_sweep = vdcore_sweep(vd_seed, "Heave", (-25.0, 25.0, 5.0))
+        except (BridgeConversionError, ValueError, KeyError) as exc:
+            st.warning(
+                f"⚠️ Dynamic seed KPIs unavailable ({exc}). Static values below "
+                "are still valid."
+            )
+
+        def _dyn(fn) -> str:
+            """Format a dynamic KPI, or an em dash if the solve was unavailable."""
+            return "—" if seed_sweep is None else f"{fn(seed_sweep):+.4f} °/mm"
+
         m = st.columns(6)
         m[0].metric("Caster",      f"{seed_corner.static_caster_deg():+.2f}°",
                     border=True)
@@ -200,10 +229,8 @@ def render() -> None:
                     border=True)
         m[2].metric("Camber",      f"{seed_corner.static_camber_deg():+.2f}°",
                     border=True)
-        m[3].metric("Camber gain", f"{camber_gain_per_mm(seed_sweep):+.4f} °/mm",
-                    border=True)
-        m[4].metric("Bump steer",  f"{bump_steer_per_mm(seed_sweep):+.4f} °/mm",
-                    border=True)
+        m[3].metric("Camber gain", _dyn(camber_gain_per_mm), border=True)
+        m[4].metric("Bump steer",  _dyn(bump_steer_per_mm), border=True)
         m[5].metric("RC height",   f"{seed_corner.roll_center_height_mm():+.1f} mm",
                     border=True)
 

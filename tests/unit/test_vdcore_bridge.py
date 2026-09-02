@@ -165,8 +165,8 @@ def delegated(
 def test_front_camber_gain_matches_benchmark(
     delegated: dict[str, dict[str, float]]
 ) -> None:
-    """Front camber gain per mm reproduces the benchmark's -0.0384 deg/mm."""
-    assert delegated["front"]["camber_gain"] == pytest.approx(-0.0384, abs=0.0005)
+    """Front camber gain per mm reproduces the benchmark's -0.0386 deg/mm."""
+    assert delegated["front"]["camber_gain"] == pytest.approx(-0.0386, abs=0.0005)
 
 
 def test_rear_camber_gain_matches_benchmark(
@@ -179,15 +179,15 @@ def test_rear_camber_gain_matches_benchmark(
 def test_front_rc_height_at_1g_matches_benchmark(
     delegated: dict[str, dict[str, float]]
 ) -> None:
-    """Front RC height at 1.5 deg roll matches axle_roll's 33.89 mm."""
-    assert delegated["front"]["rc_1g_z"] == pytest.approx(33.89, abs=0.1)
+    """Front RC height at 1.5 deg roll matches axle_roll's 34.86 mm."""
+    assert delegated["front"]["rc_1g_z"] == pytest.approx(34.86, abs=0.1)
 
 
 def test_front_rc_lateral_at_1g_matches_benchmark(
     delegated: dict[str, dict[str, float]]
 ) -> None:
-    """Front RC lateral shift at 1.5 deg roll matches axle_roll's -111.46 mm."""
-    assert delegated["front"]["rc_1g_y"] == pytest.approx(-111.46, abs=1.0)
+    """Front RC lateral shift at 1.5 deg roll matches axle_roll's -86.90 mm."""
+    assert delegated["front"]["rc_1g_y"] == pytest.approx(-86.90, abs=1.0)
 
 
 def test_ride_camber_dpm_is_camber_gain_times_1000(
@@ -238,7 +238,7 @@ def test_outer_wheel_gains_camber_relative_to_inner_in_roll(
     """In roll the outer (left, +Y) wheel keeps more camber than the inner (right)."""
     front_axle, _rear_axle = df_to_vdcore_axles(df, inputs)
     state = axle_roll(front_axle, 1.5)
-    # Outer camber ~ -0.635, inner ~ -2.390: outer is the less-negative (greater).
+    # Outer camber ~ -0.648, inner ~ -2.392: outer is the less-negative (greater).
     assert state.outer_camber_deg > state.inner_camber_deg
 
 
@@ -359,7 +359,11 @@ def test_setup_sheet_front_static_reproduces_benchmark(
     assert front["trail_l"] > 0.0
     assert front["trail_l"] == pytest.approx(21.43, abs=0.1)
     assert front["trail_r"] == pytest.approx(21.43, abs=0.1)
-    assert front["rc_static"] == pytest.approx(35.0, abs=0.2)
+    # 35.50, not the 35.0 design target: the UCA pivot rake added for anti-dive
+    # tilts the plane the upper ball joint sweeps, which moves the solved FVIC
+    # slightly. Isolated 2026-09-01 -- the rake alone gives 35.45, the UCA
+    # pickup move to y=210 alone gives exactly 35.0000.
+    assert front["rc_static"] == pytest.approx(35.50, abs=0.2)
 
 
 def test_setup_sheet_rear_static_reproduces_benchmark(
@@ -378,11 +382,11 @@ def test_setup_sheet_dynamic_reproduces_benchmark(
     """Front/rear camber gain and RC-at-1g in the sheet match the dynamic benchmark."""
     front = setup_sheet["front"]
     rear = setup_sheet["rear"]
-    assert front["camber_gain"] == pytest.approx(-0.0384, abs=0.001)
+    assert front["camber_gain"] == pytest.approx(-0.0386, abs=0.001)
     assert rear["camber_gain"] == pytest.approx(-0.0411, abs=0.001)
-    assert front["rc_1g_z"] == pytest.approx(33.89, abs=0.2)
-    assert front["rc_1g_y"] == pytest.approx(-111.46, abs=1.0)
-    assert rear["rc_1g_z"] == pytest.approx(54.25, abs=0.2)
+    assert front["rc_1g_z"] == pytest.approx(34.86, abs=0.2)
+    assert front["rc_1g_y"] == pytest.approx(-86.90, abs=1.0)
+    assert rear["rc_1g_z"] == pytest.approx(54.58, abs=0.2)
 
 
 def test_delegated_static_sum_toe_and_axle_symmetry(

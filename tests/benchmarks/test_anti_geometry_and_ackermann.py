@@ -182,10 +182,19 @@ class TestSideViewInstantCentreMatchesThe3DLinkage:
 
 class TestAntiGeometryInvariants:
 
-    def test_shipped_design_has_zero_anti(self) -> None:
-        """Both 2027 axles run zero pivot rake, so anti is exactly 0 %."""
-        assert sla.solve_axle(sla.FRONT_2027, VEH).anti_percent == pytest.approx(0.0)
-        assert sla.solve_axle(sla.REAR_2027, VEH).anti_percent == pytest.approx(0.0)
+    def test_shipped_design_anti(self) -> None:
+        """Front carries 7.5 % anti-dive from UCA rake; the rear stays at 0 %.
+
+        Anti-squat was never requested, so both rear pivot axes remain
+        horizontal and the rear SVIC stays at infinity.
+        """
+        front = sla.solve_axle(sla.FRONT_2027, VEH)
+        assert front.anti_percent == pytest.approx(7.5, abs=0.01)
+        assert front.svic is not None, "raked axes must give a finite SVIC"
+
+        rear = sla.solve_axle(sla.REAR_2027, VEH)
+        assert rear.anti_percent == pytest.approx(0.0)
+        assert rear.svic is None, "horizontal axes put the SVIC at infinity"
 
     def test_horizontal_axes_give_exactly_zero(self) -> None:
         geo = sla.solve_axle(
@@ -430,13 +439,22 @@ class TestAckermannOnTheShippedDesign:
             f"parallel steering arms should give near-zero Ackermann, got {value}"
         )
 
-    def test_legacy_app_anti_features_are_zero_on_the_shipped_geometry(self) -> None:
+    def test_legacy_app_anti_features_on_the_shipped_geometry(self) -> None:
         """The app's anti-dive/anti-squat used to pin at the +200 % clamp.
 
-        Both 2027 axles run zero pivot rake, so the correct answer is 0 %.
         ``SuspensionCorner.anti_dive_percent`` built its side-view IC from
         ``effective_inboard -> outboard``, which is degenerate in side view for
         a fore-aft pivot axis; the resulting noise saturated the old clamp.
+
+        Until 2026-09-01 both axles ran zero pivot rake, so this could only
+        ever check the trivial 0 % case -- the exact blind spot that hid the
+        pivot-midpoint bug for so long. The front now carries 7.5 % anti-dive,
+        so the comparison is finally live: the legacy construction lands at
+        6.908 % against the correct 6.923 % (at the 0.60 bias this test uses).
+        Close here only because the LCA axis is horizontal, which leaves the
+        midpoint-vs-ball-joint error at the 12.6 mm of pickup-to-LBJ height.
+        Do not read that agreement as a licence to quote the legacy solver --
+        see CLAUDE.md.
         """
         import sys as _sys
 
@@ -454,8 +472,21 @@ class TestAckermannOnTheShippedDesign:
         rear = veh.rear_left.anti_dive_percent(
             brake_bias=1.0, wheelbase_mm=1540.0, cg_height_mm=320.0)
 
-        assert front == pytest.approx(0.0, abs=1e-9)
+        # Rear pivot axes are still horizontal, so the correct answer is 0 %.
         assert rear == pytest.approx(0.0, abs=1e-9)
+
+        # Front carries real rake now. The correct value comes from
+        # sla_geometry, which is cross-checked against DWSolver above.
+        correct = sla.solve_axle(
+            sla.FRONT_2027, replace(VEH, brake_bias_front=0.6)
+        ).anti_percent
+        assert correct == pytest.approx(6.923, abs=0.01)
+        assert front == pytest.approx(6.908, abs=0.01)
+        assert front != pytest.approx(correct, abs=1e-6), (
+            "the legacy pivot-midpoint construction should still differ from "
+            "the ball-joint construction -- if these now agree exactly, the "
+            "legacy solver was fixed and this test needs rewriting"
+        )
         # The clamp is gone: nothing should be able to return exactly +/-200.
         assert abs(front) != 200.0 and abs(rear) != 200.0
 

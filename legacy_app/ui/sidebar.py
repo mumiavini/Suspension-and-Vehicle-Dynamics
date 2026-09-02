@@ -19,7 +19,7 @@ from analysis.io_hardpoints import (
     HardpointValidationError,
     VALID_CORNERS,
 )
-from ui.shared import load_demo_into_session
+from ui.shared import DESIGN_BRAKE_BIAS_FRONT, load_demo_into_session
 from ui.theme import THEMES
 
 
@@ -115,7 +115,7 @@ def render_sidebar() -> None:
         st.divider()
         st.markdown("### 2️⃣ Vehicle setup")
         st.session_state.setdefault("vehicle_setup", {
-            "brake_bias": 0.60,
+            "brake_bias": DESIGN_BRAKE_BIAS_FRONT,
             "c_factor_mm": 100.0,
             "steering_wheel_lock_deg": 270.0,
             "static_camber_deg": -1.5,

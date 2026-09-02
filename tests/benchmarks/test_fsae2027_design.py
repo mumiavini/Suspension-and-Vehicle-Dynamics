@@ -37,6 +37,7 @@ if str(REPO) not in sys.path:
 import sla_geometry as sla  # noqa: E402
 import steering_geometry as stg  # noqa: E402
 from vdcore.analysis.axle import axle_rates, axle_roll  # noqa: E402
+from vdcore.analysis.toe import bump_steer  # noqa: E402
 from vdcore.geometry.solver import DWSolver  # noqa: E402
 from vdcore.models.hardpoint import Axle  # noqa: E402
 
@@ -94,41 +95,173 @@ class TestStaticSynthesis:
         assert design.rear.scrub_radius_mm == pytest.approx(21.97, abs=0.01)
 
     def test_front_view_arm_projections(self, design: sla.DesignReport) -> None:
+        """The UCA projections shortened when its pickup moved outboard.
+
+        Both arms shared one chassis plane at y = 175 until 2026-09-01; the
+        upper arm now picks up at y = 210 so the chassis can carry it on a
+        wider rail. The LCA is untouched, and the FVIC the two arms point at
+        is unchanged -- see test_uca_pickup_y_is_kinematically_free.
+        """
         assert design.front.lca_length_mm == pytest.approx(407.20, abs=0.01)
-        assert design.front.uca_length_mm == pytest.approx(370.03, abs=0.01)
+        assert design.front.uca_length_mm == pytest.approx(334.25, abs=0.01)
         assert design.rear.lca_length_mm == pytest.approx(383.60, abs=0.01)
-        assert design.rear.uca_length_mm == pytest.approx(351.42, abs=0.01)
+        assert design.rear.uca_length_mm == pytest.approx(315.74, abs=0.01)
+
+    def test_uca_pickup_is_outboard_of_the_lca_pickup(
+        self, design: sla.DesignReport
+    ) -> None:
+        """The chassis constraint that drove the 2026-09-01 revision.
+
+        The upper wishbone mounts to a wider rail than the lower one, so its
+        inboard pickup must sit further from the car centreline.
+        """
+        for geo in (design.front, design.rear):
+            assert geo.uca_in[0] > geo.lca_in[0], geo.inputs.name
+
+    def test_uca_pickup_y_is_kinematically_free(
+        self, design: sla.DesignReport
+    ) -> None:
+        """Sliding the inboard pickup along the arm line changes only length.
+
+        The pickup lies on the BALL JOINT -> FVIC line, so moving it in y
+        leaves the front-view construction -- FVIC, and therefore FVSA, roll
+        centre height and the design camber gain -- bit-identical. This is the
+        property that made the chassis request free to grant, and nothing
+        tested it before. The full-travel values DO move (the arc curvature
+        changes); those are pinned in TestAxleRates.
+        """
+        from dataclasses import replace
+
+        for geo in (design.front, design.rear):
+            moved = sla.solve_axle(
+                replace(geo.inputs, uca_inner_y_mm=geo.inputs.uca_inner_y + 40.0),
+                design.vehicle,
+            )
+            assert moved.fvic[0] == pytest.approx(float(geo.fvic[0]), abs=1e-12)
+            assert moved.fvic[1] == pytest.approx(float(geo.fvic[1]), abs=1e-12)
+            assert moved.uca_length_mm < geo.uca_length_mm
 
     def test_real_member_legs_rear_within_limits(
         self, design: sla.DesignReport
     ) -> None:
-        """Rear legs are within the 320-430 mm band.
+        """Rear legs are within the 320-460 mm band.
 
-        Sweep = base/2 (e/a 1.0) holds the rearmost inboard pickup on the
-        rear-axle line, so no pickup sits behind the axle. Base is shrunk to
-        180/160 to keep the (now longer) front legs under 430 mm. Front and
-        rear legs are no longer equal because the arm is swept.
+        Sweep = delta + base/2 holds the rearmost inboard pickup 80 mm AHEAD
+        of the rear-axle line, so no chassis bracket shares the driveshaft's X
+        plane. The clearance costs e/a = 1 + 2*delta/base, so base = 2*delta =
+        160 is the narrowest meeting the e/a <= 2.0 cap and therefore the one
+        with the shortest front legs. The binding member is the LCA front leg
+        at 452.5 mm, which is why the band went from 430 to 460.
+
+        This supersedes rev 3 (base 180/160, sweep 90/80, rearmost pickup ON
+        the axle at e/a 1.0), which the chassis team could not build around.
         """
         legs = sla.member_legs_mm(design.rear)
-        assert legs["LCA front leg"] == pytest.approx(423.73, abs=0.05)
-        assert legs["UCA front leg"] == pytest.approx(386.13, abs=0.05)
-        assert legs["LCA rear leg"] == pytest.approx(383.60, abs=0.05)
-        assert legs["UCA rear leg"] == pytest.approx(351.42, abs=0.05)
+        assert legs["LCA front leg"] == pytest.approx(452.49, abs=0.05)
+        assert legs["UCA front leg"] == pytest.approx(396.60, abs=0.05)
+        assert legs["LCA rear leg"] == pytest.approx(391.85, abs=0.05)
+        assert legs["UCA rear leg"] == pytest.approx(325.71, abs=0.05)
         lo, hi = design.rear.inputs.limits.lca_length_mm
         assert lo <= legs["LCA front leg"] <= hi
         assert lo <= legs["UCA front leg"] <= hi
         assert lo <= legs["LCA rear leg"] <= hi
         assert lo <= legs["UCA rear leg"] <= hi
 
-    def test_anti_geometry_is_exactly_zero(self, design: sla.DesignReport) -> None:
-        """Every pivot axis is horizontal, so the SVIC is at infinity.
+    def test_front_anti_dive_is_on_target(self, design: sla.DesignReport) -> None:
+        """7.5 % anti-dive, the mid-band of the 5-10 % the team asked for.
 
-        The legacy Streamlit app reported +200% anti-dive and +83.74%
-        anti-squat here; both are artefacts of building the side-view instant
-        centre from the pivot MIDPOINT instead of the pivot AXIS.
+        Carried entirely by the UCA pivot rake (dz_uca = -11.305 mm over a
+        240 mm base). The lower axis stays horizontal, which is why the SVIC
+        sits at the LOWER ball joint's height of 130 mm.
+
+        WATCH THE SIGN. With the LCA axis horizontal a POSITIVE dz_uca gives
+        PRO-dive; the rear UCA pickup has to sit BELOW the front one.
         """
-        assert design.front.anti_percent == pytest.approx(0.0, abs=1e-9)
+        assert design.front.anti_percent == pytest.approx(7.5, abs=0.01)
+        assert design.front.svic is not None
+        assert design.front.svic[1] == pytest.approx(130.0, abs=0.01)
+
+    def test_rear_anti_squat_is_exactly_zero(self, design: sla.DesignReport) -> None:
+        """Both rear pivot axes are horizontal, so the SVIC is at infinity.
+
+        The legacy Streamlit app reported +83.74% anti-squat here, an artefact
+        of building the side-view instant centre from the pivot MIDPOINT
+        instead of the pivot AXIS. Anti-squat was not requested and the rear
+        rake stays at zero, so this stays an exact-zero assertion.
+        """
         assert design.rear.anti_percent == pytest.approx(0.0, abs=1e-9)
+        assert design.rear.inputs.dz_lca_mm == 0.0
+        assert design.rear.inputs.dz_uca_mm == 0.0
+
+    def test_no_chassis_point_sits_behind_the_wishbone(
+        self, merged: gs.MergedHardpoints
+    ) -> None:
+        """The wishbone must be the rearmost thing bolted to the rear chassis.
+
+        The toe link inboard used to sit at X = -1480, 20 mm BEHIND the
+        rearmost wishbone pickup and only 60 mm ahead of the driveshaft plane.
+        It now shares the LCA rear bracket at X = -1460.
+
+        Outboard points are exempt: they are upright features that move with
+        the wheel, not chassis connections.
+        """
+        for corner in ("RL", "RR"):
+            wishbone_rearmost = min(
+                merged.arr(corner, n)[0]
+                for n in ("UCA_IN_FRONT", "UCA_IN_REAR",
+                          "LCA_IN_FRONT", "LCA_IN_REAR")
+            )
+            toe_link_in = merged.arr(corner, "TIE_ROD_IN")[0]
+            assert toe_link_in >= wishbone_rearmost - 1e-9, (
+                f"{corner} toe link inboard at X={toe_link_in} is behind the "
+                f"rearmost wishbone pickup at X={wishbone_rearmost}"
+            )
+
+    def test_rear_toe_link_shares_the_lca_rear_bracket(
+        self, merged: gs.MergedHardpoints
+    ) -> None:
+        """One bracket, not two: same X and Y as the LCA rear pickup."""
+        for corner in ("RL", "RR"):
+            lca = merged.arr(corner, "LCA_IN_REAR")
+            toe = merged.arr(corner, "TIE_ROD_IN")
+            assert toe[0] == pytest.approx(lca[0], abs=1e-9)
+            assert toe[1] == pytest.approx(lca[1], abs=1e-9)
+            assert toe[2] - lca[2] == pytest.approx(39.47, abs=0.1)
+
+    def test_rear_toe_link_comes_from_the_declared_config(
+        self, merged: gs.MergedHardpoints
+    ) -> None:
+        """It is a declared design input now, not a hand-entered CSV row.
+
+        Asserting against the config constant rather than against literals is
+        what makes this test bite: if someone re-adds a CSV fallback, or the
+        mirror onto the right side goes wrong, the merged set stops matching
+        the declaration.
+        """
+        for corner, sy in (("RL", 1.0), ("RR", -1.0)):
+            for name, declared in (
+                ("TIE_ROD_IN", gs.REAR_TOE_LINK_INBOARD),
+                ("TIE_ROD_OUT", gs.REAR_TOE_LINK_OUTBOARD),
+            ):
+                x, y, z = merged.arr(corner, name)
+                assert (x, y, z) == pytest.approx(
+                    (declared[0], sy * declared[1], declared[2]), abs=1e-9
+                ), f"{corner}/{name}"
+
+    def test_rear_pickups_clear_the_driveshaft_plane(
+        self, design: sla.DesignReport
+    ) -> None:
+        """No rear inboard pickup may share the rear axle's X plane.
+
+        The chassis team could not build a bracket around the driveshaft when
+        the rearmost pickups sat exactly on the axle line. 80 mm is the agreed
+        clearance; this asserts the layout still delivers it.
+        """
+        rear = design.rear
+        axle_x = rear.inputs.axle_x_mm
+        for x in (rear.lca_in_rear_x_mm, rear.uca_in_rear_x_mm,
+                  rear.lca_in_front_x_mm, rear.uca_in_front_x_mm):
+            assert axle_x - x >= 80.0 - 1e-9, f"pickup at x={x} is inside 80 mm"
 
 
 class TestExportedAlignment:
@@ -168,24 +301,97 @@ class TestAxleRates:
     """vdcore.analysis.axle on the complete merged corners, chassis-referenced."""
 
     def test_front_rates(self, front_axle: Axle) -> None:
+        """Re-anchored 2026-09-01 (UCA pickup to y=210, UCA raked for anti-dive).
+
+        Camber gain barely moved (-0.0384 -> -0.0386): the pickup slid along
+        the arm line, so the ride-height rate is set by the same FVIC. What
+        moved is RC migration, -0.3914 -> -0.3106 mm/mm, a ~20 % improvement
+        that falls out of the shorter upper arm. It was not a target.
+        """
         r = axle_rates(front_axle)
-        assert r.camber_gain_deg_per_mm == pytest.approx(-0.0384, abs=0.0005)
-        assert r.rc_migration_mm_per_mm == pytest.approx(-0.3914, abs=0.005)
-        assert r.half_track_change_mm_per_mm == pytest.approx(0.0568, abs=0.0005)
-        assert r.camber_full_bump_deg == pytest.approx(-2.4896, abs=0.01)
-        assert r.camber_full_droop_deg == pytest.approx(-0.5692, abs=0.01)
-        assert r.rc_min_mm == pytest.approx(25.30, abs=0.2)
-        assert r.rc_max_mm == pytest.approx(44.90, abs=0.2)
+        assert r.camber_gain_deg_per_mm == pytest.approx(-0.0386, abs=0.0005)
+        assert r.rc_migration_mm_per_mm == pytest.approx(-0.3106, abs=0.005)
+        assert r.half_track_change_mm_per_mm == pytest.approx(0.0574, abs=0.0005)
+        assert r.camber_full_bump_deg == pytest.approx(-2.5155, abs=0.01)
+        assert r.camber_full_droop_deg == pytest.approx(-0.5795, abs=0.01)
+        assert r.rc_min_mm == pytest.approx(27.90, abs=0.2)
+        assert r.rc_max_mm == pytest.approx(43.44, abs=0.2)
 
     def test_rear_rates(self, rear_axle: Axle) -> None:
+        """Re-anchored 2026-09-01 (UCA pickup to y=210, pickups swept forward).
+
+        Camber gain is unchanged to four decimals -- the rear rake is still
+        zero and the pickup only slid along its arm line. RC migration
+        improves -0.4239 -> -0.3380 mm/mm for the same reason as the front.
+        """
         r = axle_rates(rear_axle)
         assert r.camber_gain_deg_per_mm == pytest.approx(-0.0411, abs=0.0005)
-        assert r.rc_migration_mm_per_mm == pytest.approx(-0.4239, abs=0.005)
+        assert r.rc_migration_mm_per_mm == pytest.approx(-0.3380, abs=0.005)
         assert r.half_track_change_mm_per_mm == pytest.approx(0.0922, abs=0.0005)
-        assert r.camber_full_bump_deg == pytest.approx(-2.5447, abs=0.01)
-        assert r.camber_full_droop_deg == pytest.approx(-0.4856, abs=0.01)
-        assert r.rc_min_mm == pytest.approx(44.52, abs=0.2)
-        assert r.rc_max_mm == pytest.approx(65.74, abs=0.2)
+        assert r.camber_full_bump_deg == pytest.approx(-2.5649, abs=0.01)
+        assert r.camber_full_droop_deg == pytest.approx(-0.5053, abs=0.01)
+        assert r.rc_min_mm == pytest.approx(46.75, abs=0.2)
+        assert r.rc_max_mm == pytest.approx(63.67, abs=0.2)
+
+
+class TestBumpSteer:
+    """Toe over travel on BOTH axles.
+
+    The rear had no bump-steer number anywhere before 2026-09-01 --
+    steering_geometry.py owns bump steer and covers the front only -- so
+    moving the rear toe link was previously an unmeasured change.
+    """
+
+    def test_front_linear_rate_is_nulled(self, front_axle: Axle) -> None:
+        """rack_z_mm is solved for this, so it should be ~0 by construction."""
+        b = bump_steer(front_axle.left)
+        assert b.linear_deg_per_mm_per_side == pytest.approx(0.0, abs=0.0005)
+
+    def test_front_peak_is_the_quadratic_term(self, front_axle: Axle) -> None:
+        """Nulling the linear rate does NOT make the peak zero.
+
+        The front toes 0.16 deg per side at full travel, the same way in bump
+        and droop. That is not a regression -- it measured 0.1581 deg before
+        this revision too. It was invisible because only the linear rate was
+        ever reported.
+        """
+        b = bump_steer(front_axle.left)
+        assert b.peak_abs_deg_per_side == pytest.approx(0.1598, abs=0.005)
+        assert (b.toe_at_full_bump_deg_per_side
+                * b.toe_at_full_droop_deg_per_side) > 0
+
+    def test_rear_improved_when_the_toe_link_moved(self, rear_axle: Axle) -> None:
+        """Moving the inboard end to the LCA bracket more than halved the peak.
+
+        It was 0.0313 deg per side with the toe link at X = -1480; it is
+        0.0128 at X = -1460. The move was made for packaging, and the
+        kinematics happened to improve -- worth pinning so a later change
+        cannot quietly undo it.
+        """
+        b = bump_steer(rear_axle.left)
+        assert b.peak_abs_deg_per_side == pytest.approx(0.0128, abs=0.002)
+        assert b.peak_abs_deg_per_side < 0.02
+
+    def test_both_axles_are_inside_the_reporting_bands(
+        self, front_axle: Axle, rear_axle: Axle
+    ) -> None:
+        for axle in (front_axle, rear_axle):
+            b = bump_steer(axle.left)
+            assert abs(b.linear_deg_per_mm_per_side) <= gs.BUMP_STEER_LINEAR_LIMIT
+            assert b.peak_abs_deg_per_side <= gs.BUMP_STEER_PEAK_LIMIT
+
+    def test_left_and_right_are_mirrors(
+        self, rear_axle: Axle
+    ) -> None:
+        """A symmetric axle must bump-steer identically on both sides."""
+        left = bump_steer(rear_axle.left)
+        right = bump_steer(rear_axle.right)
+        assert left.peak_abs_deg_per_side == pytest.approx(
+            right.peak_abs_deg_per_side, abs=1e-9
+        )
+        assert left.linear_deg_per_mm_per_side == pytest.approx(
+            right.linear_deg_per_mm_per_side, abs=1e-9
+        )
 
 
 class TestAxleRoll:
@@ -193,18 +399,18 @@ class TestAxleRoll:
 
     def test_front_roll(self, front_axle: Axle) -> None:
         s = axle_roll(front_axle, 1.5)
-        assert s.outer_camber_deg == pytest.approx(-0.635, abs=0.01)
-        assert s.inner_camber_deg == pytest.approx(-2.390, abs=0.01)
-        assert s.rc_height_mm == pytest.approx(33.89, abs=0.1)
-        assert s.rc_lateral_mm == pytest.approx(-111.46, abs=1.0)
-        assert s.wheel_travel_mm == pytest.approx(16.228, abs=0.01)
+        assert s.outer_camber_deg == pytest.approx(-0.648, abs=0.01)
+        assert s.inner_camber_deg == pytest.approx(-2.392, abs=0.01)
+        assert s.rc_height_mm == pytest.approx(34.86, abs=0.1)
+        assert s.rc_lateral_mm == pytest.approx(-86.90, abs=1.0)
+        assert s.wheel_travel_mm == pytest.approx(16.229, abs=0.01)
 
     def test_rear_roll(self, rear_axle: Axle) -> None:
         s = axle_roll(rear_axle, 1.5)
-        assert s.outer_camber_deg == pytest.approx(-0.652, abs=0.01)
-        assert s.inner_camber_deg == pytest.approx(-2.360, abs=0.01)
-        assert s.rc_height_mm == pytest.approx(54.25, abs=0.1)
-        assert s.rc_lateral_mm == pytest.approx(-71.09, abs=1.0)
+        assert s.outer_camber_deg == pytest.approx(-0.660, abs=0.01)
+        assert s.inner_camber_deg == pytest.approx(-2.368, abs=0.01)
+        assert s.rc_height_mm == pytest.approx(54.58, abs=0.1)
+        assert s.rc_lateral_mm == pytest.approx(-56.34, abs=1.0)
         assert s.wheel_travel_mm == pytest.approx(15.704, abs=0.01)
 
     def test_outer_wheel_stays_in_the_useful_window(self, front_axle: Axle) -> None:
@@ -213,10 +419,17 @@ class TestAxleRoll:
         assert -2.5 <= s.outer_camber_deg <= 0.0
 
     def test_roll_centre_migrates_far_sideways(self, front_axle: Axle) -> None:
-        """~73 mm per degree of roll. The legacy app reported ~1 mm total,
-        because it averaged the two sides and the lateral terms cancelled."""
+        """~58 mm per degree of roll. The legacy app reported ~1 mm TOTAL,
+        because it averaged the two sides and the lateral terms cancelled.
+
+        Threshold lowered from 90 to 70 mm on 2026-09-01: the shorter upper
+        arm cut lateral migration from 111.5 to 86.9 mm at 1.5 deg. The guard
+        is against the legacy app's order-of-magnitude error, not against a
+        design target, so the bound tracks the geometry rather than pinning
+        it -- the exact value is asserted in test_front_roll.
+        """
         s = axle_roll(front_axle, 1.5)
-        assert abs(s.rc_lateral_mm) > 90.0
+        assert abs(s.rc_lateral_mm) > 70.0
 
 
 @pytest.fixture(scope="module")

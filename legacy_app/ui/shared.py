@@ -18,8 +18,15 @@ from analysis.io_hardpoints import (
     generate_template_dataframe,
     HardpointValidationError,
 )
-from analysis.sweeps import SweepRunner
-from geometry import KinematicSolver3D
+
+# Front brake bias used for anti-dive. MUST track
+# ``sla_geometry.VEHICLE_2027.brake_bias_front`` -- the app used to default to
+# 0.60 against a design value of 0.65, so the anti-dive it showed (6.91 %)
+# disagreed with the published summary (7.50 %) purely through this constant.
+# tests/unit/test_app_agrees_with_summary.py fails if the two drift apart
+# again; sla_geometry is not imported here because legacy_app/ is frozen and
+# must not gain a dependency on the design scripts.
+DESIGN_BRAKE_BIAS_FRONT = 0.65
 
 
 def load_hardpoints_from_state() -> Optional[pl.DataFrame]:
@@ -61,39 +68,3 @@ def build_vehicle_safe(df):
     except HardpointValidationError as exc:
         st.warning(f"⚠️ Incomplete vehicle: {exc}")
         return None, None
-
-
-def _geometry_signature(corner, tie_rod) -> tuple:
-    """Hashable tuple with all hardpoints — cache key for sweeps."""
-    pts = (
-        corner.upper_arm.inboard_front, corner.upper_arm.inboard_rear,
-        corner.upper_arm.outboard,
-        corner.lower_arm.inboard_front, corner.lower_arm.inboard_rear,
-        corner.lower_arm.outboard,
-        tie_rod.inboard, tie_rod.outboard,
-        corner.wheel_center, corner.contact_patch,
-    )
-    return tuple((p.x, p.y, p.z) for p in pts)
-
-
-@st.cache_data(show_spinner=False, max_entries=128)
-def _sweep_cache(geom_sig: tuple, sweep_type: str, params: tuple,
-                 _corner=None, _tie_rod=None):
-    # geom_sig identifies the geometry in the cache; _corner/_tie_rod (prefix "_"
-    # = not hashed by Streamlit) are only used on a cache miss.
-    solver = KinematicSolver3D(_corner, _tie_rod)
-    runner = SweepRunner(solver=solver)
-    if sweep_type == "Heave":
-        return runner.heave_sweep(*params)
-    elif sweep_type == "Roll":
-        return runner.roll_sweep(*params)
-    else:
-        return runner.steer_sweep(*params)
-
-
-def run_sweep_cached(corner, tie_rod, sweep_type, params):
-    return _sweep_cache(
-        _geometry_signature(corner, tie_rod), sweep_type,
-        tuple(float(p) for p in params),
-        _corner=corner, _tie_rod=tie_rod,
-    )

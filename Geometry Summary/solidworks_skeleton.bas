@@ -63,15 +63,15 @@ Private Sub Build_SUSP_FL()
     swModel.ClearSelection2 True
     swSketchMgr.Insert3DSketch True
     ' FL UCA - front leg
-    swSketchMgr.CreateLine 0.12, 0.175, 0.30858, -0.012283, 0.536966, 0.3854
+    swSketchMgr.CreateLine 0.12, 0.21, 0.321661, -0.012283, 0.536966, 0.3854
     ' FL UCA - rear leg
-    swSketchMgr.CreateLine -0.12, 0.175, 0.30858, -0.012283, 0.536966, 0.3854
+    swSketchMgr.CreateLine -0.12, 0.21, 0.310356, -0.012283, 0.536966, 0.3854
     ' FL LCA - front leg
     swSketchMgr.CreateLine 0.13, 0.175, 0.117383, 0.010061, 0.582, 0.13
     ' FL LCA - rear leg
     swSketchMgr.CreateLine -0.13, 0.175, 0.117383, 0.010061, 0.582, 0.13
     ' FL Tie Rod - rod
-    swSketchMgr.CreateLine -0.03, 0.27, 0.1583, 0.084591, 0.590294, 0.17875
+    swSketchMgr.CreateLine -0.03, 0.27, 0.157392, 0.084591, 0.590294, 0.17875
     ' FL Upright - kingpin axis
     swSketchMgr.CreateLine 0.010061, 0.582, 0.13, -0.012283, 0.536966, 0.3854
     ' FL Upright - lower spindle arm
@@ -92,15 +92,15 @@ Private Sub Build_SUSP_FR()
     swModel.ClearSelection2 True
     swSketchMgr.Insert3DSketch True
     ' FR UCA - front leg
-    swSketchMgr.CreateLine 0.12, -0.175, 0.30858, -0.012283, -0.536966, 0.3854
+    swSketchMgr.CreateLine 0.12, -0.21, 0.321661, -0.012283, -0.536966, 0.3854
     ' FR UCA - rear leg
-    swSketchMgr.CreateLine -0.12, -0.175, 0.30858, -0.012283, -0.536966, 0.3854
+    swSketchMgr.CreateLine -0.12, -0.21, 0.310356, -0.012283, -0.536966, 0.3854
     ' FR LCA - front leg
     swSketchMgr.CreateLine 0.13, -0.175, 0.117383, 0.010061, -0.582, 0.13
     ' FR LCA - rear leg
     swSketchMgr.CreateLine -0.13, -0.175, 0.117383, 0.010061, -0.582, 0.13
     ' FR Tie Rod - rod
-    swSketchMgr.CreateLine -0.03, -0.27, 0.1583, 0.084591, -0.590294, 0.17875
+    swSketchMgr.CreateLine -0.03, -0.27, 0.157392, 0.084591, -0.590294, 0.17875
     ' FR Upright - kingpin axis
     swSketchMgr.CreateLine 0.010061, -0.582, 0.13, -0.012283, -0.536966, 0.3854
     ' FR Upright - lower spindle arm
@@ -121,15 +121,15 @@ Private Sub Build_SUSP_RL()
     swModel.ClearSelection2 True
     swSketchMgr.Insert3DSketch True
     ' RL UCA - front leg
-    swSketchMgr.CreateLine -1.38, 0.175, 0.321905, -1.54, 0.519692, 0.390339
+    swSketchMgr.CreateLine -1.3, 0.21, 0.328854, -1.54, 0.519692, 0.390339
     ' RL UCA - rear leg
-    swSketchMgr.CreateLine -1.54, 0.175, 0.321905, -1.54, 0.519692, 0.390339
+    swSketchMgr.CreateLine -1.46, 0.21, 0.328854, -1.54, 0.519692, 0.390339
     ' RL LCA - front leg
-    swSketchMgr.CreateLine -1.36, 0.175, 0.129529, -1.54, 0.5586, 0.13
+    swSketchMgr.CreateLine -1.3, 0.175, 0.129529, -1.54, 0.5586, 0.13
     ' RL LCA - rear leg
-    swSketchMgr.CreateLine -1.54, 0.175, 0.129529, -1.54, 0.5586, 0.13
+    swSketchMgr.CreateLine -1.46, 0.175, 0.129529, -1.54, 0.5586, 0.13
     ' RL Tie Rod - rod
-    swSketchMgr.CreateLine -1.48, 0.175, 0.169, -1.5946, 0.52081, 0.18353
+    swSketchMgr.CreateLine -1.46, 0.175, 0.169, -1.5946, 0.52081, 0.18353
     ' RL Upright - kingpin axis
     swSketchMgr.CreateLine -1.54, 0.5586, 0.13, -1.54, 0.519692, 0.390339
     ' RL Upright - lower spindle arm
@@ -150,15 +150,15 @@ Private Sub Build_SUSP_RR()
     swModel.ClearSelection2 True
     swSketchMgr.Insert3DSketch True
     ' RR UCA - front leg
-    swSketchMgr.CreateLine -1.38, -0.175, 0.321905, -1.54, -0.519692, 0.390339
+    swSketchMgr.CreateLine -1.3, -0.21, 0.328854, -1.54, -0.519692, 0.390339
     ' RR UCA - rear leg
-    swSketchMgr.CreateLine -1.54, -0.175, 0.321905, -1.54, -0.519692, 0.390339
+    swSketchMgr.CreateLine -1.46, -0.21, 0.328854, -1.54, -0.519692, 0.390339
     ' RR LCA - front leg
-    swSketchMgr.CreateLine -1.36, -0.175, 0.129529, -1.54, -0.5586, 0.13
+    swSketchMgr.CreateLine -1.3, -0.175, 0.129529, -1.54, -0.5586, 0.13
     ' RR LCA - rear leg
-    swSketchMgr.CreateLine -1.54, -0.175, 0.129529, -1.54, -0.5586, 0.13
+    swSketchMgr.CreateLine -1.46, -0.175, 0.129529, -1.54, -0.5586, 0.13
     ' RR Tie Rod - rod
-    swSketchMgr.CreateLine -1.48, -0.175, 0.169, -1.5946, -0.52081, 0.18353
+    swSketchMgr.CreateLine -1.46, -0.175, 0.169, -1.5946, -0.52081, 0.18353
     ' RR Upright - kingpin axis
     swSketchMgr.CreateLine -1.54, -0.5586, 0.13, -1.54, -0.519692, 0.390339
     ' RR Upright - lower spindle arm

@@ -224,10 +224,15 @@ class CheckLimits:
     scrub_radius_mm: Band = (5.0, 25.0)
     kpi_deg: Band = (6.0, 14.0)
     kingpin_length_mm: Band = (200.0, 260.0)
-    lca_length_mm: Band = (320.0, 430.0)
+    # Upper end raised from 430 to 460 mm on 2026-09-01: holding the rearmost
+    # rear pickup 80 mm clear of the axle/driveshaft plane makes the rear LCA
+    # front leg 452.5 mm. See docs/GEOMETRY_AUDIT_2026-09-01_rev5.md.
+    lca_length_mm: Band = (320.0, 460.0)
     uca_lca_ratio: Band = (0.55, 0.98)
     camber_gain_deg_per_mm: Band = (0.030, 0.050)
-    ea_ratio_max: float = 1.5
+    # Raised from 1.5 to 2.0 on 2026-09-01. Clearance delta at the rearmost
+    # pickup costs e/a = 1 + 2*delta/base, so 80 mm needs base >= 2*delta.
+    ea_ratio_max: float = 2.0
     anti_percent: Band = (0.0, 30.0)
     outer_camber_in_roll_deg: Band = (-2.5, 0.0)
     ball_joint_clearance_mm: float = 15.0
@@ -252,7 +257,20 @@ class AxleInputs:
     kingpin_length_mm: float
 
     # inboard: chassis pickup plane
+    #
+    # The two arms need not share one plane. An inboard pickup slides along the
+    # BALL JOINT -> FVIC line, so its y changes the arm LENGTH and nothing else
+    # in the front-view construction: FVIC, FVSA, roll centre height and camber
+    # gain at ride height are identical whatever y is chosen. Only the arc
+    # CURVATURE over travel moves, which shows up in the full-bump/droop values
+    # and in roll-centre migration, not in the ride-height rates.
+    #
+    # ``inner_pickup_y_mm`` is the shared default; the two overrides below let
+    # the upper arm sit outboard of the lower one, which is what the chassis
+    # needs when the upper rail is wider than the lower.
     inner_pickup_y_mm: float = 175.0
+    lca_inner_y_mm: float | None = None
+    uca_inner_y_mm: float | None = None
 
     # front-view targets
     rc_height_mm: float
@@ -280,6 +298,18 @@ class AxleInputs:
     @property
     def half_track_mm(self) -> float:
         return self.track_mm / 2.0
+
+    @property
+    def lca_inner_y(self) -> float:
+        """Chassis pickup plane of the LOWER arm, resolved."""
+        return self.inner_pickup_y_mm if self.lca_inner_y_mm is None \
+            else self.lca_inner_y_mm
+
+    @property
+    def uca_inner_y(self) -> float:
+        """Chassis pickup plane of the UPPER arm, resolved."""
+        return self.inner_pickup_y_mm if self.uca_inner_y_mm is None \
+            else self.uca_inner_y_mm
 
     @property
     def contact_patch(self) -> Vec2:
@@ -392,8 +422,8 @@ def solve_axle(inp: AxleInputs, veh: VehicleData) -> AxleGeometry:
         t = (y - outer[0]) / (ic[0] - outer[0])
         return outer + t * (ic - outer)
 
-    lca_in = on_line_at_y(lbj, fvic, inp.inner_pickup_y_mm)
-    uca_in = on_line_at_y(ubj, fvic, inp.inner_pickup_y_mm)
+    lca_in = on_line_at_y(lbj, fvic, inp.lca_inner_y)
+    uca_in = on_line_at_y(ubj, fvic, inp.uca_inner_y)
 
     lca_len = float(np.linalg.norm(lbj - lca_in))
     uca_len = float(np.linalg.norm(ubj - uca_in))
@@ -1008,7 +1038,8 @@ def notes_report(front: AxleGeometry) -> str:
     L.append("")
     L.append(" Values tagged design_intent (chosen, not measured or computed):")
     L.append("   static camber, roll centre heights, FVSA lengths, KPI, roll")
-    L.append("   gradient target, chassis stiffness factors, brake bias.")
+    L.append("   gradient target, chassis stiffness factors, brake bias,")
+    L.append("   front anti-dive target, inboard pickup planes.")
     return '\n'.join(L)
 
 
@@ -1036,12 +1067,22 @@ FRONT_2027 = AxleInputs(
     lbj_z_mm=130.0,
     kpi_deg=10.0,
     kingpin_length_mm=259.34,
+    # Upper arm picks up 35 mm outboard of the lower one: the chassis rail that
+    # carries it is wider than the one under it. Kinematically free -- the
+    # pickup slides along the UBJ -> FVIC line, so only the arm length changes.
     inner_pickup_y_mm=175.0,
+    uca_inner_y_mm=210.0,
     rc_height_mm=35.0,
     fvsa_length_mm=1500.0,
     axle_x_mm=0.0,
     lca_base_mm=260.0, lca_sweep_mm=0.0,
     uca_base_mm=240.0, uca_sweep_mm=0.0,
+    # Anti-dive 7.5 % (design_intent, mid-band of the 5-10 % the team asked
+    # for). Back-solved with dz_uca_for_anti(FRONT_2027, VEHICLE_2027, 7.5),
+    # which returns -11.3049. NOTE THE SIGN: with the LCA axis horizontal a
+    # POSITIVE dz_uca gives PRO-dive. The rear UCA pickup sits 11.3 mm below
+    # the front one over a 240 mm base (-2.70 deg).
+    dz_uca_mm=-11.305,
     limits=CheckLimits(kpi_deg=(6.0, 14.0)),
 )
 
@@ -1056,15 +1097,20 @@ REAR_2027 = AxleInputs(
     kpi_deg=8.5,
     kingpin_length_mm=263.23,
     inner_pickup_y_mm=175.0,
+    uca_inner_y_mm=210.0,
     rc_height_mm=55.0,
     fvsa_length_mm=1400.0,
     axle_x_mm=1540.0,
-    # Rear pickup held on the rear-axle line (no pickup behind the axle):
-    # sweep = base/2 places the rearmost pickup at x = axle_x exactly.
-    # This forces e/a = 1.0; base is shrunk to 180/160 to keep both front
-    # legs under the 430 mm limit. See docs/GEOMETRY_AUDIT_2026-08-26_rev3.md.
-    lca_base_mm=180.0, lca_sweep_mm=90.0,
-    uca_base_mm=160.0, uca_sweep_mm=80.0,
+    # Rearmost pickup held 80 mm AHEAD of the rear-axle line, so no chassis
+    # bracket shares the driveshaft's X plane. sweep = delta + base/2 puts it
+    # at x = axle_x - delta; the clearance costs e/a = 1 + 2*delta/base, so
+    # base = 2*delta = 160 is the narrowest that meets the e/a <= 2.0 cap and
+    # therefore the one giving the shortest front legs. Supersedes rev 3's
+    # on-the-axle layout (base 180/160, sweep 90/80, e/a 1.0), which the
+    # chassis team could not build around. See
+    # docs/GEOMETRY_AUDIT_2026-09-01_rev5.md.
+    lca_base_mm=160.0, lca_sweep_mm=160.0,
+    uca_base_mm=160.0, uca_sweep_mm=160.0,
     limits=CheckLimits(kpi_deg=(3.0, 10.0)),
 )
 

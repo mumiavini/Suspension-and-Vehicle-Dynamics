@@ -78,10 +78,16 @@ owns the tie rod that closes the sixth DOF.
   Supersedes sla's zero-caster outboard ball joints.
 - `legacy_app/` — **do not quote its dynamic KPIs.** Its solver models each
   wishbone as a strut to the pivot midpoint, leaving 3 of 9 DOF to a numerical
-  regularisation. Anti-dive reports +200% (actually 0%), Ackermann +173%
-  (actually ~70%, formula inverted vs its docstring), RC migration ~1 mm
-  (actually 110 mm), rear camber gain 27% low, mechanical trail sign inverted.
-  Static values are correct. The app carries a banner saying so.
+  regularisation. Ackermann +173% (actually ~70%, formula inverted vs its
+  docstring), RC migration ~1 mm (actually 87 mm), rear camber gain 27% low,
+  mechanical trail sign inverted. Static values are correct. The app carries a
+  banner saying so.
+
+  Its anti-geometry used to report +200% against a true 0%. Since the front
+  carries real pivot rake (rev 5) the two are close — 6.908% against 6.923% at
+  a 0.60 brake bias — but only because the LOWER axis is horizontal, which
+  leaves the pivot-midpoint error at the 12.6 mm pickup-to-ball-joint height.
+  Rake the lower arm and the error returns. Still do not quote it.
 
 Track is measured at the **contact patches**. `loaded_radius_mm` is the vertical
 wheel-centre-to-road distance, so patches sit at z=0 and negative camber moves
