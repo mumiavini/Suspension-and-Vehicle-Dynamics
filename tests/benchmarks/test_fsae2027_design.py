@@ -471,12 +471,15 @@ class TestSteering:
         assert steer.rates.steering_ratio == pytest.approx(4.58, abs=0.05)
 
     def test_parking_effort_within_limit(self, steer: stg.SteeringReport) -> None:
-        """9.73 N.m against a 10 N.m limit -- only 3% of margin.
+        """7.96 N.m against a 10 N.m limit -- 20% of margin.
 
-        Scrub radius drives this through M = mu*Fz*sqrt(rs^2 + tm^2), so any
-        change that moves the contact patch outboard eats the margin.
+        Was 9.73 N.m (3% of margin) while the front mass fraction was set to
+        55%. That was inverted -- the car is 45% front / 55% rear -- and the
+        effort is linear in Fz, so the correction bought 18% straight off.
+        Scrub radius drives the rest through M = mu*Fz*sqrt(rs^2 + tm^2), so
+        any change that moves the contact patch outboard still eats margin.
         """
-        assert steer.effort.steering_wheel_torque_Nm == pytest.approx(9.73, abs=0.1)
+        assert steer.effort.steering_wheel_torque_Nm == pytest.approx(7.96, abs=0.1)
         assert steer.effort.steering_wheel_torque_Nm <= 10.0
 
 

@@ -513,7 +513,8 @@ def hardpoints_section(doc, hp: gs.MergedHardpoints) -> None:
          color=BAD, italic=False)
 
 
-def load_case_section(doc, veh: sla.VehicleData) -> None:
+def load_case_section(doc, veh: sla.VehicleData, front: sla.AxleGeometry,
+                      rear: sla.AxleGeometry) -> None:
     heading(doc, "7. Load case behind the leg forces")
     note(doc, "The superseded document printed leg forces with no stated load "
               "case, so they could not be checked or defended. These are the "
@@ -522,11 +523,38 @@ def load_case_section(doc, veh: sla.VehicleData) -> None:
         ["Total mass", f"{veh.total_mass_kg:.1f} kg", "input"],
         ["Front mass fraction", f"{100 * veh.front_mass_fraction:.1f} %", "input"],
         ["CG height", f"{veh.cg_height_mm:.1f} mm", "estimate"],
-        ["Lateral friction coefficient", "1.50", "design_intent"],
-        ["Longitudinal friction coefficient", "1.40", "design_intent"],
-        ["Lateral acceleration", "1.50 g", "design_intent"],
-        ["Lateral load transfer distribution", "0.55", "design_intent"],
+        ["Lateral friction coefficient", f"{veh.mu_lateral:.2f}", "design_intent"],
+        ["Longitudinal friction coefficient",
+         f"{veh.mu_longitudinal:.2f}", "design_intent"],
+        ["Lateral acceleration", f"{veh.design_ay_g:.2f} g", "design_intent"],
+        ["Lateral load transfer distribution (front share)",
+         f"{veh.lltd_front:.2f}", "design_intent"],
     ], widths=[3.2, 1.9, 1.8], right_align_from=1)
+
+    note(doc,
+         f"LLTD {veh.lltd_front:.2f} against a front mass fraction of "
+         f"{veh.front_mass_fraction:.2f} makes lateral transfer proportional to "
+         f"axle load, so it introduces no balance shift of its own. That is a "
+         f"neutral BASELINE, not a tuned value — the balance target that would "
+         f"justify tuning away from it needs tyre data the team does not have.",
+         italic=False)
+
+    rows = []
+    for label, geo, is_front in (("Front", front, True), ("Rear", rear, False)):
+        lc = sla.load_cases(geo, veh)
+        rows.append([label, f"{lc['Fz_static']:.1f} N", f"{lc['Fz']:.1f} N",
+                     f"{lc['Fz_inner']:.1f} N",
+                     f"{gs.lltd_lift_threshold(veh, geo, is_front):.3f}"])
+    table(doc, ["Axle", "Static / wheel", "Outer", "Inner", "Inner lifts at LLTD"],
+          rows, widths=[1.0, 1.5, 1.4, 1.4, 1.6], right_align_from=1)
+
+    lo = gs.lltd_lift_threshold(veh, rear, False)
+    hi = gs.lltd_lift_threshold(veh, front, True)
+    note(doc,
+         f"The usable band is LLTD {lo:.3f} to {hi:.3f}. Outside it one inner "
+         f"wheel lifts at {veh.design_ay_g:.2f} g and every force in this "
+         f"section is void — the model loads a single outer wheel.",
+         italic=False)
 
     note(doc, "TWO LIMITS, to be repeated wherever the force table appears:",
          italic=False, color=BAD)
@@ -687,7 +715,7 @@ def build_docx() -> Path:
     steering_section(doc, steer, stg.STEERING_2027)
     members_section(doc, hp)
     hardpoints_section(doc, hp)
-    load_case_section(doc, design.vehicle)
+    load_case_section(doc, design.vehicle, design.front, design.rear)
     open_items_section(doc, design.front, design.rear, hp)
     charts_section(doc)
 
