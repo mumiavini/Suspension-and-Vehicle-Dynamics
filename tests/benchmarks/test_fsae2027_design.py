@@ -144,22 +144,22 @@ class TestStaticSynthesis:
     def test_real_member_legs_rear_within_limits(
         self, design: sla.DesignReport
     ) -> None:
-        """Rear legs are within the 320-460 mm band.
+        """Rear legs are within the 320-490 mm band.
 
-        Sweep = delta + base/2 holds the rearmost inboard pickup 80 mm AHEAD
-        of the rear-axle line, so no chassis bracket shares the driveshaft's X
-        plane. The clearance costs e/a = 1 + 2*delta/base, so base = 2*delta =
-        160 is the narrowest meeting the e/a <= 2.0 cap and therefore the one
-        with the shortest front legs. The binding member is the LCA front leg
-        at 452.5 mm, which is why the band went from 430 to 460.
-
-        This supersedes rev 3 (base 180/160, sweep 90/80, rearmost pickup ON
-        the axle at e/a 1.0), which the chassis team could not build around.
+        2026-09-02: the LCA rear bracket alone moved to 100 mm clearance from
+        the driveshaft plane (UCA stayed at 80 mm). Sweep = delta + base/2
+        holds each arm's rearmost inboard pickup that many mm AHEAD of the
+        rear-axle line. The LCA's clearance costs e/a = 1 + 2*delta/base, so
+        base = 2*delta = 200 is the narrowest meeting the e/a <= 2.0 cap (it
+        lands exactly on it) -- and therefore the shortest achievable front
+        leg at that clearance. The binding member is now the LCA front leg
+        at 487.0 mm, which is why the band went from 460 to 490. The UCA legs
+        are untouched by this change.
         """
         legs = sla.member_legs_mm(design.rear)
-        assert legs["LCA front leg"] == pytest.approx(452.49, abs=0.05)
+        assert legs["LCA front leg"] == pytest.approx(486.98, abs=0.05)
         assert legs["UCA front leg"] == pytest.approx(396.60, abs=0.05)
-        assert legs["LCA rear leg"] == pytest.approx(391.85, abs=0.05)
+        assert legs["LCA rear leg"] == pytest.approx(396.42, abs=0.05)
         assert legs["UCA rear leg"] == pytest.approx(325.71, abs=0.05)
         lo, hi = design.rear.inputs.limits.lca_length_mm
         assert lo <= legs["LCA front leg"] <= hi
@@ -254,14 +254,17 @@ class TestStaticSynthesis:
         """No rear inboard pickup may share the rear axle's X plane.
 
         The chassis team could not build a bracket around the driveshaft when
-        the rearmost pickups sat exactly on the axle line. 80 mm is the agreed
-        clearance; this asserts the layout still delivers it.
+        the rearmost pickups sat exactly on the axle line. Since 2026-09-02
+        the two arms carry different agreed clearances -- the LCA bracket
+        needs 100 mm, the UCA stayed at 80 mm -- so each arm is checked
+        against its own floor rather than one shared value.
         """
         rear = design.rear
         axle_x = rear.inputs.axle_x_mm
-        for x in (rear.lca_in_rear_x_mm, rear.uca_in_rear_x_mm,
-                  rear.lca_in_front_x_mm, rear.uca_in_front_x_mm):
-            assert axle_x - x >= 80.0 - 1e-9, f"pickup at x={x} is inside 80 mm"
+        for x in (rear.lca_in_rear_x_mm, rear.lca_in_front_x_mm):
+            assert axle_x - x >= 100.0 - 1e-9, f"LCA pickup at x={x} is inside 100 mm"
+        for x in (rear.uca_in_rear_x_mm, rear.uca_in_front_x_mm):
+            assert axle_x - x >= 80.0 - 1e-9, f"UCA pickup at x={x} is inside 80 mm"
 
 
 class TestExportedAlignment:

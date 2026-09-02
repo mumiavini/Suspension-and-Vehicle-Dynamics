@@ -224,10 +224,14 @@ class CheckLimits:
     scrub_radius_mm: Band = (5.0, 25.0)
     kpi_deg: Band = (6.0, 14.0)
     kingpin_length_mm: Band = (200.0, 260.0)
-    # Upper end raised from 430 to 460 mm on 2026-09-01: holding the rearmost
-    # rear pickup 80 mm clear of the axle/driveshaft plane makes the rear LCA
-    # front leg 452.5 mm. See docs/GEOMETRY_AUDIT_2026-09-01_rev5.md.
-    lca_length_mm: Band = (320.0, 460.0)
+    # Upper end raised from 430 to 460 mm on 2026-09-01 (rear LCA front leg
+    # 452.5 mm at 80 mm driveshaft clearance), then to 490 mm on 2026-09-02:
+    # the LCA rear bracket moved to 100 mm clearance (UCA stays at 80 mm), and
+    # the wider base=200/sweep=200 needed to hold the e/a cap at that
+    # clearance pushes the LCA front leg to ~487 mm -- now the sole binding
+    # member (the UCA legs are unaffected, still ~397/326 mm). See
+    # docs/GEOMETRY_AUDIT_2026-09-02_rev6.md.
+    lca_length_mm: Band = (320.0, 490.0)
     uca_lca_ratio: Band = (0.55, 0.98)
     camber_gain_deg_per_mm: Band = (0.030, 0.050)
     # Raised from 1.5 to 2.0 on 2026-09-01. Clearance delta at the rearmost
@@ -1101,15 +1105,18 @@ REAR_2027 = AxleInputs(
     rc_height_mm=55.0,
     fvsa_length_mm=1400.0,
     axle_x_mm=1540.0,
-    # Rearmost pickup held 80 mm AHEAD of the rear-axle line, so no chassis
-    # bracket shares the driveshaft's X plane. sweep = delta + base/2 puts it
-    # at x = axle_x - delta; the clearance costs e/a = 1 + 2*delta/base, so
-    # base = 2*delta = 160 is the narrowest that meets the e/a <= 2.0 cap and
-    # therefore the one giving the shortest front legs. Supersedes rev 3's
-    # on-the-axle layout (base 180/160, sweep 90/80, e/a 1.0), which the
-    # chassis team could not build around. See
-    # docs/GEOMETRY_AUDIT_2026-09-01_rev5.md.
-    lca_base_mm=160.0, lca_sweep_mm=160.0,
+    # Asymmetric clearance, 2026-09-02: the LCA rear bracket needs 100 mm clear
+    # of the driveshaft plane; the UCA stays at the rev-5 value of 80 mm. Each
+    # arm keeps its own base/sweep (sweep = delta + base/2, x = axle_x -
+    # delta), so the two deltas are independent. For the LCA, base = 2*delta =
+    # 200 is the narrowest base that still meets the e/a <= 2.0 cap (it lands
+    # exactly on it) -- the alternative of leaving lca_base_mm at 160 and only
+    # raising the sweep clears delta = 100 with a smaller base, but breaches
+    # BOTH the e/a cap (2.25) and the leg-length band; this option breaches
+    # only the leg-length band (LCA front leg ~487 mm, see lca_length_mm
+    # below). The UCA is untouched: base = 2*delta = 160 still holds for its
+    # 80 mm clearance, same as rev 5. See docs/GEOMETRY_AUDIT_2026-09-02_rev6.md.
+    lca_base_mm=200.0, lca_sweep_mm=200.0,
     uca_base_mm=160.0, uca_sweep_mm=160.0,
     limits=CheckLimits(kpi_deg=(3.0, 10.0)),
 )
