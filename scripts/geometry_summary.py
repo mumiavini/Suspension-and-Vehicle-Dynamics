@@ -85,10 +85,15 @@ CSV_PATH = REPO / "legacy_app" / "carro_formula_2027.csv"
 # FSAE rules the geometry alone can be checked against.
 FSAE_MIN_WHEELBASE_MM = 1525.0
 FSAE_MIN_TRACK_RATIO = 0.75
-# Mirrors CheckLimits.lca_length_mm in sla_geometry.py -- keep the two in step.
-# Raised from 430 to 460 on 2026-09-01 for the rear driveshaft clearance.
-ARM_LENGTH_WINDOW_MM = (320.0, 460.0)
-KINGPIN_WINDOW_MM = (200.0, 260.0)
+# Mirrors CheckLimits.lca_length_mm in sla_geometry.py -- read from there rather
+# than restated, because restating it drifted: rev 6 raised the sla band to 490
+# and left this copy at 460, so section 5 (the authority for member lengths)
+# failed the rear LCA front leg at 486.98 mm while section 2's own table passed
+# the identical number. test_summary_bands_mirror_sla_limits locks them now.
+# History: 430 -> 460 on 2026-09-01 (rear driveshaft clearance, rev 5),
+# 460 -> 490 on 2026-09-02 (asymmetric rear LCA clearance, rev 6).
+ARM_LENGTH_WINDOW_MM = sla.CheckLimits().lca_length_mm
+KINGPIN_WINDOW_MM = sla.CheckLimits().kingpin_length_mm
 
 POINT_ORDER = (
     "UCA_IN_FRONT", "UCA_IN_REAR", "UCA_OUT",

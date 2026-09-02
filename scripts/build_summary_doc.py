@@ -227,14 +227,20 @@ def provenance(doc, hp: gs.MergedHardpoints) -> None:
               "In ISO 8855 the rear axle is at NEGATIVE X and right-hand corners "
               "are at NEGATIVE Y.")
 
-    if hp.rear_tie_rod_from_csv:
-        note(doc,
-             "OPEN: the rear tie rod is not synthesised by any script. "
-             "steering_geometry.py covers the front axle only, so RL/RR "
-             "TIE_ROD_IN and TIE_ROD_OUT are hand-entered points read from "
-             "legacy_app/carro_formula_2027.csv. They are not regenerated, not "
-             "bounds-checked and not covered by any test.",
-             italic=False, color=BAD)
+    # Until rev 5 the rear toe link was read back out of the exported CSV and
+    # this block printed a red warning gated on a `rear_tie_rod_from_csv` flag.
+    # That flag, and the condition behind it, are gone: the link is now a
+    # declared design input in geometry_summary.py. The disclosure stays --
+    # design_intent provenance must be reported wherever it is consumed -- but
+    # it is a statement of provenance now, not a defect.
+    note(doc,
+         f"The rear toe link is a declared {gs.REAR_TOE_LINK_SOURCE} input "
+         "(REAR_TOE_LINK_INBOARD / _OUTBOARD in geometry_summary.py), not a "
+         "measured or synthesised value. The rear has no rack, so "
+         "steering_geometry.py -- which covers the front axle only -- does not "
+         "produce it. It is regenerated with every run, and its inboard Z was "
+         "chosen to null the linear bump-steer rate; section 3c reports the "
+         "solved result and how sharp that knob is.")
 
 
 def vehicle_section(doc, veh: sla.VehicleData, res: sla.VehicleResults,
@@ -561,8 +567,20 @@ def open_items_section(doc, front: sla.AxleGeometry, rear: sla.AxleGeometry,
         "The front mass fraction is an unusual value for a rear-drive car and it "
         "drives both the roll-stiffness requirement and every leg force. Confirm "
         "it before the chassis is sized against it.",
-        "The rear tie rod has no synthesis script and no test."
-        if hp.rear_tie_rod_from_csv else "",
+        # Superseded: the rear toe link gained a synthesis path and tests in
+        # rev 5. What is still open is its OUTBOARD end, which is an upright
+        # feature rather than a chassis point and so was left behind when the
+        # inboard end moved forward for packaging. Mirrors the same check in
+        # geometry_summary.alignment_section.
+        f"The rear toe link outboard point sits "
+        f"{hp.arr('RL', 'LCA_OUT')[0] - hp.arr('RL', 'TIE_ROD_OUT')[0]:.1f} mm "
+        f"behind the wishbone outboard ball joints, at Y = "
+        f"{abs(hp.arr('RL', 'TIE_ROD_OUT')[1]):.0f}. It is an upright feature, "
+        "not a chassis connection, so it stayed put when the inboard end moved "
+        "forward. Bringing it ahead of the axle would be a rear-upright "
+        "redesign and would flip the sign of toe change under longitudinal "
+        "load."
+        if hp.arr("RL", "TIE_ROD_OUT")[0] < hp.arr("RL", "LCA_OUT")[0] else "",
         "Deliberately not computed here, and out of scope for this tool: wheel "
         "rates, motion ratio, ride frequency, damping; stress, deflection, "
         "fatigue, buckling; anything requiring tyre data until TTC data is "
@@ -572,13 +590,45 @@ def open_items_section(doc, front: sla.AxleGeometry, rear: sla.AxleGeometry,
             note(doc, text, italic=False)
 
 
-def charts_section(doc) -> None:
+# Every geometry input the chart would be drawn from. If the image predates any
+# of these it is showing a superseded car, and no script in this repo regenerates
+# it -- the plotting mode the old caption credited to sla_geometry.py no longer
+# exists there. A figure that silently lags the tables beside it is the visual
+# form of the failure this project forbids for numbers, so the figure is dropped
+# rather than shown with a caption it cannot support.
+CHART_SOURCES = (
+    REPO / "sla_geometry.py",
+    REPO / "steering_geometry.py",
+    REPO / "scripts" / "geometry_summary.py",
+)
+
+
+def chart_is_current() -> bool:
     if not CHART.exists():
-        return
+        return False
+    drawn = CHART.stat().st_mtime
+    return all(src.stat().st_mtime <= drawn
+               for src in CHART_SOURCES if src.exists())
+
+
+def charts_section(doc) -> None:
     heading(doc, "9. Charts")
-    note(doc, "Regenerated from sla_geometry.py in its corrected mode. The plots "
-              "in the superseded document came from a mix of toolchains and "
-              "disagreed with its own tables.")
+    if not chart_is_current():
+        stamp = (dt.datetime.fromtimestamp(CHART.stat().st_mtime).strftime("%Y-%m-%d")
+                 if CHART.exists() else "never generated")
+        note(doc,
+             f"No figure in this revision. {CHART.name} ({stamp}) predates the "
+             "current geometry and nothing in the repository regenerates it, so "
+             "it would show a superseded car next to current tables. The "
+             "numbers it plotted — front-view construction, camber and roll "
+             "centre vs travel, half-track change, roll behaviour — are all in "
+             "sections 2 and 3 as solved values.",
+             italic=False, color=BAD)
+        return
+    note(doc, "Drawn from the same geometry as the tables above, and newer than "
+              "every script that defines it. The plots in the superseded "
+              "document came from a mix of toolchains and disagreed with its "
+              "own tables.")
     doc.add_picture(str(CHART), width=Inches(6.9))
     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
     note(doc, "Front-view construction, camber and roll centre vs travel, "
