@@ -603,62 +603,6 @@ class Vehicle:
         return math.degrees(math.atan2(rc_rear - rc_front, self.wheelbase_mm))
 
     # -------------------------------------------------------------------------
-    # Static (geometric) Ackermann
-    # -------------------------------------------------------------------------
-
-    def static_ackermann_percent(
-        self,
-        tie_rod_fl_outboard: Point3D,
-        tie_rod_fr_outboard: Point3D,
-    ) -> float:
-        """
-        Static Ackermann (%) — how close the steering geometry COMES
-        to perfect Ackermann (100%).
-
-        ALGORITHM:
-            Perfect Ackermann (100%) occurs when the lines starting from each
-            kingpin axis, passing through the respective tie-rod outboard,
-            converge to a single point on the rear axle.
-
-            Practical approximation (Steer Arm method):
-                tan(α_perfect) = (track / 2) / wheelbase
-                α_real = atan(steer_arm_offset / wheel_center_to_pin_dist)
-
-            Ratio (real / perfect) × 100% = Ackermann %
-
-        SIMPLIFICATION USED:
-            Measure the angle between the steer arm (vector from the kingpin
-            projection to the TRO, in the XY plane) and the vehicle's Y axis.
-            Compare it to the vehicle's perfect Ackermann angle.
-
-        Returns a percentage (100% = perfect, 0% = parallel).
-        """
-        # Vehicle's perfect Ackermann angle (simple geometry)
-        if self.wheelbase_mm < 1e-6 or self.track_front_mm < 1e-6:
-            return 0.0
-        perfect_angle_rad = math.atan2(self.track_front_mm / 2.0, self.wheelbase_mm)
-
-        # Real steer-arm angle of the FL corner
-        kp_fl = self.front_left.kingpin.kingpin_axis().to_array()
-        wc_fl = self.front_left.wheel_center.to_array()
-        tro_fl = tie_rod_fl_outboard.to_array()
-
-        # Vector TRO → projection onto the XY plane (top view)
-        steer_arm_vec_fl = tro_fl - wc_fl
-        # Remove the component parallel to the kingpin axis
-        steer_arm_perp_fl = steer_arm_vec_fl - np.dot(steer_arm_vec_fl, kp_fl) * kp_fl
-        sa_xy_fl = np.array([steer_arm_perp_fl[0], steer_arm_perp_fl[1]])
-        if float(np.linalg.norm(sa_xy_fl)) < 1e-9:
-            return 0.0
-        # The steer-arm angle with the Y axis (lateral)
-        real_angle_rad = abs(math.atan2(sa_xy_fl[0], abs(sa_xy_fl[1]) + 1e-12))
-
-        # Ackermann % = ratio of the real angle to the ideal one
-        if perfect_angle_rad < 1e-9:
-            return 0.0
-        return float(100.0 * real_angle_rad / perfect_angle_rad)
-
-    # -------------------------------------------------------------------------
     # Formatted summary
     # -------------------------------------------------------------------------
 

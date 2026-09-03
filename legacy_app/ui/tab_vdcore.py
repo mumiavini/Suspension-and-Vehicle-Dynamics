@@ -21,9 +21,6 @@ HISTORY — this absorbed the old ``tab_analysis.py`` (deleted 2026-08-27).
     Anti-dive/anti-squat and Ackermann were also wrong at the source (+200 % and
     +173 %); both are fixed and now appear here with real values.
 
-The legacy-vs-vdcore delta table is kept deliberately: it is the evidence for
-why the old solver was retired, and it is quotable in Design Event.
-
 Everything comes from ``analysis/vdcore_bridge.py``; this module is presentation
 only (Streamlit + plotly). Plotly is allowed here — this is ``legacy_app/``, an
 application layer, not the pure ``vdcore/`` library.
@@ -52,16 +49,13 @@ from analysis.altair_bridge import (
 from analysis.altair_bridge import (
     load_cached as load_altair_cached,
 )
-from analysis.io_hardpoints import VALID_CORNERS, build_vehicle_from_dataframe
-from analysis.kpis import ackermann_geometry, steer_ratio_from_pinion
+from analysis.io_hardpoints import VALID_CORNERS
+from analysis.kpis import steering_arm_lengths, steer_ratio_from_pinion
 from analysis.sweeps import (
-    SweepRunner,
-    camber_gain_per_mm,
     plot_bump_steer,
     plot_camber_vs_heave,
     plot_caster_kpi_vs_steer,
     plot_rc_migration,
-    rc_migration_range,
 )
 from analysis.vdcore_bridge import (
     AxleVdcoreKPIs,
@@ -76,7 +70,6 @@ from analysis.vdcore_bridge import (
     vdcore_roll_sweep,
     vdcore_sweep,
 )
-from geometry import KinematicSolver3D
 
 from ui.shared import (
     DESIGN_BRAKE_BIAS_FRONT,
@@ -99,37 +92,6 @@ def _fmt(value: float | None, digits: int = 4, unit: str = "") -> str:
         return "—"
     suffix = f" {unit}" if unit else ""
     return f"{value:.{digits}f}{suffix}"
-
-
-def _legacy_dynamic_kpis(df: pl.DataFrame) -> dict[str, dict[str, float]]:
-    """Recompute the legacy dynamic KPIs for the delta table.
-
-    Mirrors the heave-sweep block of the deleted ``tab_analysis`` so the
-    numbers shown as "legacy" are exactly what the Analysis tab produces. Returns
-    ``{"front": {...}, "rear": {...}}`` with camber gain (deg/mm) and RC
-    migration Z range (mm). Any failure degrades to NaN, never a crash.
-    """
-    out: dict[str, dict[str, float]] = {}
-    vehicle, tie_rods = build_vehicle_from_dataframe(df)
-    axles = {
-        "front": (vehicle.front_left, tie_rods["FL"]),
-        "rear": (vehicle.rear_left, tie_rods["RL"]),
-    }
-    for name, (corner, tie_rod) in axles.items():
-        try:
-            runner = SweepRunner(solver=KinematicSolver3D(corner, tie_rod))
-            heave = runner.heave_sweep(-25.0, 25.0, 2.5)
-            _, rc_dz = rc_migration_range(heave)
-            out[name] = {
-                "camber_gain_deg_per_mm": camber_gain_per_mm(heave),
-                "rc_migration_z_mm": rc_dz,
-            }
-        except Exception:
-            out[name] = {
-                "camber_gain_deg_per_mm": float("nan"),
-                "rc_migration_z_mm": float("nan"),
-            }
-    return out
 
 
 def _render_altair_controls(
@@ -284,61 +246,6 @@ def _render_axle_cards(kpi: AxleVdcoreKPIs) -> None:
     r4.metric("RC lateral", _fmt(roll.rc_lateral_mm, 2, "mm"),
               help="Sideways RC shift. The legacy app reports ~0 here because it "
                    "averages the two sides and the lateral terms cancel.")
-
-
-def _render_delta_table(
-    vd: VdcoreKPIs,
-    legacy: dict[str, dict[str, float]],
-    altair: AltairKPIs | None = None,
-) -> None:
-    """Side-by-side legacy-vs-vdcore table for the two overlapping KPIs.
-
-    When a current MotionSolve run exists, an Altair column and a
-    vdcore-minus-Altair delta are appended — the independent check on the two
-    KPIs the legacy solver got most wrong.
-    """
-    st.markdown("#### Legacy vs vdcore — the correction, made visible")
-
-    def rows_for(axle_name: str, vd_axle: AxleVdcoreKPIs) -> list[dict]:
-        leg = legacy.get(axle_name, {})
-        rates = vd_axle.rates
-        vd_cg = rates.camber_gain_deg_per_mm if rates else float("nan")
-        vd_rc = (rates.rc_max_mm - rates.rc_min_mm) if rates else float("nan")
-
-        spec = (
-            ("Camber gain (°/mm)", "camber_gain_deg_per_mm", "camber_gain", vd_cg, 4),
-            ("RC migration Z range (mm)", "rc_migration_z_mm", "rc_dz", vd_rc, 2),
-        )
-        out: list[dict] = []
-        for label, legacy_key, altair_key, vd_value, digits in spec:
-            row = {
-                "Axle": vd_axle.label,
-                "KPI": label,
-                "Legacy": _fmt(leg.get(legacy_key), digits),
-                "vdcore": _fmt(vd_value, digits),
-            }
-            if altair is not None:
-                alt = altair.get(axle_name, altair_key)
-                row["Altair"] = _fmt(alt, digits)
-                row["vdcore − Altair"] = (
-                    _NO_ALTAIR if alt is None or math.isnan(vd_value)
-                    else f"{vd_value - alt:.2e}"
-                )
-            out.append(row)
-        return out
-
-    rows = rows_for("front", vd.front) + rows_for("rear", vd.rear)
-    st.dataframe(pl.DataFrame(rows), hide_index=True, width="stretch")
-    st.caption(
-        "The legacy strut-to-midpoint solver barely rotates the arms under "
-        "travel, so its RC migration collapses toward ~1 mm and its camber gain "
-        "reads low. vdcore constrains the real linkage."
-        + (
-            "  **Altair** is Altair MotionSolve on the same hardpoints — an "
-            "independent DAE solver, not a re-run of vdcore."
-            if altair is not None else ""
-        )
-    )
 
 
 def _render_camber_plot(vd: VdcoreKPIs) -> None:
@@ -747,9 +654,9 @@ def _render_setup_sheet(
         ackermann_pct = float("nan")
 
     try:
-        ack_info = ackermann_geometry(
+        ack_info = steering_arm_lengths(
             vehicle.front_left, tie_rods["FL"],
-            vehicle.front_right, tie_rods["FR"], vehicle.rear_left,
+            vehicle.front_right, tie_rods["FR"],
         )
         steer_arm_l = ack_info["steer_arm_length_left"]
         steer_arm_r = ack_info["steer_arm_length_right"]
@@ -1038,10 +945,6 @@ def render() -> None:
     _render_axle_cards(vd.front)
     st.divider()
     _render_axle_cards(vd.rear)
-    st.divider()
-
-    legacy = _legacy_dynamic_kpis(df)
-    _render_delta_table(vd, legacy, altair)
     st.divider()
 
     c_left, c_right = st.columns(2)

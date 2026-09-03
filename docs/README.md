@@ -615,13 +615,12 @@ fsae_suspension_clean/
 │   │                                 SuspensionCorner, Vehicle
 │   └── solver_3d.py                # 3D kinematic solver (3 spheres + LM)
 │
-├── analysis/                       # Analysis + I/O + KPIs + Optimization
+├── analysis/                       # Analysis + I/O + KPIs
 │   ├── __init__.py
-│   ├── sweeps.py                   # SweepRunner + Plotly plots
-│   ├── optimizer.py                # DesignTargets, SuspensionOptimizer
+│   ├── sweeps.py                   # Sweep result layout + Plotly plots
 │   ├── io_hardpoints.py            # read/write csv/xlsx/json
-│   └── kpis.py                     # Ackermann, Steer Ratio, Ride/Roll Camber,
-│                                     RC@1g, Anti-dive, build_full_report
+│   └── kpis.py                     # Wheelbase, track width, sum toe,
+│                                     steer ratio, steering arm length
 │
 ├── app.py                          # 🌐 Streamlit (5 areas)
 ├── README.md                       # This file
@@ -638,13 +637,11 @@ fsae_suspension_clean/
 
 **`geometry/solver_3d.py`** — 3D kinematic solver. Treats the upright as a rigid body. Solves the position at (heave, roll, rack) via 3-sphere intersection + `least_squares` (Levenberg-Marquardt).
 
-**`analysis/sweeps.py`** — Runs sweeps (`SweepRunner`). Computes camber gain, bump steer, RC migration. Generates Plotly plots.
-
-**`analysis/optimizer.py`** — Global optimization (`differential_evolution`). `DesignTargets` with static + dynamic targets, `HardpointBounds` for keep-out zones, `validate_against_targets()` for a report.
+**`analysis/sweeps.py`** — Defines the sweep result layout (`SWEEP_DTYPE`) and derives camber gain, bump steer, RC migration from it. Sweeps themselves are produced by `analysis/vdcore_bridge.py` (vdcore/DWSolver), not by this module. Generates Plotly plots.
 
 **`analysis/io_hardpoints.py`** — Reading, validation, writing. Builds `SuspensionCorner` and `Vehicle` from DataFrames.
 
-**`analysis/kpis.py`** — Advanced KPIs (Ackermann, Steer Ratio, Ride/Roll Camber, RC@1g, Anti-dive). `build_full_report()` generates a complete report.
+**`analysis/kpis.py`** — Wheelbase, track width, static sum toe, steer ratio/C-factor, steering arm length. Dynamic KPIs (camber gain, RC migration, Ackermann %, anti-dive/anti-squat) come from `vdcore`/`DWSolver` via `analysis/vdcore_bridge.py`; see CLAUDE.md.
 
 **`app.py`** — Streamlit with 5 areas: Sidebar + 4 tabs + Manual Editor.
 
@@ -656,8 +653,8 @@ fsae_suspension_clean/
 
 ```python
 from analysis.io_hardpoints import read_hardpoints, build_corner_from_dataframe
-from geometry import KinematicSolver3D
-from analysis.sweeps import SweepRunner, camber_gain_per_mm, bump_steer_per_mm
+from analysis.vdcore_bridge import CornerInputs, df_to_vdcore_corner, vdcore_sweep
+from analysis.sweeps import camber_gain_per_mm, bump_steer_per_mm
 
 df = read_hardpoints("my_car.xlsx")
 corner, tie_rod = build_corner_from_dataframe(df, "FL")
@@ -665,71 +662,20 @@ corner, tie_rod = build_corner_from_dataframe(df, "FL")
 print(f"Caster: {corner.static_caster_deg():+.3f}°")
 print(f"KPI:    {corner.static_kpi_deg():+.3f}°")
 
-solver = KinematicSolver3D(corner, tie_rod)
-runner = SweepRunner(solver=solver)
-sweep  = runner.heave_sweep(-25.0, 25.0, 1.0)
+vd_corner = df_to_vdcore_corner(df, "FL", CornerInputs.from_vehicle_setup({}))
+sweep = vdcore_sweep(vd_corner, "Heave", (-25.0, 25.0, 1.0))
 
 print(f"Camber gain: {camber_gain_per_mm(sweep):+.5f} °/mm")
 print(f"Bump steer:  {bump_steer_per_mm(sweep):+.5f} °/mm")
 ```
 
-### 12.2 Optimization
-
-```python
-from analysis.optimizer import (
-    SuspensionOptimizer, DesignTargets, validate_against_targets,
-)
-
-targets = DesignTargets(
-    caster_target_deg=4.5,
-    kpi_target_deg=7.0,
-    static_camber_target_deg=-1.5,
-    camber_gain_target_deg_per_mm=-0.020,
-    rc_height_target_mm=50.0,
-    heave_step_mm=5.0,
-)
-
-opt = SuspensionOptimizer(
-    seed_corner=corner, seed_tie_rod=tie_rod, targets=targets,
-    population_size=15, max_iterations=60, workers=-1,
-)
-result = opt.run()
-print(result.summary())
-
-report = validate_against_targets(
-    result.optimal_corner, result.optimal_tie_rod, targets,
-)
-print(report.summary())
-```
-
-### 12.3 Complete report
-
-```python
-from analysis.io_hardpoints import build_vehicle_from_dataframe
-from analysis.kpis import build_full_report
-
-vehicle, tie_rods = build_vehicle_from_dataframe(df)
-
-report = build_full_report(
-    vehicle, tie_rods,
-    cg_height_mm=280.0,
-    brake_bias_pct=60.0,
-    drive_type="RWD",
-    roll_stiffness_deg_per_g=1.5,
-)
-
-print(f"Wheelbase: {report.wheelbase_mm:.1f} mm")
-print(f"Track F:   {report.track_front_mm:.1f} mm")
-print(f"Front:     {report.front}")
-```
-
-### 12.4 Export
+### 12.2 Export
 
 ```python
 from analysis.io_hardpoints import dataframe_from_corner, save_dataframe
 
-df_out = dataframe_from_corner(result.optimal_corner, result.optimal_tie_rod)
-save_dataframe(df_out, "optimized_geometry.xlsx")
+df_out = dataframe_from_corner(corner, tie_rod)
+save_dataframe(df_out, "modified_geometry.xlsx")
 ```
 
 ---
@@ -757,17 +703,14 @@ save_dataframe(df_out, "optimized_geometry.xlsx")
 |---|---|
 | `wheelbase_mm(front, rear)` | Wheelbase |
 | `track_width_mm(left, right)` | Track width |
-| `ride_camber_deg_per_m(corner, tr)` | Ride Camber (°/m) |
-| `roll_camber_deg_per_deg(corner, tr)` | Roll Camber (°/°) |
 | `static_toe_deg(corner, tr)` | Static toe |
 | `static_sum_toe_deg(L, R, ...)` | Sum Toe |
-| `ackermann_geometry(...)` | Dict with Ackermann %, steer arms |
-| `steer_ratio_and_cfactor(...)` | Dict with rack/wheel° and wheel°/rack |
+| `steering_arm_lengths(fl, fl_tr, fr, fr_tr)` | Dict with left/right steering-arm length |
 | `steer_ratio_from_pinion(...)` | Steer Ratio (x:1) |
-| `roll_center_at_1g_lat(...)` | RC under 1g lateral |
-| `anti_dive_percent(...)` | Anti-dive |
-| `anti_squat_percent(...)` | Anti-squat |
-| `build_full_report(...)` | Complete `FullKPIReport` |
+
+Ackermann %, anti-dive/anti-squat, camber gain, and RC migration are dynamic
+KPIs computed via `analysis/vdcore_bridge.py` (vdcore/DWSolver), not by this
+module — see CLAUDE.md.
 
 ### 13.3 Dynamic (from sweeps)
 
