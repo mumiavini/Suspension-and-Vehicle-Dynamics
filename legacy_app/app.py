@@ -54,27 +54,6 @@ init_theme()
 inject_css()
 render_header()
 
-st.warning(
-    "**The Analysis tab's dynamic KPIs came from a solver that is wrong.** "
-    "It modelled each wishbone as a single strut to the midpoint between the two "
-    "chassis pivots, so the ball joint rode a sphere instead of a circle about "
-    "the pivot axis, leaving 3 of 9 degrees of freedom closed by a numerical "
-    "regularisation rather than by the linkage.\n\n"
-    "**Now fixed by delegation.** The swept dynamic KPIs — camber gain, "
-    "roll-centre migration and height, roll cambers — are computed by the "
-    "validated `vdcore` 3D solver (`vdcore.analysis.axle`, covered by the test "
-    "suite). Open the new **🔬 vdcore (validated)** tab to run the same loaded "
-    "geometry through it and compare side by side.\n\n"
-    "**Still flagged.** Anti-dive / anti-squat, Ackermann, scrub and mechanical "
-    "trail cannot be recomputed from loaded hardpoints alone — they need a "
-    "synthesised corner. Do not quote those from the Analysis tab; use "
-    "`sla_geometry.py` / `steering_geometry.py` or section 3b of "
-    "`scripts/geometry_summary.py`.\n\n"
-    "Static values — KPI, caster, scrub, roll-centre height — were always "
-    "correct.",
-    icon="🔧",
-)
-
 render_sidebar()
 
 # The old "Analysis" and "vdcore (validated)" tabs were merged. They showed the

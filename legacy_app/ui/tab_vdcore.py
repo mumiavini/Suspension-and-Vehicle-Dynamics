@@ -510,23 +510,17 @@ def _render_setup_sheet(
 ) -> None:
     """Full documentation setup sheet, geometry rows sourced from vdcore.
 
-    Mirrors the Analysis tab's "Complete Setup Sheet" (same categories and row
-    labels for easy cross-reference) but every geometry row is computed by the
-    validated ``DWSolver`` (Source ``📐 vdcore (validated)``). User-typed rows
-    (tyre/wheel/suspension/mass/damper) pass through unchanged. Anti-dive /
-    anti-squat / Ackermann are shown but flagged — they need a synthesised
-    corner, not loadable hardpoints. A CSV of the full table is downloadable for
-    documentation.
-
-    The input widgets use ``vd_sheet_*`` keys, namespaced away from the Analysis
-    tab's bare keys so the two tabs never collide in one session.
+    Every geometry row is computed by the validated ``DWSolver`` (Source
+    ``📐 vdcore (validated)``). User-typed rows (tyre/wheel/suspension/mass/
+    damper) pass through unchanged. Anti-dive/anti-squat and Ackermann are
+    computed from the real linkage too (see ``vdcore_bridge``). A CSV of the
+    full table is downloadable for documentation.
     """
     st.markdown("### 📋 Complete Setup Sheet (vdcore-validated)")
     st.caption(
-        "The same sheet as the Analysis tab, but **every geometry row comes "
-        "from the validated `DWSolver`**, not the legacy strut-to-midpoint "
-        "solver. Fill the inputs below for the rows the hardpoints file does "
-        "not carry (masses, springs, dampers)."
+        "Every geometry row comes from the validated `DWSolver`. Fill the "
+        "inputs below for the rows the hardpoints file does not carry "
+        "(masses, springs, dampers)."
     )
 
     # ─── User inputs (namespaced keys — never the Analysis tab's) ─────────────
@@ -859,8 +853,7 @@ def _render_setup_sheet(
     st.caption(
         "**Legend:** "
         f"{_VDCORE_SRC} — geometry from the real linkage · "
-        "🧮 derived (needs the inputs above) · ⌨️ user input · "
-        "⚠️ not vdcore — needs a synthesised corner from `steering_geometry.py`"
+        "🧮 derived (needs the inputs above) · ⌨️ user input"
         + (
             "  ·  **(Altair)** — the same row from Altair MotionSolve on the "
             "same hardpoints. Rows that are not geometry have no Altair value; "
@@ -879,19 +872,20 @@ def _render_setup_sheet(
 
 
 def render() -> None:
-    st.header("vdcore (validated) — dynamic KPIs on the real linkage")
+    st.header("Analysis — geometry, sweeps, setup sheet")
     st.markdown(
-        "This tab runs the **same loaded geometry** through the validated "
-        "`vdcore` 3D solver (`DWSolver`), which constrains all six degrees of "
-        "freedom with the real wishbone linkage. Unlike the **Analysis** tab, "
-        "the dynamic KPIs here are trustworthy — they are covered by the test "
-        "suite (`tests/benchmarks/test_fsae2027_design.py`)."
+        "Every KPI here — static geometry, dynamic sweeps (camber gain, "
+        "roll-centre migration, roll cambers), anti-dive/anti-squat and "
+        "Ackermann — is computed by the validated `vdcore` 3D solver "
+        "(`DWSolver`), which constrains all six degrees of freedom with the "
+        "real wishbone linkage and is covered by the test suite "
+        "(`tests/benchmarks/test_fsae2027_design.py`)."
     )
 
     df = load_hardpoints_from_state()
     if df is None:
         render_empty_state(
-            "The vdcore tab computes the **dynamic** KPIs (camber gain, "
+            "This tab computes the **dynamic** KPIs (camber gain, "
             "roll-centre migration, roll cambers) correctly from the loaded "
             "hardpoints.",
             key="empty_vdcore",

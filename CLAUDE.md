@@ -76,18 +76,26 @@ owns the tie rod that closes the sixth DOF.
   anti-geometry, leg forces. No sweeps. It cannot build a complete corner.
 - `steering_geometry.py` — caster, tie rod, rack, bump steer, Ackermann, effort.
   Supersedes sla's zero-caster outboard ball joints.
-- `legacy_app/` — **do not quote its dynamic KPIs.** Its solver models each
-  wishbone as a strut to the pivot midpoint, leaving 3 of 9 DOF to a numerical
-  regularisation. Ackermann +173% (actually ~70%, formula inverted vs its
-  docstring), RC migration ~1 mm (actually 87 mm), rear camber gain 27% low,
-  mechanical trail sign inverted. Static values are correct. The app carries a
-  banner saying so.
+- `legacy_app/` — the 📊 Analysis tab (the old "Analysis" and
+  "vdcore (validated)" tabs were merged 2026-08-27) delegates every KPI to
+  vdcore via `analysis/vdcore_bridge.py`: static values, swept dynamic KPIs
+  (camber gain, RC migration/height, roll camber), scrub, mechanical trail,
+  anti-dive/anti-squat (`model_3d.SuspensionCorner.anti_dive_percent`, a
+  corrected pivot-axis-rake construction, cross-checked against
+  `sla_geometry.py`'s construction and the full 3D linkage in
+  `tests/benchmarks/test_anti_geometry_and_ackermann.py`), and Ackermann
+  (`vdcore_bridge.solved_ackermann_pct`, a real rack sweep on `DWSolver`
+  rather than the plan-view construction — reproduces `steering_geometry.py`'s
+  formula to 3 decimals). All of it is quotable now.
 
-  Its anti-geometry used to report +200% against a true 0%. Since the front
-  carries real pivot rake (rev 5) the two are close — 6.908% against 6.923% at
-  a 0.60 brake bias — but only because the LOWER axis is horizontal, which
-  leaves the pivot-midpoint error at the 12.6 mm pickup-to-ball-joint height.
-  Rake the lower arm and the error returns. Still do not quote it.
+  The old strut-to-midpoint solver (`geometry/solver_3d.py`'s
+  `KinematicSolver3D`) still runs in exactly one place: the 🌐 View 3D tab's
+  sweep animation (`analysis/viz3d.py`), for visualization only — flagged
+  inline, do not read camber/toe off it. Automated hardpoint synthesis (the
+  old `differential_evolution`-based optimizer, since removed) is retired for
+  the same reason — it scored candidates with that solver — and has no
+  drop-in replacement yet: `DWSolver` is too slow per-solve for the same cost
+  function.
 
 Track is measured at the **contact patches**. `loaded_radius_mm` is the vertical
 wheel-centre-to-road distance, so patches sit at z=0 and negative camber moves
