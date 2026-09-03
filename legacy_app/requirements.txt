@@ -74,7 +74,6 @@ typing-inspection==0.4.4
 tzdata==2026.2
 urllib3==2.7.0
 uvicorn==0.46.0
--e file:///C:/soft/Personal/Suspension-and-Vehicle-Dynamics
 watchdog==6.0.0
 wcwidth==0.8.2
 websockets==16.0
