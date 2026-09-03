@@ -116,7 +116,18 @@ than reused:
 |---|---|---|
 | Linear rate [deg/mm per side] | −0.000154 | **−0.000150** |
 | Peak over ±25 mm [deg per side] | 0.0128 | **0.0125** |
-| Zero-bump-steer null Z [mm] | 169.058 | 169.065 |
+| Zero-bump-steer null Z [mm] | 169.065 | 169.065 |
+
+> **Correction, 2026-09-02 (re-verification pass).** The rev-5 null-Z cell
+> above originally read 169.058. That number was carried over from the
+> pre-rev-5 comment in `geometry_summary.py`, not re-solved, and it is
+> inconsistent with the rev-5 linear rate in the row above it: at
+> −0.000154 deg/mm with d(rate)/dZ = +0.0023712 deg/mm per mm, the null is at
+> 169 + 0.000154/0.0023712 = **169.065**, which is what `brentq` returns for
+> the rev-5 geometry. The two revisions' nulls agree to 0.0001 mm; the X move
+> shifts the null far less than this table implied. The conclusion is
+> unchanged and in fact stronger — the built Z of 169.0 sits 0.065 mm from the
+> null either way, well inside the 0.5 mm build tolerance.
 
 Both numbers move in the favourable direction, by an amount well below
 measurement noise. Z stays at the round 169 mm — the null sits within
@@ -157,7 +168,8 @@ accepted in rev 5 — and both the linear rate and peak stay well inside
 
 - `sla_geometry.py` — `REAR_2027.lca_base_mm`/`lca_sweep_mm`,
   `CheckLimits.lca_length_mm` top bound
-- `scripts/geometry_summary.py` — `REAR_TOE_LINK_INBOARD`
+- `scripts/geometry_summary.py` — `REAR_TOE_LINK_INBOARD`; also
+  `ARM_LENGTH_WINDOW_MM`, **missed on the first pass and fixed in §6b**
 - `Geometry Summary/hardpoints_2027_merged.csv`
 - `Geometry Summary/Geometry Summary 2027.md`
 - `Geometry Summary/solidworks_skeleton.bas`
@@ -187,6 +199,44 @@ file — including `test_rear_rates`, `test_rear_roll`,
 share check — passed unmodified, confirming the change is contained to the
 LCA leg lengths and the toe-link X shift's already-small bump-steer effect.
 
+## 6b. Re-verification pass, 2026-09-02 (independent)
+
+Rev 6 was re-derived from scratch rather than re-read. What held:
+
+| Claim | Verdict |
+|---|---|
+| LCA legs 486.98 / 396.42 mm, UCA 396.60 / 325.71 mm | confirmed |
+| LCA rear pickup 100 mm clear, UCA rear 80 mm clear | confirmed |
+| e/a LCA = 2.00 | confirmed, and **exactly** 2.0 in floating point (`2.0*200.0/200.0`), so the `<= 2.0` check passes with zero margin |
+| base/sweep change is kinematically inert | **proven, not assumed**: of every field on `AxleGeometry`, only `lca_in_front_x_mm` and `lca_in_rear_x_mm` move. Solved 3D rear camber gain, RC migration, half-track rate and roll agree to ≤ 1.1e-8 (float noise) between the rev-5 and rev-6 hardpoints. Both rear pivot axes are exactly parallel to X (dz = 0), hence SVIC at infinity and anti-squat exactly 0 % |
+| bump steer −0.000154 → −0.000150 deg/mm, peak 0.0128 → 0.0125 deg | confirmed; the base/sweep change contributes exactly 0, the whole delta is the toe-link X move |
+| full suite 425 passed, 14 skipped | confirmed |
+| merged hardpoints match `carro_formula_2027.csv` | confirmed |
+| left/right mirror symmetry of all 40 merged points | confirmed exact (0.0 mm worst error) — rev 6's "asymmetry" is front-to-back only |
+
+Two things the original pass missed:
+
+1. **`ARM_LENGTH_WINDOW_MM` in `scripts/geometry_summary.py` was not moved with
+   `CheckLimits.lca_length_mm`** — §5 of the list of regenerated artefacts is
+   incomplete. Its own comment said "keep the two in step", and they were not:
+   the summary's **section 5, which is the authority for member lengths**,
+   printed `!! LCA front leg 486.98 mm target 320 to 460` while section 2
+   printed `OK ... target 320 to 490` for the identical number, roughly 300
+   lines apart in the same generated document. No test covered the pair, so
+   the suite stayed green. Fixed by deriving `ARM_LENGTH_WINDOW_MM` and
+   `KINGPIN_WINDOW_MM` from `sla.CheckLimits()` instead of restating them, and
+   locked by `test_summary_bands_mirror_sla_limits`. `Geometry Summary 2027.md`
+   regenerated.
+2. The rev-5 null-Z cell in §2 was stale — see the correction there.
+
+One nuance the "price, stated plainly" framing in §1 leaves out: the rev-6 LCA
+is a **better-conditioned triangle**, not a strictly worse arm. The included
+angle at the lower ball joint opens from **20.25° to 23.42°** (the UCA's is
+23.02°, unchanged), because the base widened 160 → 200 as the sweep grew. The
+member is longer — which is the buckling concern §1 correctly raises — but the
+two legs share fore-aft load more evenly than rev 5's did, and e/a is unchanged
+at the cap. Both facts belong in the structural check.
+
 ## 7. Byproduct findings, not part of this revision
 
 - **`.venv` was in a corrupted, partially-installed state before this
@@ -198,7 +248,9 @@ LCA leg lengths and the toe-link X shift's already-small bump-steer effect.
   its own executable — not a project issue). `tests/unit/test_app_agrees_with_summary.py`
   still fails to collect (`streamlit` → `google.protobuf` chain incomplete)
   and was excluded from the run above; this is orthogonal to `vdcore` and to
-  this revision.
+  this revision. **Resolved as of the 2026-09-02 re-verification pass**: that
+  file now collects and passes (10 passed), so the 425 + 14 figure above is a
+  genuine full-suite result, not a partial one.
 - **`scripts/build_summary_doc.py` has a pre-existing bug**, unrelated to
   this change: it references `MergedHardpoints.rear_tie_rod_from_csv`, an
   attribute that no longer exists after rev 5 made the rear toe link a
@@ -207,3 +259,33 @@ LCA leg lengths and the toe-link X shift's already-small bump-steer effect.
   noting the failure; the `.docx`/`.pdf` artefacts in `Geometry Summary/` are
   therefore stale relative to rev 6 and should be treated as such until that
   script is fixed separately.
+
+  **Fixed 2026-09-02.** Both references are gone and the `.docx`/`.pdf` are
+  regenerated on rev 6. The two notes they gated were rewritten rather than
+  deleted, because one of them was still carrying a claim that stopped being
+  true in rev 5: the document printed, in red, that RL/RR `TIE_ROD_*` were
+  hand-entered points read out of `carro_formula_2027.csv`, "not regenerated,
+  not bounds-checked and not covered by any test". It now discloses the rear
+  toe link as a `design_intent` input (provenance must still be reported —
+  that part was never the problem) and the open item it raises is the one that
+  is actually open: the OUTBOARD end, 54.6 mm behind the ball joints, left
+  behind when the inboard end moved forward.
+
+  The script had **no test coverage at all**, which is why an `AttributeError`
+  on every run went unnoticed for a day while the suite stayed green and the
+  Markdown regenerated cleanly. `tests/unit/test_build_summary_doc.py` now
+  builds the document into a temp directory and checks it carries the live
+  hardpoints, the enforced band, and no superseded provenance claims.
+
+- **`geometria.png` is orphaned**, found while verifying the rebuild. It is
+  dated 2026-08-25 — before rev 5 and rev 6 — and *nothing in the repository
+  regenerates it*: the plotting mode the caption credited to `sla_geometry.py`
+  no longer exists there. The document embedded it under the caption
+  "Regenerated from sla_geometry.py in its corrected mode", i.e. a figure of a
+  superseded car asserting its own freshness beside current tables. Section 9
+  now checks the image's timestamp against every script that defines the
+  geometry and omits the figure with an explicit note when it lags, rather
+  than printing it. **Open:** no chart generator exists. The plotted
+  quantities are all published as solved values in sections 2 and 3, so
+  nothing is lost numerically, but the document has no figures until someone
+  writes one.

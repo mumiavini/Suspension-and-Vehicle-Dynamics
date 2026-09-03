@@ -85,10 +85,15 @@ CSV_PATH = REPO / "legacy_app" / "carro_formula_2027.csv"
 # FSAE rules the geometry alone can be checked against.
 FSAE_MIN_WHEELBASE_MM = 1525.0
 FSAE_MIN_TRACK_RATIO = 0.75
-# Mirrors CheckLimits.lca_length_mm in sla_geometry.py -- keep the two in step.
-# Raised from 430 to 460 on 2026-09-01 for the rear driveshaft clearance.
-ARM_LENGTH_WINDOW_MM = (320.0, 460.0)
-KINGPIN_WINDOW_MM = (200.0, 260.0)
+# Mirrors CheckLimits.lca_length_mm in sla_geometry.py -- read from there rather
+# than restated, because restating it drifted: rev 6 raised the sla band to 490
+# and left this copy at 460, so section 5 (the authority for member lengths)
+# failed the rear LCA front leg at 486.98 mm while section 2's own table passed
+# the identical number. test_summary_bands_mirror_sla_limits locks them now.
+# History: 430 -> 460 on 2026-09-01 (rear driveshaft clearance, rev 5),
+# 460 -> 490 on 2026-09-02 (asymmetric rear LCA clearance, rev 6).
+ARM_LENGTH_WINDOW_MM = sla.CheckLimits().lca_length_mm
+KINGPIN_WINDOW_MM = sla.CheckLimits().kingpin_length_mm
 
 POINT_ORDER = (
     "UCA_IN_FRONT", "UCA_IN_REAR", "UCA_OUT",
@@ -445,7 +450,22 @@ def hardpoints_section(hp: MergedHardpoints, front: sla.AxleGeometry) -> str:
     return "\n".join(L)
 
 
-def load_case_note(veh: sla.VehicleData) -> str:
+def lltd_lift_threshold(veh: sla.VehicleData, geo: sla.AxleGeometry,
+                        is_front: bool) -> float:
+    """Front-share LLTD at which THIS axle's inner wheel reaches zero load.
+
+    Fz_inner = W*frac/2 - share*W*ay*h/t = 0  ->  share = frac*t/(2*ay*h),
+    where `share` is the axle's own share of the transfer. Returned on the
+    FRONT-share scale so both ends read off one axis: the front lifts ABOVE
+    its threshold, the rear BELOW its own. Between them, neither lifts.
+    """
+    frac = veh.front_mass_fraction if is_front else 1.0 - veh.front_mass_fraction
+    share = frac * geo.inputs.track_mm / (2.0 * veh.design_ay_g * veh.cg_height_mm)
+    return share if is_front else 1.0 - share
+
+
+def load_case_note(veh: sla.VehicleData, front: sla.AxleGeometry,
+                   rear: sla.AxleGeometry) -> str:
     L = ["", RULE, " 7. LOAD CASE BEHIND THE LEG FORCES", RULE]
     L.append("   The previous summary printed leg forces with no stated load case,")
     L.append("   so they could not be checked. These are the assumptions:")
@@ -454,10 +474,36 @@ def load_case_note(veh: sla.VehicleData) -> str:
     L.append(f"   Front mass fraction              {100*veh.front_mass_fraction:9.1f} %"
              f"   <- also sets the roll axis")
     L.append(f"   CG height                        {veh.cg_height_mm:9.1f} mm")
-    L.append("   Lateral friction coefficient          1.50        design_intent")
-    L.append("   Longitudinal friction coefficient     1.40        design_intent")
-    L.append("   Lateral acceleration                  1.50 g      design_intent")
-    L.append("   Lateral load transfer distribution    0.55        design_intent")
+    L.append(f"   Lateral friction coefficient          {veh.mu_lateral:.2f}"
+             f"        design_intent")
+    L.append(f"   Longitudinal friction coefficient     {veh.mu_longitudinal:.2f}"
+             f"        design_intent")
+    L.append(f"   Lateral acceleration                  {veh.design_ay_g:.2f} g"
+             f"      design_intent")
+    L.append(f"   Lateral load transfer distribution    {veh.lltd_front:.2f}"
+             f"        design_intent   <- front share")
+    L.append("")
+    L.append(f"   LLTD {veh.lltd_front:.2f} against a front mass fraction of "
+             f"{veh.front_mass_fraction:.2f} means lateral transfer is")
+    L.append("   proportional to axle load, so it introduces no balance shift of")
+    L.append("   its own. That is a neutral BASELINE, not a tuned value -- the")
+    L.append("   balance target that would justify tuning away from it needs tyre")
+    L.append("   data the team does not have. Inner-wheel loads at this LLTD:")
+    L.append("")
+    L.append(f"   {'axle':<8s}{'static/wheel':>15s}{'outer':>12s}{'inner':>12s}"
+             f"{'lift at LLTD':>15s}")
+    for label, geo, is_front in (("Front", front, True), ("Rear", rear, False)):
+        lc = sla.load_cases(geo, veh)
+        lltd_lift = lltd_lift_threshold(veh, geo, is_front)
+        L.append(f"   {label:<8s}{lc['Fz_static']:12.1f} N{lc['Fz']:10.1f} N"
+                 f"{lc['Fz_inner']:10.1f} N{lltd_lift:12.3f}   "
+                 f"({'above' if is_front else 'below'})")
+    L.append("")
+    lo = lltd_lift_threshold(veh, rear, False)
+    hi = lltd_lift_threshold(veh, front, True)
+    L.append(f"   The usable band is LLTD {lo:.3f} to {hi:.3f} -- outside it one")
+    L.append(f"   inner wheel lifts at {veh.design_ay_g:.2f} g and every force below")
+    L.append("   it is void.")
     L.append("")
     L.append("   TWO LIMITS TO STATE WHEREVER THIS TABLE APPEARS:")
     L.append("")
@@ -743,7 +789,7 @@ def build_report() -> tuple[str, MergedHardpoints]:
         steering_section(steer),
         members_section(hp),
         hardpoints_section(hp, design.front),
-        load_case_note(veh),
+        load_case_note(veh, front, rear),
         open_items(hp, front, rear),
         "",
     ]

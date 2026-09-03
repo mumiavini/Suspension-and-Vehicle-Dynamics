@@ -158,12 +158,32 @@ class VehicleData:
     unsprung_mass_kg: float = 45.0
     cg_height_mm: float = 320.0
     wheelbase_mm: float = 1540.0
-    cg_from_front_axle_mm: float = 693.0
+    # 55 % of the mass sits on the REAR axle -> the CG is 0.55 * wheelbase aft
+    # of the front axle. Corrected 2026-09-02: this was 693.0 mm (55 % FRONT),
+    # which is the opposite of the intended split.
+    cg_from_front_axle_mm: float = 847.0
     target_roll_gradient_deg_per_g: float = 1.00
     chassis_factor_min: float = 3.0
     chassis_factor_target: float = 5.0
     tilt_test_angle_deg: float = 60.0
     brake_bias_front: float = 0.65
+
+    # --- load-case assumptions (design_intent) ------------------------------
+    # These drive load_cases() and therefore every leg force in the report.
+    # They live here, not as function defaults, because the report used to
+    # print them as hardcoded strings that were free to drift from the values
+    # actually used. One field, one printed row, no drift.
+    #
+    # lltd_front: the FRONT share of total lateral load transfer. 0.45 matches
+    # the front mass fraction, so transfer is proportional to axle load and
+    # introduces no balance shift of its own -- the neutral baseline, and the
+    # only defensible one without TTC data. Corrected 2026-09-02 from 0.55,
+    # which was paired with the inverted 55 % front mass fraction; against the
+    # true 45 % front it put the inside front wheel at 37 N at 1.5 g.
+    lltd_front: float = 0.45
+    mu_lateral: float = 1.50
+    mu_longitudinal: float = 1.40
+    design_ay_g: float = 1.50
 
     @property
     def sprung_mass_kg(self) -> float:
@@ -649,10 +669,20 @@ def solve_ball_joint_forces(geo: AxleGeometry, load_cp: np.ndarray,
 
 
 def load_cases(geo: AxleGeometry, veh: VehicleData,
-               mu_y: float = 1.5, mu_x: float = 1.4,
-               lltd: float = 0.55, ay: float = 1.5) -> dict:
-    """Approximate tyre contact-patch loads for the outer loaded wheel."""
+               mu_y: float | None = None, mu_x: float | None = None,
+               lltd: float | None = None, ay: float | None = None) -> dict:
+    """Approximate tyre contact-patch loads for the outer loaded wheel.
+
+    The four assumptions default to the VehicleData fields so the report can
+    print exactly what was used. They stay overridable: a what-if sweep over
+    lltd or ay is a query, and the caller owns the query.
+    """
     inp = geo.inputs
+    mu_y = veh.mu_lateral if mu_y is None else mu_y
+    mu_x = veh.mu_longitudinal if mu_x is None else mu_x
+    lltd = veh.lltd_front if lltd is None else lltd
+    ay = veh.design_ay_g if ay is None else ay
+
     W = veh.total_mass_kg * GRAVITY
     is_front = inp.axle_x_mm < veh.wheelbase_mm / 2.0
     frac = veh.front_mass_fraction if is_front else 1 - veh.front_mass_fraction
@@ -666,6 +696,13 @@ def load_cases(geo: AxleGeometry, veh: VehicleData,
         "Braking": np.array([mu_x * Fz, 0.0, Fz]),
         "Combined": np.array([0.7 * mu_x * Fz, -0.7 * mu_y * Fz, Fz]),
         "Fz": Fz,
+        # The inner wheel is not loaded by any case above, but it is the number
+        # that says whether this LLTD is survivable: at Fz_inner <= 0 the wheel
+        # has lifted and the whole single-wheel model is void.
+        "Fz_static": Fz_static,
+        "Fz_inner": Fz_static - dW,
+        "lltd": lltd,
+        "ay": ay,
     }
 
 
@@ -1057,7 +1094,8 @@ VEHICLE_2027 = VehicleData(
     unsprung_mass_kg=45.0,
     cg_height_mm=320.0,
     wheelbase_mm=1540.0,
-    cg_from_front_axle_mm=693.0,
+    # 45 % front / 55 % rear (design_intent). See VehicleData.
+    cg_from_front_axle_mm=847.0,
     target_roll_gradient_deg_per_g=1.00,
 )
 

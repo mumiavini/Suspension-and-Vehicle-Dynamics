@@ -227,14 +227,20 @@ def provenance(doc, hp: gs.MergedHardpoints) -> None:
               "In ISO 8855 the rear axle is at NEGATIVE X and right-hand corners "
               "are at NEGATIVE Y.")
 
-    if hp.rear_tie_rod_from_csv:
-        note(doc,
-             "OPEN: the rear tie rod is not synthesised by any script. "
-             "steering_geometry.py covers the front axle only, so RL/RR "
-             "TIE_ROD_IN and TIE_ROD_OUT are hand-entered points read from "
-             "legacy_app/carro_formula_2027.csv. They are not regenerated, not "
-             "bounds-checked and not covered by any test.",
-             italic=False, color=BAD)
+    # Until rev 5 the rear toe link was read back out of the exported CSV and
+    # this block printed a red warning gated on a `rear_tie_rod_from_csv` flag.
+    # That flag, and the condition behind it, are gone: the link is now a
+    # declared design input in geometry_summary.py. The disclosure stays --
+    # design_intent provenance must be reported wherever it is consumed -- but
+    # it is a statement of provenance now, not a defect.
+    note(doc,
+         f"The rear toe link is a declared {gs.REAR_TOE_LINK_SOURCE} input "
+         "(REAR_TOE_LINK_INBOARD / _OUTBOARD in geometry_summary.py), not a "
+         "measured or synthesised value. The rear has no rack, so "
+         "steering_geometry.py -- which covers the front axle only -- does not "
+         "produce it. It is regenerated with every run, and its inboard Z was "
+         "chosen to null the linear bump-steer rate; section 3c reports the "
+         "solved result and how sharp that knob is.")
 
 
 def vehicle_section(doc, veh: sla.VehicleData, res: sla.VehicleResults,
@@ -507,7 +513,8 @@ def hardpoints_section(doc, hp: gs.MergedHardpoints) -> None:
          color=BAD, italic=False)
 
 
-def load_case_section(doc, veh: sla.VehicleData) -> None:
+def load_case_section(doc, veh: sla.VehicleData, front: sla.AxleGeometry,
+                      rear: sla.AxleGeometry) -> None:
     heading(doc, "7. Load case behind the leg forces")
     note(doc, "The superseded document printed leg forces with no stated load "
               "case, so they could not be checked or defended. These are the "
@@ -516,11 +523,38 @@ def load_case_section(doc, veh: sla.VehicleData) -> None:
         ["Total mass", f"{veh.total_mass_kg:.1f} kg", "input"],
         ["Front mass fraction", f"{100 * veh.front_mass_fraction:.1f} %", "input"],
         ["CG height", f"{veh.cg_height_mm:.1f} mm", "estimate"],
-        ["Lateral friction coefficient", "1.50", "design_intent"],
-        ["Longitudinal friction coefficient", "1.40", "design_intent"],
-        ["Lateral acceleration", "1.50 g", "design_intent"],
-        ["Lateral load transfer distribution", "0.55", "design_intent"],
+        ["Lateral friction coefficient", f"{veh.mu_lateral:.2f}", "design_intent"],
+        ["Longitudinal friction coefficient",
+         f"{veh.mu_longitudinal:.2f}", "design_intent"],
+        ["Lateral acceleration", f"{veh.design_ay_g:.2f} g", "design_intent"],
+        ["Lateral load transfer distribution (front share)",
+         f"{veh.lltd_front:.2f}", "design_intent"],
     ], widths=[3.2, 1.9, 1.8], right_align_from=1)
+
+    note(doc,
+         f"LLTD {veh.lltd_front:.2f} against a front mass fraction of "
+         f"{veh.front_mass_fraction:.2f} makes lateral transfer proportional to "
+         f"axle load, so it introduces no balance shift of its own. That is a "
+         f"neutral BASELINE, not a tuned value — the balance target that would "
+         f"justify tuning away from it needs tyre data the team does not have.",
+         italic=False)
+
+    rows = []
+    for label, geo, is_front in (("Front", front, True), ("Rear", rear, False)):
+        lc = sla.load_cases(geo, veh)
+        rows.append([label, f"{lc['Fz_static']:.1f} N", f"{lc['Fz']:.1f} N",
+                     f"{lc['Fz_inner']:.1f} N",
+                     f"{gs.lltd_lift_threshold(veh, geo, is_front):.3f}"])
+    table(doc, ["Axle", "Static / wheel", "Outer", "Inner", "Inner lifts at LLTD"],
+          rows, widths=[1.0, 1.5, 1.4, 1.4, 1.6], right_align_from=1)
+
+    lo = gs.lltd_lift_threshold(veh, rear, False)
+    hi = gs.lltd_lift_threshold(veh, front, True)
+    note(doc,
+         f"The usable band is LLTD {lo:.3f} to {hi:.3f}. Outside it one inner "
+         f"wheel lifts at {veh.design_ay_g:.2f} g and every force in this "
+         f"section is void — the model loads a single outer wheel.",
+         italic=False)
 
     note(doc, "TWO LIMITS, to be repeated wherever the force table appears:",
          italic=False, color=BAD)
@@ -561,8 +595,20 @@ def open_items_section(doc, front: sla.AxleGeometry, rear: sla.AxleGeometry,
         "The front mass fraction is an unusual value for a rear-drive car and it "
         "drives both the roll-stiffness requirement and every leg force. Confirm "
         "it before the chassis is sized against it.",
-        "The rear tie rod has no synthesis script and no test."
-        if hp.rear_tie_rod_from_csv else "",
+        # Superseded: the rear toe link gained a synthesis path and tests in
+        # rev 5. What is still open is its OUTBOARD end, which is an upright
+        # feature rather than a chassis point and so was left behind when the
+        # inboard end moved forward for packaging. Mirrors the same check in
+        # geometry_summary.alignment_section.
+        f"The rear toe link outboard point sits "
+        f"{hp.arr('RL', 'LCA_OUT')[0] - hp.arr('RL', 'TIE_ROD_OUT')[0]:.1f} mm "
+        f"behind the wishbone outboard ball joints, at Y = "
+        f"{abs(hp.arr('RL', 'TIE_ROD_OUT')[1]):.0f}. It is an upright feature, "
+        "not a chassis connection, so it stayed put when the inboard end moved "
+        "forward. Bringing it ahead of the axle would be a rear-upright "
+        "redesign and would flip the sign of toe change under longitudinal "
+        "load."
+        if hp.arr("RL", "TIE_ROD_OUT")[0] < hp.arr("RL", "LCA_OUT")[0] else "",
         "Deliberately not computed here, and out of scope for this tool: wheel "
         "rates, motion ratio, ride frequency, damping; stress, deflection, "
         "fatigue, buckling; anything requiring tyre data until TTC data is "
@@ -572,13 +618,45 @@ def open_items_section(doc, front: sla.AxleGeometry, rear: sla.AxleGeometry,
             note(doc, text, italic=False)
 
 
-def charts_section(doc) -> None:
+# Every geometry input the chart would be drawn from. If the image predates any
+# of these it is showing a superseded car, and no script in this repo regenerates
+# it -- the plotting mode the old caption credited to sla_geometry.py no longer
+# exists there. A figure that silently lags the tables beside it is the visual
+# form of the failure this project forbids for numbers, so the figure is dropped
+# rather than shown with a caption it cannot support.
+CHART_SOURCES = (
+    REPO / "sla_geometry.py",
+    REPO / "steering_geometry.py",
+    REPO / "scripts" / "geometry_summary.py",
+)
+
+
+def chart_is_current() -> bool:
     if not CHART.exists():
-        return
+        return False
+    drawn = CHART.stat().st_mtime
+    return all(src.stat().st_mtime <= drawn
+               for src in CHART_SOURCES if src.exists())
+
+
+def charts_section(doc) -> None:
     heading(doc, "9. Charts")
-    note(doc, "Regenerated from sla_geometry.py in its corrected mode. The plots "
-              "in the superseded document came from a mix of toolchains and "
-              "disagreed with its own tables.")
+    if not chart_is_current():
+        stamp = (dt.datetime.fromtimestamp(CHART.stat().st_mtime).strftime("%Y-%m-%d")
+                 if CHART.exists() else "never generated")
+        note(doc,
+             f"No figure in this revision. {CHART.name} ({stamp}) predates the "
+             "current geometry and nothing in the repository regenerates it, so "
+             "it would show a superseded car next to current tables. The "
+             "numbers it plotted — front-view construction, camber and roll "
+             "centre vs travel, half-track change, roll behaviour — are all in "
+             "sections 2 and 3 as solved values.",
+             italic=False, color=BAD)
+        return
+    note(doc, "Drawn from the same geometry as the tables above, and newer than "
+              "every script that defines it. The plots in the superseded "
+              "document came from a mix of toolchains and disagreed with its "
+              "own tables.")
     doc.add_picture(str(CHART), width=Inches(6.9))
     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
     note(doc, "Front-view construction, camber and roll centre vs travel, "
@@ -637,7 +715,7 @@ def build_docx() -> Path:
     steering_section(doc, steer, stg.STEERING_2027)
     members_section(doc, hp)
     hardpoints_section(doc, hp)
-    load_case_section(doc, design.vehicle)
+    load_case_section(doc, design.vehicle, design.front, design.rear)
     open_items_section(doc, design.front, design.rear, hp)
     charts_section(doc)
 

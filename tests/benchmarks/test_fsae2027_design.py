@@ -167,6 +167,26 @@ class TestStaticSynthesis:
         assert lo <= legs["LCA rear leg"] <= hi
         assert lo <= legs["UCA rear leg"] <= hi
 
+    def test_summary_bands_mirror_sla_limits(
+        self, design: sla.DesignReport
+    ) -> None:
+        """The merged summary bands the same members against the same numbers.
+
+        These used to be two hand-kept copies, and they drifted: rev 6 raised
+        `CheckLimits.lca_length_mm` to 490 for the 486.98 mm rear LCA front leg
+        but left `ARM_LENGTH_WINDOW_MM` at 460, so the summary's section 5 --
+        the authority for member lengths, since it measures the caster-corrected
+        outboard points -- printed `!!` on a leg that section 2 printed `OK`,
+        in the same document. The same number cannot pass one check and fail
+        another; whichever band the designer picks, both sections must use it.
+        """
+        limits = sla.CheckLimits()
+        assert limits.lca_length_mm == gs.ARM_LENGTH_WINDOW_MM
+        assert limits.kingpin_length_mm == gs.KINGPIN_WINDOW_MM
+        # and the band actually admits the member it was moved for
+        lo, hi = gs.ARM_LENGTH_WINDOW_MM
+        assert lo <= max(sla.member_legs_mm(design.rear).values()) <= hi
+
     def test_front_anti_dive_is_on_target(self, design: sla.DesignReport) -> None:
         """7.5 % anti-dive, the mid-band of the 5-10 % the team asked for.
 
@@ -451,12 +471,15 @@ class TestSteering:
         assert steer.rates.steering_ratio == pytest.approx(4.58, abs=0.05)
 
     def test_parking_effort_within_limit(self, steer: stg.SteeringReport) -> None:
-        """9.73 N.m against a 10 N.m limit -- only 3% of margin.
+        """7.96 N.m against a 10 N.m limit -- 20% of margin.
 
-        Scrub radius drives this through M = mu*Fz*sqrt(rs^2 + tm^2), so any
-        change that moves the contact patch outboard eats the margin.
+        Was 9.73 N.m (3% of margin) while the front mass fraction was set to
+        55%. That was inverted -- the car is 45% front / 55% rear -- and the
+        effort is linear in Fz, so the correction bought 18% straight off.
+        Scrub radius drives the rest through M = mu*Fz*sqrt(rs^2 + tm^2), so
+        any change that moves the contact patch outboard still eats margin.
         """
-        assert steer.effort.steering_wheel_torque_Nm == pytest.approx(9.73, abs=0.1)
+        assert steer.effort.steering_wheel_torque_Nm == pytest.approx(7.96, abs=0.1)
         assert steer.effort.steering_wheel_torque_Nm <= 10.0
 
 
