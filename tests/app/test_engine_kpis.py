@@ -138,8 +138,10 @@ def test_bands_are_information_with_a_source(ks) -> None:
 
 
 def test_out_of_band_items_on_2027_are_the_known_kingpin_lengths(ks) -> None:
+    """Plus the parking torque near lock: in band on-centre, out of band over the stroke."""
     out = sorted(k.key for k in ks.items.values() if k.status == "out")
-    assert out == ["front.kingpin_3d", "rear.kingpin_2d", "rear.kingpin_3d"]
+    assert out == ["front.kingpin_3d", "rear.kingpin_2d", "rear.kingpin_3d",
+                   "steering.effort_sw_torque_max"]
 
 
 def test_impossible_travel_fails_loudly_instead_of_quoting_a_number() -> None:

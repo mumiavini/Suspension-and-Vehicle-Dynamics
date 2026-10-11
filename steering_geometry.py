@@ -691,6 +691,10 @@ class SteeringKinematics:
         length with bump (340.84 mm static, 338.36 at +25, 341.49 at -25 on the
         2027 front corner), which a rigid link cannot do, and the worst swing
         read 5.51 deg instead of 7.82 deg.
+
+        Raises ``KinematicError`` if any envelope point does not assemble:
+        the maximum over a partial grid drops exactly the extreme points and
+        would read as a plausible in-band number.
         """
         # static tie-rod direction
         fl_s, _ = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
@@ -710,11 +714,13 @@ class SteeringKinematics:
         racks = np.linspace(
             -self.steer.max_rack_travel_mm, self.steer.max_rack_travel_mm, 9,
         )
+        failed: list[tuple[float, float]] = []
         for b in bumps:
             for r in racks:
                 try:
                     fl, _ = self.solve_pair(bump_mm=b, rack_mm=r)
                 except KinematicError:
+                    failed.append((float(b), float(r)))
                     continue
                 tro = np.array([fl.tro.x_mm, fl.tro.y_mm, fl.tro.z_mm])
                 # the inner joint moves with the chassis: rack along Y, and
@@ -725,6 +731,12 @@ class SteeringKinematics:
                 cos_a = float(np.clip(np.dot(d, dir_s), -1.0, 1.0))
                 angle = np.degrees(np.arccos(cos_a))
                 worst = max(worst, angle)
+        if failed:
+            n = len(bumps) * len(racks)
+            raise KinematicError(
+                f"{len(failed)}/{n} rod-end envelope points did not converge "
+                f"(e.g. bump {failed[0][0]:+.1f} mm, rack {failed[0][1]:+.1f} mm)"
+            )
         return worst
 
     def ackermann_curve(
