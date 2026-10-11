@@ -97,6 +97,13 @@ owns the tie rod that closes the sixth DOF.
   drop-in replacement yet: `DWSolver` is too slow per-solve for the same cost
   function.
 
+- `apps/vdstudio/` — the VD Studio desktop app. `engine/` is Qt-free and runs
+  the same chain as `scripts/geometry_summary.py` (the default project
+  reproduces the merged 2027 CSV exactly — pinned in `tests/app`); every KPI
+  is computed on `DWSolver` / `vdcore.analysis` or the script that owns it,
+  with its source and band attached. `ui/` is presentation only. It never
+  recommends a value: bands are information, targets are query arguments.
+
 Track is measured at the **contact patches**. `loaded_radius_mm` is the vertical
 wheel-centre-to-road distance, so patches sit at z=0 and negative camber moves
 them OUTBOARD (widening ground track, increasing scrub). Static camber is built
@@ -129,6 +136,9 @@ uv run mypy vdcore/
 # Purity check
 python scripts/check_purity.py
 
+# Run the VD Studio desktop app
+uv run --extra desktop python -m apps.vdstudio
+
 # Run the Streamlit app (existing, uses .venv)
 & .venv\Scripts\streamlit.exe run app.py
 ```
@@ -144,6 +154,9 @@ vdcore/                     # PURE LIBRARY — zero UI imports
   optimize/                 # differential_evolution wrappers
   io/                       # config load/save, frame transforms, CSV/JSON export
   validate/                 # cross-checks vs Optimum Kinematics, benchmark cases
+apps/vdstudio/              # VD Studio desktop app (PySide6/pyqtgraph). apps/ may import UI libs
+  engine/                   #   Qt-free: project, geometry, kpis, curves, pose, whatif, telemetry, exports
+  ui/                       #   pages, widgets, 3D/2D views, controller (background workers)
 legacy_app/                 # FROZEN — original Streamlit app. Dynamic KPIs are WRONG, see below
   geometry/                 #   primitives, 2D/3D solvers, model
   analysis/                 #   io, KPIs, optimizer, sweeps, viz3d
