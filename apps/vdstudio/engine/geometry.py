@@ -8,7 +8,9 @@ Two geometry sources, one result type:
   and the rear toe link is the project's declared design input. This is the
   same merge ``scripts/geometry_summary.build_merged`` performs; the only
   difference is that the toe link comes from the project instead of a module
-  constant (pinned equal on the defaults by the tests).
+  constant (pinned equal on the defaults by the tests). The vehicle
+  wheelbase is authoritative: the rear axle station is derived from it, so
+  the point wheelbase and the mass split can never disagree.
 * ``hardpoints`` -- points given directly (CAD read-back, measurement, or a
   frozen synthesis the designer is now editing point by point).
 
@@ -34,6 +36,7 @@ from .project import (
     INPUT_POINTS,
     AxleAlignment,
     HardpointSet,
+    Layout,
     Project,
     Pt,
 )
@@ -86,6 +89,8 @@ class CarGeometry:
     design: sla.DesignReport | None = None
     steering_geometry: stg.SteeringGeometry | None = None
     warnings: list[str] = field(default_factory=list)
+    # brake / drive layout: picks the anti-geometry reference point
+    layout: Layout = field(default_factory=Layout)
 
     # -- access ---------------------------------------------------------------
     def corner(self, cid: str) -> Corner:
@@ -178,14 +183,25 @@ def _vehicle_for_wheelbase(veh: sla.VehicleData, wheelbase_mm: float) -> sla.Veh
 # Synthesis
 # --------------------------------------------------------------------------- #
 
+def synthesis_rear_axle_x_mm(project: Project) -> float:
+    """Rear axle station synthesis uses: front station + vehicle wheelbase (design frame).
+
+    ``vehicle.wheelbase_mm`` is authoritative in synthesis mode, so the stored
+    ``rear.axle_x_mm`` is not read; the editor shows this derived value.
+    """
+    return project.front.axle_x_mm + project.vehicle.wheelbase_mm
+
+
 def synthesize(project: Project) -> CarGeometry:
     """sla wishbones + steering caster/tie rod + rear toe link -> complete car.
 
     Instant (pure analytic construction, no solver), so the UI can call it on
     every keystroke.
     """
-    veh, front_in, rear_in, steer = (project.vehicle, project.front,
-                                     project.rear, project.steering)
+    veh, front_in, steer = project.vehicle, project.front, project.steering
+    # one wheelbase: the rear axle follows the vehicle data (the CG station is
+    # kept, so a wheelbase edit also moves the weight distribution)
+    rear_in = replace(project.rear, axle_x_mm=synthesis_rear_axle_x_mm(project))
     try:
         # a degenerate input divides by zero inside the construction; the
         # non-finite check below turns that into a GeometryError, so the
@@ -203,11 +219,14 @@ def synthesize(project: Project) -> CarGeometry:
     # steering_geometry supersedes the zero-caster outboard ball joints
     for c, name, x, y, z in shp.rows():
         pts[c][name] = (x, y, z)
-    # rear toe link: declared design input, mirrored onto the right side
+    # rear toe link: declared design input, mirrored onto the right side. Its X
+    # moves with the rear axle station it was declared against (ISO x = -design
+    # x); Y and Z stay absolute.
+    dx_toe = rear_in.axle_x_mm - project.rear_toe_link_axle_x_mm
     for c, sy in (("RL", 1.0), ("RR", -1.0)):
         for name, (x, y, z) in (("TIE_ROD_IN", project.rear_toe_link_inboard),
                                 ("TIE_ROD_OUT", project.rear_toe_link_outboard)):
-            pts[c][name] = (float(x), sy * float(y), float(z))
+            pts[c][name] = (float(x) - dx_toe, sy * float(y), float(z))
 
     for row in pts.values():
         for name in list(row):
@@ -232,6 +251,7 @@ def synthesize(project: Project) -> CarGeometry:
         mode="synthesis", points=pts, sources=sources, tols=tols, axles=axles,
         vehicle=vehicle, vehicle_data=veh, front_inputs=front_in, rear_inputs=rear_in,
         steering_inputs=steer, design=design, steering_geometry=sg, warnings=warnings,
+        layout=project.layout,
     )
 
 
@@ -266,21 +286,31 @@ def from_hardpoints(project: Project) -> CarGeometry:
         pts[c] = {n: tuple(float(v) for v in hs.points[c][n]) for n in INPUT_POINTS}  # type: ignore[misc]
         sources[c] = {n: hs.sources.get(c, {}).get(n, "estimate") for n in INPUT_POINTS}
         tols[c] = {n: float(hs.tols.get(c, {}).get(n, 1.0)) for n in INPUT_POINTS}
+        _check_corner_points(c, pts[c])
         ax = axles[AXLE_OF[c]]
+        _check_ground_datum(c, pts[c]["WHEEL_CENTER"], ax)
         pts[c]["CONTACT_PATCH"] = contact_patch_point(
             pts[c]["WHEEL_CENTER"], ax.loaded_radius_mm, ax.static_camber_deg, c in ("FL", "RL"))
         sources[c]["CONTACT_PATCH"] = "derived"
         tols[c]["CONTACT_PATCH"] = float("nan")
 
-    vehicle = _build_vehicle(pts, sources, tols, axles)
     wb = float(pts["FL"]["WHEEL_CENTER"][0] - pts["RL"]["WHEEL_CENTER"][0])
+    if wb <= 0.0:
+        raise GeometryError(
+            f"Front wheel centre x = {pts['FL']['WHEEL_CENTER'][0]:.1f} mm is not ahead of the "
+            f"rear wheel centre x = {pts['RL']['WHEEL_CENTER'][0]:.1f} mm (wheelbase {wb:.1f} "
+            "mm): X looks reversed: check the import frame (ISO X+ forward).")
+    vehicle = _build_vehicle(pts, sources, tols, axles)
     veh = _vehicle_for_wheelbase(project.vehicle, wb)
     warnings = []
     if abs(wb - project.vehicle.wheelbase_mm) > 1.0:
+        # wb > 0 here, so _vehicle_for_wheelbase did rescale; quote what it did
         warnings.append(
             f"Wheelbase from the hardpoints is {wb:.1f} mm; vehicle data says "
-            f"{project.vehicle.wheelbase_mm:.1f} mm. The hardpoint value is used and "
-            "the CG station is scaled to keep the front mass fraction.")
+            f"{project.vehicle.wheelbase_mm:.1f} mm. The hardpoint value is used and the CG "
+            f"station is scaled from {project.vehicle.cg_from_front_axle_mm:.1f} to "
+            f"{veh.cg_from_front_axle_mm:.1f} mm behind the front axle to keep the front mass "
+            f"fraction ({100.0 * veh.front_mass_fraction:.1f} %).")
     front_in = replace(project.front, loaded_radius_mm=axles["front"].loaded_radius_mm,
                        static_camber_deg=axles["front"].static_camber_deg,
                        track_mm=_cp_track(pts, "FL", "FR"))
@@ -291,12 +321,54 @@ def from_hardpoints(project: Project) -> CarGeometry:
     return CarGeometry(
         mode="hardpoints", points=pts, sources=sources, tols=tols, axles=axles,
         vehicle=vehicle, vehicle_data=veh, front_inputs=front_in, rear_inputs=rear_in,
-        steering_inputs=project.steering, warnings=warnings,
+        steering_inputs=project.steering, warnings=warnings, layout=project.layout,
     )
 
 
 def _cp_track(pts: dict[str, dict[str, Pt]], lc: str, rc: str) -> float:
     return float(pts[lc]["CONTACT_PATCH"][1] - pts[rc]["CONTACT_PATCH"][1])
+
+
+_DEGENERATE_MM = 1e-3
+
+
+def _check_corner_points(cid: str, pts: dict[str, Pt]) -> None:
+    """Name the degenerate inputs the solver would otherwise fail on without a cause."""
+    p = {n: np.array(v, dtype=float) for n, v in pts.items()}
+    for arm in ("UCA", "LCA"):
+        if np.linalg.norm(p[f"{arm}_IN_FRONT"] - p[f"{arm}_IN_REAR"]) < _DEGENERATE_MM:
+            raise GeometryError(
+                f"Corner {cid}: the {arm} pivot axis has zero length ({arm}_IN_FRONT "
+                f"coincides with {arm}_IN_REAR).")
+    kp = p["UCA_OUT"] - p["LCA_OUT"]
+    n = float(np.linalg.norm(kp))
+    if n < _DEGENERATE_MM:
+        raise GeometryError(
+            f"Corner {cid}: UCA_OUT coincides with LCA_OUT (the upper and lower ball joints "
+            "are one point, so there is no kingpin axis).")
+    u = kp / n
+    v = p["TIE_ROD_OUT"] - p["LCA_OUT"]
+    if np.linalg.norm(v - np.dot(v, u) * u) < _DEGENERATE_MM:
+        raise GeometryError(
+            f"Corner {cid}: TIE_ROD_OUT lies on the kingpin axis (LCA_OUT-UCA_OUT line): the "
+            "steering arm has zero length, so the tie rod cannot hold the steer angle.")
+
+
+def _check_ground_datum(cid: str, wc: Pt, ax: AxleSetup) -> None:
+    """The ISO origin is on the ground: the wheel centre must sit one loaded radius above z=0.
+
+    Scrub, trail, the roll centre, FVSA and anti all take the ground as z = 0,
+    while the contact patch is derived at ``wc_z - loaded_radius``; a datum off
+    the ground would make the two disagree silently.
+    """
+    off = float(wc[2]) - ax.loaded_radius_mm
+    tol = max(0.5, ax.tire_tol_mm)
+    if abs(off) > tol:
+        raise GeometryError(
+            f"Corner {cid}: wheel-centre z {wc[2]:.1f} mm minus the loaded radius "
+            f"{ax.loaded_radius_mm:.1f} mm is {off:+.1f} mm (allowed ± {tol:g} mm). The ISO 8855 "
+            "origin must lie on the ground plane (z = 0 under the contact patches): translate "
+            "the point set in Z or correct the loaded radius.")
 
 
 def resolve(project: Project) -> CarGeometry:

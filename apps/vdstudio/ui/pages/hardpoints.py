@@ -70,12 +70,17 @@ class HardpointsPage(Page):
         groups = []
         for axle in ("front", "rear"):
             a = f"hardpoints.{axle}."
+            echo = ("Typed value, not read off the points: the static camber / toe KPIs echo "
+                    "it (carried through DWSolver).")
             groups.append((f"{axle.title()} alignment & tyre (hardpoint mode)", [
                 Field(a + "static_camber_deg", "Static camber (built into upright)", "deg", -6, 3,
-                      0.1, 2),
+                      0.1, 2, tip=echo),
                 Field(a + "static_toe_deg_per_side", "Static toe per side (+ in)", "deg", -3, 3,
-                      0.05, 3),
-                Field(a + "loaded_radius_mm", "Tyre loaded radius", "mm", 150, 400, 1, 1),
+                      0.05, 3, tip=echo),
+                Field(a + "loaded_radius_mm", "Tyre loaded radius", "mm", 150, 400, 1, 1,
+                      tip="Vertical wheel-centre-to-road distance. The ISO origin is on the "
+                          "ground, so every wheel-centre z must equal this radius within "
+                          "max(0.5 mm, the tolerance below); otherwise the geometry is refused."),
                 Field(a + "tire_source", "Tyre radius provenance", kind="choice",
                       choices=SOURCES),
                 Field(a + "tire_tol_mm", "Tyre radius tolerance", "mm", 0, 50, 0.5, 1),

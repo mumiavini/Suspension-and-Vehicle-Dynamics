@@ -19,8 +19,9 @@ def vehicle_fields() -> list[tuple[str, list[Field]]]:
             Field(v + "unsprung_mass_kg", "Unsprung mass (4 corners)", "kg", 0, 200, 0.5, 1),
             Field(v + "cg_height_mm", "CG height", "mm", 50, 1000, 5, 1),
             Field(v + "wheelbase_mm", "Wheelbase", "mm", 1000, 3500, 5, 1,
-                  tip="Synthesis places the rear axle from the rear axle inputs; in hardpoint "
-                      "mode the wheelbase is read from the points."),
+                  tip="Authoritative in synthesis: the rear axle sits at the front axle station "
+                      "+ this wheelbase (the CG station is kept, so the weight distribution "
+                      "follows). In hardpoint mode the wheelbase is read from the points."),
             Field(v + "cg_from_front_axle_mm", "CG behind front axle", "mm", 0, 3000, 5, 1,
                   tip="Sets the weight distribution: front fraction = 1 - x/L."),
         ]),
@@ -75,7 +76,9 @@ def axle_fields(axle: str) -> list[tuple[str, list[Field]]]:
         ]),
         ("Side view: layout & anti-geometry", [
             Field(a + "axle_x_mm", "Axle station (rearward of front)", "mm", -100, 4000, 5, 1,
-                  tip="DESIGN frame: x positive REARWARD from the front axle."),
+                  tip="DESIGN frame: x positive REARWARD from the front axle." if axle == "front"
+                  else "Derived, read-only: front axle station + vehicle wheelbase (edit the "
+                       "wheelbase in the vehicle data). DESIGN frame: x positive REARWARD."),
             Field(a + "lca_base_mm", "LCA base", "mm", 20, 800, 5, 1),
             Field(a + "lca_sweep_mm", "LCA sweep", "mm", -500, 500, 5, 1),
             Field(a + "uca_base_mm", "UCA base", "mm", 20, 800, 5, 1),
@@ -176,13 +179,38 @@ def steering_band_fields() -> list[tuple[str, list[Field]]]:
     return [("Steering design-intent bands (information, not targets)", rows)]
 
 
+def layout_fields(axle: str) -> list[tuple[str, list[Field]]]:
+    """Brake / drive layout: where the torque reacts sets the anti-geometry reference point."""
+    ref = (" Inboard: the torque reacts on the chassis, so the anti line runs from the WHEEL "
+           "CENTRE to the side-view IC. Outboard: it reacts on the upright, so the line runs "
+           "from the CONTACT PATCH. Source: design_intent.")
+    lay = "layout."
+    if axle == "front":
+        rows = [Field(lay + "front_brakes_inboard", "Front brakes inboard", kind="bool",
+                      tip="Sets the anti-dive reference point." + ref)]
+    else:
+        rows = [Field(lay + "rear_drive_inboard", "Drive inboard (chassis diff + driveshafts)",
+                      kind="bool", tip="Sets the anti-squat reference point. The 2027 car has "
+                                       "a chassis-mounted diff with driveshafts." + ref),
+                Field(lay + "rear_brakes_inboard", "Rear brakes inboard", kind="bool",
+                      tip="Sets the anti-lift (braking) reference point." + ref)]
+    return [("Anti-geometry reference: brake / drive layout" + DI, rows)]
+
+
 def toe_link_fields() -> list[tuple[str, list[Field]]]:
     rows: list[Field] = []
     for end, lab in (("inboard", "Inboard (chassis)"), ("outboard", "Outboard (upright)")):
         for i, ax in enumerate("XYZ"):
             rows.append(Field(f"rear_toe_link_{end}.{i}", f"{lab} {ax}", "mm", -5000, 5000, 1, 3,
-                              tip="ISO 8855, LEFT side (mirrored to the right). Z inboard is "
-                                  "the rear bump-steer knob."))
+                              tip="ISO 8855, LEFT side (mirrored to the right). X is entered "
+                                  "for the declared rear axle station below and moves with the "
+                                  "axle; absolute Y/Z: retune after changing rear track, LBJ or "
+                                  "pickup planes. Z inboard is the rear bump-steer knob."))
+    rows.append(Field("rear_toe_link_axle_x_mm", "Declared at rear axle station", "mm", -100,
+                      4000, 5, 1,
+                      tip="DESIGN frame (x rearward). The rear axle station the X values above "
+                          "were entered against; synthesis shifts both X values by the "
+                          "difference to the current rear axle station."))
     rows.append(Field("rear_static_toe_deg_per_side", "Rear static toe per side (+ in)" + DI,
                       "deg", -3, 3, 0.05, 3))
     return [("Rear toe link (declared design input, ISO 8855 left side)", rows)]

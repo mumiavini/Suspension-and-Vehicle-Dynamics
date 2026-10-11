@@ -13,7 +13,8 @@ exactly (pinned by ``tests/app/test_engine_geometry.py``).
 
 Frames: geometry is stored in ISO 8855 (X+ forward, Y+ LEFT, Z+ up, origin at
 the front axle centreline on the ground plane). The rear toe link is stored as
-the LEFT-side point; the right side is its mirror. Synthesis inputs keep the
+the LEFT-side point; the right side is its mirror; its X values move with the
+rear axle station they were declared against. Synthesis inputs keep the
 scripts' DESIGN frame (x rearward, y outboard) because that is the frame the
 designer edits them in -- the conversion lives in the scripts.
 """
@@ -47,6 +48,30 @@ INPUT_POINTS: tuple[str, ...] = (
     "WHEEL_CENTER",
 )
 Pt = tuple[float, float, float]
+
+
+# --------------------------------------------------------------------------- #
+# Brake / drive layout
+# --------------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class Layout:
+    """Where the brake and drive torques react: it sets the anti-geometry reference point.
+
+    An OUTBOARD brake (caliper on the upright) or outboard drive (hub motor,
+    live axle) reacts its torque on the upright, so the longitudinal force acts
+    at the CONTACT PATCH. An INBOARD brake or a chassis-mounted diff with
+    driveshafts reacts it on the chassis; the patch force plus the shaft couple
+    is then equivalent to the force at the WHEEL CENTRE (Milliken RCVD Ch.17).
+
+    Defaults are the 2027 car: outboard brakes on both axles and a
+    chassis-mounted diff with driveshafts (docs/GEOMETRY_AUDIT_2026-09-02_rev6.md,
+    "driveshaft/diff packaging"). All three are design_intent.
+    """
+
+    front_brakes_inboard: bool = False
+    rear_brakes_inboard: bool = False
+    rear_drive_inboard: bool = True
 
 
 # --------------------------------------------------------------------------- #
@@ -295,11 +320,16 @@ class Project:
     steering: stg.SteeringInputs = field(default_factory=lambda: stg.STEERING_2027)
 
     # The rear has no rack: its toe link is a declared design input (LEFT side,
-    # ISO 8855). Defaults are geometry_summary.REAR_TOE_LINK_*.
+    # ISO 8855). Defaults are geometry_summary.REAR_TOE_LINK_*. Its X values
+    # were declared against the rear axle station ``rear_toe_link_axle_x_mm``
+    # (design frame, rearward +); synthesis shifts both ends with the axle so
+    # the upright's steering-arm point follows the upright. Y and Z are absolute.
     rear_toe_link_inboard: Pt = field(default_factory=_default_rear_toe_in)
     rear_toe_link_outboard: Pt = field(default_factory=_default_rear_toe_out)
+    rear_toe_link_axle_x_mm: float = sla.REAR_2027.axle_x_mm
     rear_static_toe_deg_per_side: float = 0.0
     synthesis_tol_mm: float = 0.5
+    layout: Layout = field(default_factory=Layout)
 
     geometry_mode: GeometryMode = "synthesis"
     hardpoints: HardpointSet | None = None
@@ -435,9 +465,13 @@ def project_from_dict(data: dict[str, Any]) -> Project:
         p.rear_toe_link_inboard = tuple(float(v) for v in data["rear_toe_link_inboard"])  # type: ignore[assignment]
     if "rear_toe_link_outboard" in data:
         p.rear_toe_link_outboard = tuple(float(v) for v in data["rear_toe_link_outboard"])  # type: ignore[assignment]
+    p.rear_toe_link_axle_x_mm = float(
+        data.get("rear_toe_link_axle_x_mm", base.rear_toe_link_axle_x_mm))
     p.rear_static_toe_deg_per_side = float(
         data.get("rear_static_toe_deg_per_side", base.rear_static_toe_deg_per_side))
     p.synthesis_tol_mm = float(data.get("synthesis_tol_mm", base.synthesis_tol_mm))
+    if isinstance(data.get("layout"), dict):
+        p.layout = _merge_frozen(base.layout, data["layout"])
     p.geometry_mode = data.get("geometry_mode", "synthesis")
     hp = data.get("hardpoints")
     if hp:

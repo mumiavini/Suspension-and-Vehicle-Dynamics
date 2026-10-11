@@ -5,9 +5,10 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 
-from ...engine.geometry import CarGeometry
+from ...engine.geometry import CarGeometry, synthesis_rear_axle_x_mm
 from ...engine.kpis import KpiSet
 from ...engine.pose import PoseSolver
+from ...engine.project import Project, with_path
 from .. import fields
 from ..views import FrontView, SideView, TopView
 from ..widgets import KpiTable, ParamForm, banner, button, scroll
@@ -34,9 +35,31 @@ class GeometryPage(Page):
         # left: editors
         tabs = QtWidgets.QTabWidget()
         self.forms: list[ParamForm] = []
-        for title, groups in (("Front axle", fields.axle_fields("front")),
-                              ("Rear axle", fields.axle_fields("rear")),
-                              ("Rear toe link", fields.toe_link_fields()),
+        # the brake / drive layout sets the anti reference in BOTH geometry modes, so its
+        # form is never disabled with the synthesis inputs
+        self.layout_forms: list[ParamForm] = []
+        for axle in ("front", "rear"):
+            groups = fields.axle_fields(axle)
+            cut = next(i for i, (t, _) in enumerate(groups) if t.startswith("Side view")) + 1
+            # in synthesis the rear axle station is derived from the vehicle wheelbase:
+            # show that value, read-only
+            base = (lambda: _with_derived_rear(ctrl.project)) if axle == "rear" else None
+            above, below = (ParamForm(ctrl, groups[:cut], base=base),
+                            ParamForm(ctrl, groups[cut:], base=base))
+            lay = ParamForm(ctrl, fields.layout_fields(axle))
+            if axle == "rear":
+                _, ed = above._editors["rear.axle_x_mm"]
+                ed.setReadOnly(True)
+                ed.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+            self.forms += [above, below]
+            self.layout_forms.append(lay)
+            box = QtWidgets.QWidget()
+            bl = QtWidgets.QVBoxLayout(box)
+            bl.setContentsMargins(0, 0, 0, 0)
+            for w in (above, lay, below):
+                bl.addWidget(w)
+            tabs.addTab(scroll(box), f"{axle.title()} axle")
+        for title, groups in (("Rear toe link", fields.toe_link_fields()),
                               ("Bands", fields.axle_band_fields("front")
                                + fields.axle_band_fields("rear"))):
             f = ParamForm(ctrl, groups)
@@ -85,7 +108,7 @@ class GeometryPage(Page):
         self._car: CarGeometry | None = None
 
     def on_project(self) -> None:
-        for f in self.forms:
+        for f in self.forms + self.layout_forms:
             f.refresh()
         synth = self.ctrl.project.geometry_mode == "synthesis"
         for f in self.forms:
@@ -96,8 +119,9 @@ class GeometryPage(Page):
                 "in the background. Bands are design-intent information, not targets.")
         else:
             self.mode_banner.label.setText(
-                "Geometry source: <b>hardpoints</b> — these synthesis inputs are inactive. "
-                "Switch back on the Hardpoints page. The views below show the hardpoint car.")
+                "Geometry source: <b>hardpoints</b> — these synthesis inputs are inactive "
+                "(the brake / drive layout still applies). Switch back on the Hardpoints page. "
+                "The views below show the hardpoint car.")
 
     def on_geometry(self, geo: CarGeometry) -> None:
         self._car = geo
@@ -135,3 +159,8 @@ class GeometryPage(Page):
         te.setFont(f)
         lay.addWidget(te)
         dlg.exec()
+
+
+def _with_derived_rear(project: Project) -> Project:
+    """The project as synthesis reads it: rear axle station = front station + wheelbase."""
+    return with_path(project, "rear.axle_x_mm", synthesis_rear_axle_x_mm(project))
