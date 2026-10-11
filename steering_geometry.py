@@ -681,7 +681,17 @@ class SteeringKinematics:
         return float(100.0 * (delta_inner - delta_outer) / denom)
 
     def _worst_rod_end_misalignment(self) -> float:
-        """Screening check: max swing of tie-rod direction over bump × steer."""
+        """Screening check: max swing of tie-rod direction over bump × steer.
+
+        BOTH ENDS MUST BE IN THE SAME FRAME. ``DWSolver`` applies wheel travel
+        by displacing the CHASSIS by ``-wheel_travel_mm``, so the solved TRO is
+        expressed in a frame where the inner tie-rod joint sits at
+        ``tri_s + (0, rack, -bump)``. Until 2026-10-11 the inner joint was taken
+        at ``tri_s + (0, rack, 0)``: the "tie rod" measured that way changed
+        length with bump (340.84 mm static, 338.36 at +25, 341.49 at -25 on the
+        2027 front corner), which a rigid link cannot do, and the worst swing
+        read 5.51 deg instead of 7.82 deg.
+        """
         # static tie-rod direction
         fl_s, _ = self.solve_pair(bump_mm=0.0, rack_mm=0.0)
         tro_s = np.array([fl_s.tro.x_mm, fl_s.tro.y_mm, fl_s.tro.z_mm])
@@ -707,7 +717,9 @@ class SteeringKinematics:
                 except KinematicError:
                     continue
                 tro = np.array([fl.tro.x_mm, fl.tro.y_mm, fl.tro.z_mm])
-                tri = tri_s + np.array([0.0, r, 0.0])
+                # the inner joint moves with the chassis: rack along Y, and
+                # the -bump the solver applies to every chassis point
+                tri = tri_s + np.array([0.0, r, -b])
                 d = tro - tri
                 d = d / np.linalg.norm(d)
                 cos_a = float(np.clip(np.dot(d, dir_s), -1.0, 1.0))
