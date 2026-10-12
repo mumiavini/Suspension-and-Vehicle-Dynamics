@@ -144,8 +144,9 @@ def test_concept_numbers_match_sla_vehicle_results() -> None:
     p = Project()
     ck = concept.concept_kpis(p)
     res = sla.solve_vehicle(p.vehicle, p.front.rc_height_mm, p.rear.rc_height_mm, 1200.0)
-    assert ck.value("concept.k_roll") == pytest.approx(res.required_roll_stiffness_Nm_per_deg)
-    assert ck.value("concept.roll_arm") == pytest.approx(res.roll_moment_arm_mm)
+    # the roll budget uses the sprung CG; sla_geometry's whole-car value is quoted in the note
+    assert f"{res.required_roll_stiffness_Nm_per_deg:.1f} N·m/deg" in ck.get("concept.k_roll").note
+    assert f"d = {res.roll_moment_arm_mm:.1f} mm" in ck.get("concept.roll_arm").note
     assert ck.value("concept.tilt_min_track") == pytest.approx(res.tilt_min_track_mm)
     lc = sla.load_cases(sla.run().front, p.vehicle)
     assert ck.value("concept.front_fz_inner") == pytest.approx(lc["Fz_inner"])

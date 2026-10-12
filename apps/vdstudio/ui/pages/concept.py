@@ -125,22 +125,41 @@ class ConceptPage(Page):
 
     def _apply(self) -> None:
         p = self.ctrl.project
-        est = cg_estimate(p.mass_items, p.vehicle.wheelbase_mm)
+        try:
+            est = cg_estimate(p.mass_items, p.vehicle.wheelbase_mm)
+        except ValueError as exc:
+            self.cg_label.setText(f"Estimate not applied: {exc}")
+            return
         if est.total_mass_kg <= 0:
             return
         self.ctrl.apply(lambda q: apply_cg_estimate(q, est))
 
     def _update(self) -> None:
         p = self.ctrl.project
-        est = cg_estimate(p.mass_items, p.vehicle.wheelbase_mm)
-        txt = (f"Estimate: <b>{est.total_mass_kg:.1f} kg</b>, CG height "
-               f"<b>{est.cg_height_mm:.1f} mm</b>")
-        if est.front_mass_fraction is not None:
-            txt += f", {100 * est.front_mass_fraction:.1f} % front"
+        v = p.vehicle
+        try:
+            est = cg_estimate(p.mass_items, v.wheelbase_mm)
+        except ValueError as exc:
+            txt = f"CG estimate not computed: {exc}."
         else:
-            txt += " (weight distribution needs every x)"
-        txt += (f". {100 * est.estimate_share:.0f} % of the mass is tagged estimate. Validate "
-                "the CG height with a tilt test: h = ΔW·T / (W·sin θ).")
+            txt = (f"Estimate: <b>{est.total_mass_kg:.1f} kg</b>, CG height "
+                   f"<b>{est.cg_height_mm:.1f} mm</b>")
+            if est.front_mass_fraction is not None:
+                txt += f", {100 * est.front_mass_fraction:.1f} % front"
+            else:
+                txt += " (weight distribution needs every x)"
+            if est.total_mass_kg > 0:
+                txt += (f". Δ vs vehicle data: {est.total_mass_kg - v.total_mass_kg:+.1f} kg, "
+                        f"CG height {est.cg_height_mm - v.cg_height_mm:+.1f} mm")
+                if est.front_mass_fraction is not None:
+                    txt += (f", front mass fraction "
+                            f"{100 * (est.front_mass_fraction - v.front_mass_fraction):+.1f} "
+                            "points")
+            txt += f". {100 * est.estimate_share:.0f} % of the mass is tagged estimate."
+        txt += (" Validate the CG height (suspension locked, h above the contact plane): raise "
+                "one side by θ on level scales, h = ΔW·T / (W·tan θ) with ΔW the drop of the "
+                "raised-side reading; on a tilt table with platform scales, "
+                "h = (N_low − N_high)·T / (2·W·sin θ).")
         self.cg_label.setText(txt)
         try:
             self.table.set_kpis(concept_kpis(p))
