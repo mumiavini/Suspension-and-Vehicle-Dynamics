@@ -49,7 +49,9 @@ from import_solidworks_hardpoints import (  # noqa: E402
 )
 
 OUT_DIR = REPO / "projects" / "cad"
-SCHEMA = 1
+# 2: 2D sketches on rotated planes mapped to model space correctly (schema 1
+# mirrored them; only its 3D sketches are trustworthy).
+SCHEMA = 2
 
 # swSketchSegments_e
 _SEG_LINE, _SEG_ARC = 0, 1

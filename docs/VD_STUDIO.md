@@ -227,6 +227,21 @@ bounding boxes, in the model's own frame and in mm. Anyone can analyse it
 without SolidWorks: the frame's axes, where the front axle sits, and the
 distance from each pick-up point to the nearest sketch point.
 
+**Compare the pick-ups with the frame.** Run
+`scripts/compare_chassis.py "projects/cad/<name>_survey.json"`. It uses the
+project's placement, or `--forward/--left/--origin`, and writes
+`<name>_comparison.md`, `.csv` and `.svg` next to the survey.
+
+- **Table:** for every inboard wishbone pick-up, the nearest frame node (an end
+  of a frame centreline), Δx/Δy/Δz and |Δ|, and the distance to the nearest
+  tube centreline.
+- **SVG:** top, side and front views of the frame with the suspension
+  overlaid.
+
+The frame nodes are taken as the CAD's intent for the pick-ups. A pick-up on a
+tab away from its node reads as a difference; the report says so and does not
+say which source is right.
+
 The preview table shows each point exactly as it will land in CAD. If you
 move skeleton points in CAD and read them back (**Read skeleton back**),
 use the same placement.
@@ -298,6 +313,7 @@ apps/vdstudio/engine/   Qt-free logic (testable from a REPL)
 apps/vdstudio/ui/       PySide6 + pyqtgraph presentation
 apps/vdstudio/app.py    entry point; log file + error dialog when started without a console
 apps/vdstudio/engine/recent.py  start-up file choice, recent list (no Qt)
+apps/vdstudio/engine/chassis.py chassis CAD survey vs pick-ups (scripts/compare_chassis.py)
 apps/vdstudio/shortcut.py  Desktop / Start-menu / app-menu shortcuts (no Qt)
 apps/vdstudio/resources/   icon (.ico for shortcuts, .png for the window), from scripts/make_icon.py
 ```

@@ -100,7 +100,7 @@ def test_main_writes_json_and_closes_only_what_it_opened(tmp_path, monkeypatch, 
     assert sc.main(["--file", str(tmp_path / "Xasis.SLDPRT"), "--out", str(out),
                     "--no-image"]) == 0
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert data["schema"] == 1 and data["title"] == "Xasis 33.3.SLDPRT"
+    assert data["schema"] == 2 and data["title"] == "Xasis 33.3.SLDPRT"
     assert closed == ["Xasis 33.3.SLDPRT"]
     assert "Wrote" in capsys.readouterr().out
 
@@ -129,3 +129,19 @@ def test_drag_and_drop_batch() -> None:
     text = raw.decode("ascii")
     assert 'scripts\\survey_chassis.py --file "%MODEL%"' in text
     assert "--inexact" in text and 'cd /d "%~dp0"' in text
+
+
+def test_2d_sketch_on_a_rotated_plane_lands_in_model_space() -> None:
+    """The front-bulkhead case from the real chassis: a plane parallel to the Top plane.
+
+    IMathTransform uses row vectors, p_sketch = p_model @ R + T. With
+    R = [[1,0,0],[0,0,1],[0,-1,0]] and T = (0, 0, 0.68) m the plane is model
+    Y = -680 mm and the model corner (175, -680, -425) mm is sketch (175, 425, 0).
+    Reading it with R transposed gave (175, +680, +425): the mirror seen in the
+    survey of "Xasis 33.3".
+    """
+    t = NS(ArrayData=[1, 0, 0, 0, 0, 1, 0, -1, 0, 0.0, 0.0, 0.68, 1.0])
+    sk = NS(ModelToSketchTransform=t, GetSketchSegments=[], GetSketchPoints2=[
+        Pt(0.175, 0.425, 0.0), Pt(-0.175, 0.075, 0.0)])
+    out = sc.Survey().sketch("front bulkhead", "ProfileFeature", NS(GetSpecificFeature2=sk))
+    assert out["points"] == [[175.0, -680.0, -425.0], [-175.0, -680.0, -75.0]]

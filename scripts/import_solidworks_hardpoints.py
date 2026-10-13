@@ -230,10 +230,14 @@ def _sketch_to_model(sketch):
         return lambda p: p
 
     def to_model(point: Vec) -> Vec:
-        # Inverse of p_sketch = scale * R @ p_model + T, with R orthonormal.
+        # IMathTransform works on ROW vectors: p_sketch = scale * p_model @ R + T.
+        # The inverse is p_model = (p_sketch - T) @ R.T / scale, i.e. R @ shifted.
+        # (Applying R.T instead mirrors every sketch on a plane rotated about a
+        # non-symmetric axis -- a 2D sketch on a plane parallel to the Top plane
+        # came back with Y and Z negated. 3D sketches have the identity.)
         shifted = [(point[i] - translation[i]) / scale for i in range(3)]
         return tuple(  # type: ignore[return-value]
-            sum(rotation[r][c] * shifted[r] for r in range(3)) for c in range(3)
+            sum(rotation[r][c] * shifted[c] for c in range(3)) for r in range(3)
         )
 
     return to_model

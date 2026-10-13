@@ -289,6 +289,13 @@
     "body_ahead_of_front_axle_mm": 0.0,
     "source": "estimate"
   },
+  "cad_frame": {
+    "forward": "-Y",
+    "left": "-X",
+    "origin_x_mm": 0.0,
+    "origin_y_mm": -120.4,
+    "origin_z_mm": 75.0
+  },
   "geometry_mode": "synthesis",
   "hardpoints": null,
   "mass_items": [
