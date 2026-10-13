@@ -88,7 +88,9 @@ def test_target_query_without_a_crossing_says_so() -> None:
     r = W.target_query(Project(), "front.rc_height_mm", "front.rc_static", 500.0, 20.0, 40.0,
                        n_scan=3)
     assert r.roots == []
-    assert "No crossing" in r.message
+    # states what was searched, never that the target is unreachable
+    assert "No sign change" in r.message
+    assert "not reachable" not in r.message
 
 
 def test_parallel_runner_gives_the_serial_answer() -> None:

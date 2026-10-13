@@ -12,8 +12,9 @@ Three queries:
 * :func:`sensitivity` -- d(output)/d(input) by central difference about the
   current design, for a trade-off matrix.
 * :func:`target_query` -- "which values of this input put that output at this
-  target?" Every root in the range is returned, or none. The target is an
-  argument to the query, never a property of the design (CLAUDE.md).
+  target?" Every crossing the scan can bracket is refined and returned; a
+  scan point or refinement that fails is reported, never dropped. The target
+  is an argument to the query, never a property of the design (CLAUDE.md).
 
 Points can be evaluated in a process pool. Each worker rebuilds the geometry
 from a pickled :class:`Project`, so nothing is shared between processes.
@@ -21,7 +22,6 @@ from a pickled :class:`Project`, so nothing is shared between processes.
 
 from __future__ import annotations
 
-import contextlib
 import itertools
 import math
 import multiprocessing
@@ -31,7 +31,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wai
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.optimize import brentq
+from scipy.optimize import brentq, minimize_scalar
 
 from .geometry import GeometryError, resolve
 from .kpis import DYNAMIC_GROUPS, KpiSet, compute_dynamic, compute_static
@@ -97,6 +97,10 @@ def _axle_params(axle: str) -> list[Param]:
         ("dz_uca_mm", "UCA pivot-axis rise", "mm", 2.0),
     ]
     out = [Param(f"{axle}.{f}", f"{a} {lab}", u, g, s) for f, lab, u, s in spec]
+    if axle == "rear":
+        # the front static toe is a steering input (steering.static_toe_deg_per_side)
+        out.append(Param("rear_static_toe_deg_per_side", "Rear static toe per side", "deg", g,
+                         0.05))
     out.append(Param(f"{axle}.travel_bump_mm", f"{a} bump travel (sweep range)", "mm", "Sweep "
                      "settings", 5.0, "any"))
     out.append(Param(f"{axle}.roll_reference_deg", f"{a} reference roll angle", "deg",
@@ -139,14 +143,19 @@ def _vehicle_params() -> list[Param]:
         ("total_mass_kg", "total mass", "kg", 5.0),
         ("unsprung_mass_kg", "unsprung mass", "kg", 2.0),
         ("cg_height_mm", "CG height", "mm", 10.0),
-        ("wheelbase_mm", "wheelbase", "mm", 10.0),
         ("cg_from_front_axle_mm", "CG behind front axle", "mm", 10.0),
         ("target_roll_gradient_deg_per_g", "roll gradient target", "deg/g", 0.1),
         ("brake_bias_front", "brake bias front", "-", 0.02),
         ("lltd_front", "LLTD front (load-case assumption)", "-", 0.02),
         ("design_ay_g", "design lateral g", "g", 0.1),
     ]
-    return [Param(f"vehicle.{f}", f"Vehicle {lab}", u, g, s, "any") for f, lab, u, s in spec]
+    out = [Param(f"vehicle.{f}", f"Vehicle {lab}", u, g, s, "any") for f, lab, u, s in spec]
+    # Synthesis places the rear axle from the wheelbase and keeps the CG station. In
+    # hardpoint mode the wheelbase is wherever the rear wheel centres are, so this input
+    # would only move the mass split there; it is offered in synthesis only.
+    out.insert(3, Param("vehicle.wheelbase_mm", "Wheelbase (moves the rear axle; CG station kept)",
+                        "mm", g, 10.0, "synthesis"))
+    return out
 
 
 def _toe_link_params() -> list[Param]:
@@ -160,7 +169,8 @@ def _toe_link_params() -> list[Param]:
 
 
 def hardpoint_params() -> list[Param]:
-    """Hardpoint-mode inputs, left side, mirrored to the right."""
+    """Hardpoint-mode inputs: left-side points mirrored to the right, and each axle's
+    alignment and tyre radius (the inputs a hardpoint file cannot carry)."""
     out = []
     for corner in ("FL", "RL"):
         axle = "Front" if corner == "FL" else "Rear"
@@ -170,6 +180,17 @@ def hardpoint_params() -> list[Param]:
                 out.append(Param(f"hardpoints.points.{corner}.{point}.{i}",
                                  f"{axle} {point} {ax} (mirrored)", "mm",
                                  f"{axle} hardpoints", 2.0, "hardpoints", mirror=True))
+    for axle in ("front", "rear"):
+        a = axle.title()
+        g = f"{a} alignment (hardpoints)"
+        out += [
+            Param(f"hardpoints.{axle}.static_camber_deg", f"{a} static camber", "deg", g, 0.25,
+                  "hardpoints"),
+            Param(f"hardpoints.{axle}.static_toe_deg_per_side", f"{a} static toe per side",
+                  "deg", g, 0.05, "hardpoints"),
+            Param(f"hardpoints.{axle}.loaded_radius_mm", f"{a} tyre loaded radius", "mm", g,
+                  2.0, "hardpoints"),
+        ]
     return out
 
 
@@ -228,10 +249,18 @@ def groups_for(keys: Iterable[str]) -> set[str]:
 
 @dataclass
 class PointResult:
+    """One evaluated combination. ``error`` is empty only when every output solved;
+    otherwise it names each failed output and why (``errors`` holds them per output)."""
+
     assignment: tuple[float, ...]
     values: dict[str, float]
     status: dict[str, str]
     error: str = ""
+    errors: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def fully_solved(self) -> bool:
+        return all(math.isfinite(v) for v in self.values.values())
 
 
 def evaluate(project: Project, params: Sequence[str], values: Sequence[float],
@@ -246,13 +275,19 @@ def evaluate(project: Project, params: Sequence[str], values: Sequence[float],
             ks = ks.merge(compute_dynamic(geo, groups, static=ks))
     except (GeometryError, ValueError, RuntimeError, ZeroDivisionError) as exc:
         return PointResult(tuple(values), {o: float("nan") for o in outputs},
-                           {o: "fail" for o in outputs}, str(exc))
-    vals, stat = {}, {}
+                           {o: "fail" for o in outputs}, str(exc),
+                           {o: str(exc) for o in outputs})
+    vals, stat, errs = {}, {}, {}
     for o in outputs:
         k = ks.get(o)
         vals[o] = k.value if k is not None and k.ok else float("nan")
         stat[o] = k.status if k is not None else "fail"
-    return PointResult(tuple(values), vals, stat)
+        if k is None:
+            errs[o] = "not computed for this geometry"
+        elif not k.ok:
+            errs[o] = k.error or "not finite"
+    return PointResult(tuple(values), vals, stat,
+                       "; ".join(f"{o}: {e}" for o, e in errs.items()), errs)
 
 
 # --------------------------------------------------------------------------- #
@@ -366,16 +401,42 @@ class SensitivityResult:
     steps: dict[str, float]
     # d[output][param] = d(output)/d(param), per unit of the param
     derivative: dict[str, dict[str, float]]
+    # up[output][param] / dn[output][param]: the output with the param at base +/- step.
+    # Kept because a central difference averages a kink (peak |toe|, min/max) away.
+    up: dict[str, dict[str, float]] = field(default_factory=dict)
+    dn: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def per_step(self, output: str, param: str) -> float:
         return self.derivative[output][param] * self.steps[param]
+
+    def one_sided(self, output: str, param: str) -> tuple[float, float]:
+        """(Δ+, Δ−): change of the output for +step and for −step of the input."""
+        b = self.base.get(output, float("nan"))
+        nan = float("nan")
+        return (self.up.get(output, {}).get(param, nan) - b,
+                self.dn.get(output, {}).get(param, nan) - b)
+
+    def is_kink(self, output: str, param: str) -> bool:
+        """True when the one-sided changes have the same sign or very different sizes
+        (|Δ+ + Δ−| > ½ |Δ+ − Δ−|): the central value would hide how the output moves."""
+        dp, dm = self.one_sided(output, param)
+        if not (math.isfinite(dp) and math.isfinite(dm)):
+            return False
+        b = self.base.get(output, 0.0)
+        if max(abs(dp), abs(dm)) <= 1e-9 * max(1.0, abs(b) if math.isfinite(b) else 1.0):
+            return False
+        return abs(dp + dm) > 0.5 * abs(dp - dm)
 
 
 def sensitivity(project: Project, params: Sequence[str], outputs: Sequence[str],
                 steps: dict[str, float] | None = None, runner: Runner | None = None,
                 progress: Progress | None = None,
                 cancelled: Cancelled | None = None) -> SensitivityResult:
-    """Central-difference d(output)/d(input) about the current design."""
+    """Central-difference d(output)/d(input) about the current design.
+
+    Both one-sided values are kept (``up`` / ``dn``) so a caller can show them
+    where the output has a kink at the current design.
+    """
     steps = {p: (steps or {}).get(p, param_by_path(p).step) for p in params}
     base = {p: param_by_path(p).get(project) for p in params}
     tasks: list[tuple[tuple[str, ...], tuple[float, ...]]] = [((), ())]
@@ -385,11 +446,15 @@ def sensitivity(project: Project, params: Sequence[str], outputs: Sequence[str],
     runner = runner or Runner(parallel=False)
     res = runner.run_tasks(project, tasks, outputs, progress, cancelled)
     deriv: dict[str, dict[str, float]] = {o: {} for o in outputs}
+    ups: dict[str, dict[str, float]] = {o: {} for o in outputs}
+    dns: dict[str, dict[str, float]] = {o: {} for o in outputs}
     for j, p in enumerate(params):
         up, dn = res[1 + 2 * j], res[2 + 2 * j]
         for o in outputs:
+            ups[o][p] = up.values[o]
+            dns[o][p] = dn.values[o]
             deriv[o][p] = (up.values[o] - dn.values[o]) / (2.0 * steps[p])
-    return SensitivityResult(list(params), list(outputs), res[0].values, steps, deriv)
+    return SensitivityResult(list(params), list(outputs), res[0].values, steps, deriv, ups, dns)
 
 
 # --------------------------------------------------------------------------- #
@@ -405,6 +470,27 @@ class TargetQueryResult:
     scan_y: np.ndarray
     roots: list[float]
     message: str
+    # Scan points whose output did not solve. They are shown as failures, never skipped
+    # silently: a crossing can hide behind them.
+    failed_x: list[float] = field(default_factory=list)
+    # (a, b, reason): the output crosses the target somewhere in [a, b] (a sign change,
+    # or a refined extremum past the target), but the refinement failed. The crossing
+    # is bracketed, not located.
+    unrefined_brackets: list[tuple[float, float, str]] = field(default_factory=list)
+    scan_errors: list[str] = field(default_factory=list)   # per scan point, "" if solved
+    xtol: float = 0.0                                       # brentq tolerance on the input
+
+
+class _Unsolved(RuntimeError):
+    """The output did not solve at a point a refinement asked for."""
+
+
+def _dedupe(xs: Iterable[float], tol: float) -> list[float]:
+    out: list[float] = []
+    for x in sorted(xs):
+        if not out or x - out[-1] > tol:
+            out.append(x)
+    return out
 
 
 def target_query(project: Project, param: str, output: str, target: float, lo: float,
@@ -413,42 +499,115 @@ def target_query(project: Project, param: str, output: str, target: float, lo: f
                  cancelled: Cancelled | None = None) -> TargetQueryResult:
     """Every value of ``param`` in [lo, hi] where ``output`` crosses ``target``.
 
-    A coarse scan brackets sign changes; each bracket is refined with ``brentq``.
-    No crossing -> no root, stated as such. Nothing is applied to the design.
+    A scan of ``n_scan`` points brackets sign changes of output − target; each
+    bracket is refined with ``brentq``. Two crossings inside one scan interval
+    (a V-shaped output such as peak |toe|) show no sign change, so every
+    interior local extremum of the scan is also refined (bounded
+    ``minimize_scalar`` over its two neighbouring intervals); when the refined
+    extremum crosses or touches the target, both sides are solved with
+    ``brentq``. Failed scan points and failed refinements are returned and
+    named in the message. With no root the message states what was searched,
+    never that the target is unreachable: a pair of crossings closer than the
+    scan spacing can still be missed. Nothing is applied to the design.
     """
     runner = runner or Runner(parallel=False)
     xs = np.linspace(lo, hi, n_scan)
     pts = runner.map(project, [param], [(float(x),) for x in xs], [output], progress, cancelled)
     ys = np.array([pt.values[output] for pt in pts], dtype=float)
     groups = sorted(groups_for([output]))
+    tol = 1e-4 * max(1.0, abs(hi - lo))
+    # An extremum this close to the target touches it (a tangent): relative to the size
+    # of the output and the target, finer than the refinement locates any crossing.
+    touch = 1e-6 * max([abs(target), *np.abs(ys[np.isfinite(ys)]).tolist()])
 
     def f(x: float) -> float:
         if cancelled is not None and cancelled():
             raise InterruptedError
-        return evaluate(project, [param], [x], [output], groups).values[output] - target
+        pt = evaluate(project, [param], [float(x)], [output], groups)
+        v = pt.values[output]
+        if not math.isfinite(v):
+            raise _Unsolved(f"the output did not solve at {x:.6g} "
+                            f"({pt.error or 'not finite'})")
+        return v - target
 
     roots: list[float] = []
-    for i in range(len(xs) - 1):
-        y0, y1 = ys[i] - target, ys[i + 1] - target
-        if not (math.isfinite(y0) and math.isfinite(y1)):
-            continue
-        if y0 == 0.0:
+    unrefined: list[tuple[float, float, str]] = []
+
+    def refine(a: float, b: float) -> None:
+        try:
+            roots.append(float(brentq(f, a, b, xtol=tol)))
+        except (ValueError, RuntimeError) as exc:
+            unrefined.append((float(a), float(b), "output − target changes sign here, but "
+                              f"the refinement failed: {exc}"))
+
+    d = ys - target
+    ok = [i for i in range(len(xs)) if math.isfinite(d[i])]
+    failed_x = [float(xs[i]) for i in range(len(xs)) if not math.isfinite(d[i])]
+    # 1) sign changes between consecutive solved scan points (also across failed ones)
+    for i, j in itertools.pairwise(ok):
+        if d[i] == 0.0:
             roots.append(float(xs[i]))
-        elif y0 * y1 < 0:
-            tol = 1e-4 * max(1.0, abs(hi - lo))
-            with contextlib.suppress(ValueError, RuntimeError):
-                roots.append(float(brentq(f, xs[i], xs[i + 1], xtol=tol)))
-    if math.isfinite(ys[-1]) and ys[-1] - target == 0.0:
-        roots.append(float(xs[-1]))
+        elif d[i] * d[j] < 0:
+            refine(float(xs[i]), float(xs[j]))
+    if ok and d[ok[-1]] == 0.0:
+        roots.append(float(xs[ok[-1]]))
+    # 2) interior extrema that stay on one side of the target at the scan points
+    approaches: list[tuple[float, float]] = []      # (x, output) of extrema short of it
+    for a, m, b in zip(ok, ok[1:], ok[2:], strict=False):
+        da, dm, db = d[a], d[m], d[b]
+        if (dm - da) * (db - dm) >= 0:
+            continue                                  # monotonic (or flat) through m
+        s = 1.0 if dm < da else -1.0                  # +1: a local minimum of the scan
+        if s * dm <= 0:
+            continue                                  # at/past the target (step 1) or bends away
+        xa, xb = float(xs[a]), float(xs[b])
+        try:
+            opt = minimize_scalar(lambda x, s=s: s * f(x), bounds=(xa, xb), method="bounded",
+                                  options={"xatol": tol})
+        except (ValueError, RuntimeError) as exc:
+            unrefined.append((xa, xb, "an interior extremum here (the target may be "
+                              f"crossed twice) could not be refined: {exc}"))
+            continue
+        xm, fm = float(opt.x), s * float(opt.fun)
+        if abs(fm) <= touch:
+            roots.append(xm)                          # touches the target
+        elif s * fm < 0:                              # crosses: one root on each side
+            refine(xa, xm)
+            refine(xm, xb)
+        else:
+            approaches.append((xm, fm + target))
+    roots = _dedupe(roots, tol)
+
+    n = len(xs)
+    spacing = (hi - lo) / (n - 1) if n > 1 else 0.0
     if roots:
         msg = (f"{len(roots)} value(s) of the input put the output at the target inside "
-               f"[{lo:g}, {hi:g}]. Nothing has been applied to the design.")
-    elif not np.isfinite(ys).any():
+               f"[{lo:g}, {hi:g}]. Searched: {n} scan points, spacing {spacing:.4g}, every "
+               "sign change and interior extremum refined; crossings closer together than "
+               "the spacing can still be missed. Nothing has been applied to the design.")
+    elif not ok:
         msg = "Every scan point failed -- the range leaves the region where the geometry solves."
+    elif unrefined:
+        msg = (f"No root located inside [{lo:g}, {hi:g}]: {len(unrefined)} bracket(s) could "
+               "not be refined (below).")
     else:
-        msg = (f"No crossing of {target:g} inside [{lo:g}, {hi:g}] -- the target is not "
-               "reachable with this input alone over this range.")
-    return TargetQueryResult(param, output, target, xs, ys, roots, msg)
+        msg = (f"No sign change of output − target between the {n} scan points "
+               f"(spacing {spacing:.4g})")
+        if approaches:
+            x_c, y_c = min(approaches, key=lambda t: abs(t[1] - target))
+            what = ("1 interior extremum" if len(approaches) == 1
+                    else f"{len(approaches)} interior extrema")
+            msg += (f"; {what} refined, none reaches the target (closest: output {y_c:.6g} "
+                    f"at {x_c:.6g})")
+        msg += "; a pair of crossings closer than the spacing would be missed."
+    if failed_x and ok:
+        msg += (f" {len(failed_x)} scan point(s) did not solve ("
+                + ", ".join(f"{x:.6g}" for x in failed_x) + ") and are shown as —; a "
+                "crossing next to them may be missed.")
+    for a_, b_, why in unrefined:
+        msg += f" Between {a_:.6g} and {b_:.6g}: {why}."
+    return TargetQueryResult(param, output, target, xs, ys, roots, msg, failed_x, unrefined,
+                             [pt.error for pt in pts], tol)
 
 
 def corners() -> tuple[str, ...]:

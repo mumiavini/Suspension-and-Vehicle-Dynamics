@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 from PySide6 import QtCore, QtWidgets
 
 from ...engine.geometry import CarGeometry
@@ -9,7 +11,7 @@ from ...engine.kpis import KpiSet
 from ...engine.pose import PoseSolver
 from ...engine.project import STAGE_STATUSES, STAGES, Project, StageState
 from ..views import FrontView, TopView
-from ..widgets import Card, SimpleTable, banner, button, scroll
+from ..widgets import Card, SimpleTable, banner, button, scroll, stale_keys
 from .base import Page
 
 CARDS: tuple[tuple[str, str, str], ...] = (
@@ -21,8 +23,8 @@ CARDS: tuple[tuple[str, str, str], ...] = (
     ("rear.roll_outer_camber", "Rear outer camber in roll", "deg"),
     ("front.anti", "Anti-dive", "%"),
     ("rear.anti", "Anti-squat", "%"),
-    ("front.bump_steer_peak", "Front bump steer (peak)", "deg"),
-    ("rear.bump_steer_peak", "Rear bump steer (peak)", "deg"),
+    ("front.bump_steer_peak", "Front bump steer (peak, per side)", "deg"),
+    ("rear.bump_steer_peak", "Rear bump steer (peak, per side)", "deg"),
     ("steering.ackermann", "Ackermann (solved)", "%"),
     ("steering.ratio", "Steering ratio", ":1"),
     ("steering.max_steer_inner", "Max steer, inner", "deg"),
@@ -157,12 +159,20 @@ class DashboardPage(Page):
         self.summary.label.setText(f"<b>Geometry failed:</b> {msg}")
 
     def on_kpis(self, ks: KpiSet) -> None:
+        stale_k = stale_keys(ks)
         for key, card in self.cards.items():
-            card.set_kpi(ks.get(key))
+            card.set_kpi(ks.get(key), stale=key in stale_k)
         c = ks.counts()
         geo = self.ctrl.geometry
         est = geo.estimate_count() if geo else 0
-        stale = " Swept KPIs are being recomputed…" if self.ctrl.dynamic_stale else ""
+        if self.ctrl.dynamic_error:
+            stale = (f" <b>Swept KPIs FAILED</b> ({html.escape(self.ctrl.dynamic_error)}); "
+                     "they are shown as failed (—), not as the previous values.")
+        elif self.ctrl.dynamic_stale:
+            stale = (" Swept KPIs are being recomputed… values in grey italics are from the "
+                     "previous geometry.")
+        else:
+            stale = ""
         mode = self.ctrl.project.geometry_mode
         self.summary.label.setText(
             f"<b>{self.ctrl.project.name}</b> — geometry source <b>{mode}</b>. "
