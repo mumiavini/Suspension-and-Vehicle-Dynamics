@@ -38,6 +38,7 @@ from vdcore.analysis.upright_loads import (
 from .geometry import CarGeometry
 from .maneuver import ManeuverResult
 from .project import Project, Pushrod
+from .suspension import pushrod_for_legs
 
 COMBINED_SHARE = 0.7       # sla_geometry.load_cases' combined case
 
@@ -85,7 +86,8 @@ def leg_cases(geo: CarGeometry, project: Project, r: ManeuverResult) -> list[Leg
         fz = float(r.wheels[outer].fz_N)
         # the road pushes the outer tyre toward the turn centre: +Y on a right corner
         toward = 1.0 if outer in ("FR", "RR") else -1.0
-        rod = project.pushrod_front if axle == "front" else project.pushrod_rear
+        # the rocker's rod line once a rocker is drawn, else the estimate
+        rod = pushrod_for_legs(geo, project, axle)
         lay = geo.layout
         brake_wc = lay.front_brakes_inboard if axle == "front" else lay.rear_brakes_inboard
         cp, wc = geo.p(outer, "CONTACT_PATCH"), geo.p(outer, "WHEEL_CENTER")

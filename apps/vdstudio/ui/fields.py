@@ -221,6 +221,71 @@ def tilt_fields() -> list[tuple[str, list[Field]]]:
     ])]
 
 
+def damper_spring_fields() -> list[tuple[str, list[Field]]]:
+    """The team's damper and springs (saved in the project)."""
+    d, k = "damper.", "springs."
+    return [
+        ("Damper (one model, all corners)", [
+            Field(d + "eye_to_eye_extended_mm", "Eye to eye, fully extended", "mm", 100, 500, 1,
+                  1, tip="Centre to centre of the eye bearings, damper fully extended."),
+            Field(d + "stroke_mm", "Stroke", "mm", 10, 150, 0.5, 1,
+                  tip="Exposed shaft length with the damper fully extended. Measure it: "
+                      "everything about damper travel depends on it."),
+            Field(d + "bump_rubber_mm", "Bump rubber (compressed)", "mm", 0, 40, 0.5, 1,
+                  tip="Thickness the bump rubber keeps when fully squeezed; eats into the "
+                      "stroke."),
+            Field(d + "bolt_mm", "Eye bolt", "mm", 4, 20, 0.5, 1),
+            Field(d + "bearing_od_mm", "Eye bearing OD", "mm", 10, 80, 0.5, 1),
+            Field(d + "length_source", "Length provenance", kind="choice", choices=SOURCES),
+            Field(d + "stroke_source", "Stroke provenance", kind="choice", choices=SOURCES),
+        ]),
+        ("Springs (rating as marked, lb/in)", [
+            Field(k + "front_lb_in", "Fitted front", "lb/in", 10, 2000, 10, 0),
+            Field(k + "rear_lb_in", "Fitted rear", "lb/in", 10, 2000, 10, 0),
+            Field(k + "roll_stiffness_front_share", "Roll stiffness front share "
+                  "(design_intent)", "-", 0, 1, 0.02, 2,
+                  tip="Target split of the TOTAL roll stiffness (springs + anti-roll bars). "
+                      "Sets how much bar each axle needs; also which wheel lifts first on "
+                      "the tilt table."),
+            Field(k + "source", "Provenance", kind="choice", choices=SOURCES),
+        ]),
+    ]
+
+
+def rocker_fields(axle: str) -> list[tuple[str, list[Field]]]:
+    """One axle's rod + rocker + damper points (LEFT corner, chassis frame, ISO 8855)."""
+    r = f"rocker_{axle}."
+    tip = ("LEFT corner, chassis frame, ISO 8855 (X fwd, Y LEFT, Z up), mm, at ride height; "
+           "the right corner is the mirror.")
+
+    def xyz(key: str, label: str, t: str = "") -> list[Field]:
+        return [Field(f"{r}{key}.{i}", f"{label} {c}", "mm", -5000, 5000, 1, 1,
+                      tip=(t + " " if t else "") + tip)
+                for i, c in enumerate("XYZ")]
+
+    return [
+        ("Rod", [
+            Field(r + "enabled", "Rocker drawn", kind="bool"),
+            Field(r + "rod_type", "Rod", kind="choice", choices=("pushrod", "pullrod")),
+            Field(r + "mount_body", "Rod mounted on", kind="choice",
+                  choices=("lca", "uca", "upright")),
+            *xyz("rod_mount", "Outer end", "On the member chosen above."),
+            Field(r + "source", "Provenance", kind="choice", choices=SOURCES),
+        ]),
+        ("Rocker axis", [
+            *xyz("rocker_pivot", "Pivot", "A point on the rocker axis."),
+            *[Field(f"{r}rocker_axis.{i}", f"Axis {c}", "-", -1, 1, 0.01, 4,
+                    tip="Direction of the rocker's pivot axis (normalised). " + tip)
+              for i, c in enumerate("XYZ")],
+        ]),
+        ("Rocker pickups", [
+            *xyz("rocker_rod", "Rod pickup"),
+            *xyz("rocker_damper", "Damper pickup"),
+        ]),
+        ("Damper chassis end", xyz("damper_chassis", "End")),
+    ]
+
+
 def turning_envelope_fields() -> list[tuple[str, list[Field]]]:
     """What lies outboard of the outer front patch, for the FSAE hairpin check."""
     e = "turning_envelope."

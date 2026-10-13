@@ -296,6 +296,97 @@
     "origin_y_mm": -120.4,
     "origin_z_mm": 75.0
   },
+  "rocker_front": {
+    "enabled": true,
+    "rod_type": "pushrod",
+    "mount_body": "lca",
+    "rod_mount": [
+      9.0,
+      542.0,
+      145.0
+    ],
+    "rocker_pivot": [
+      20.0,
+      180.0,
+      535.0
+    ],
+    "rocker_axis": [
+      -0.0508,
+      -0.7327,
+      -0.6787
+    ],
+    "rocker_rod": [
+      -29.8011,
+      184.3486,
+      534.0308
+    ],
+    "rocker_damper": [
+      22.3767,
+      140.6655,
+      577.2886
+    ],
+    "damper_chassis": [
+      213.735,
+      138.8937,
+      564.8857
+    ],
+    "source": "design_intent"
+  },
+  "rocker_rear": {
+    "enabled": true,
+    "rod_type": "pushrod",
+    "mount_body": "lca",
+    "rod_mount": [
+      -1530.0,
+      523.0,
+      145.0
+    ],
+    "rocker_pivot": [
+      -1500.0,
+      160.0,
+      420.0
+    ],
+    "rocker_axis": [
+      -0.0332,
+      -0.6053,
+      -0.7953
+    ],
+    "rocker_rod": [
+      -1549.9241,
+      162.7533,
+      419.9897
+    ],
+    "rocker_damper": [
+      -1512.2069,
+      104.9203,
+      462.4269
+    ],
+    "damper_chassis": [
+      -1323.4708,
+      74.7226,
+      477.5258
+    ],
+    "source": "design_intent"
+  },
+  "damper": {
+    "eye_to_eye_extended_mm": 220.0,
+    "stroke_mm": 57.0,
+    "bump_rubber_mm": 0.0,
+    "bolt_mm": 12.0,
+    "bearing_od_mm": 40.0,
+    "length_source": "measured",
+    "stroke_source": "estimate"
+  },
+  "springs": {
+    "available_lb_in": [
+      220.0,
+      550.0
+    ],
+    "front_lb_in": 220.0,
+    "rear_lb_in": 220.0,
+    "source": "measured",
+    "roll_stiffness_front_share": 0.5
+  },
   "geometry_mode": "hardpoints",
   "hardpoints": {
     "points": {
@@ -761,6 +852,15 @@
       "decision": "Inboard UCA/LCA pick-ups (16) taken from the chassis CAD 'Xasis 33.3' (PSD/PST frame nodes) via scripts/import_chassis_pickups.py; project switched to hardpoint mode.",
       "rationale": "The chassis team moved the pick-ups within the rules suspension gave them; front-view geometry is nearly unchanged (camber gain change < 1e-4 deg/mm, RC height -1.8 / -1.2 mm). Consequences recorded: front RC migration -0.200 -> -0.278 mm/mm, bump steer ~0.002 deg/mm both axles (tie rods sized for the old arms), rear anti-squat 0 -> 15 %, front UCA/LCA ratio 0.82 -> 0.77, rear wishbone sweep e/a above 2.",
       "alternatives": "Keep the synthesis pick-ups and ask the chassis to move its nodes 30-58 mm.",
+      "author": "Vinicius Trento"
+    },
+    {
+      "date": "2026-10-13",
+      "stage": "geometry",
+      "title": "Starting layout for pushrods, rockers and dampers (to be refined)",
+      "decision": "Front: pushrod on the LCA 40 mm inboard of the LBJ to a rocker on the top tube (bulkhead to front hoop), damper along that tube. Rear: pushrod on the LCA to a rocker just behind the rear frame, routed behind the UCA rear leg (33 mm clearance); damper forward over the rear frame. Both arms placed tangential at ride and sized for MR 0.80 with equal damper margins (stroke 57 mm is an ESTIMATE).",
+      "rationale": "Seed to evaluate, not a choice: MR 0.80 with the 220 lb/in springs gives ~3.2 / 2.9 Hz (F/R, wheel-rate frequency); the springs alone give ~1.2 deg/g, so an anti-roll bar is needed for 1.0 deg/g. Rocker brackets, damper bodies and the engine/diff package are not checked: the chassis team places them in CAD.",
+      "alternatives": "Rear pushrod in front of the UCA front leg (4.5 mm clearance: rejected); rear pullrod to a low rocker (MR 0.80 not reachable with these arms); MR from ~0.5 (550 lb/in springs) to ~1.0.",
       "author": "Vinicius Trento"
     }
   ],

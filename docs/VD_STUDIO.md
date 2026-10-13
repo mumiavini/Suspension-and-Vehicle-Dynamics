@@ -295,6 +295,55 @@ No tyre data is used anywhere — PUCPR Racing has no TTC data yet.
 
 ![Telemetry: kinematic replay of a log through the current geometry](images/vdstudio_telemetry.jpg)
 
+## Pushrod & rocker
+
+**Design › Pushrod & rocker** lays out each axle's rod, rocker and damper
+(LEFT corner; the right corner is the mirror) and shows what the team's
+damper and springs do through them.
+
+**Inputs (saved):**
+- the damper: eye-to-eye extended, stroke, bump rubber, eye bolt and bearing,
+  each with its provenance;
+- the springs available and the one fitted per axle, in lb/in as marked;
+- the target front share of the roll stiffness;
+- per axle, the rod's outer end and the member it is mounted on (LCA, UCA or
+  upright), the rocker pivot and axis, the rocker pickups and the damper's
+  chassis end.
+
+**Construction helper:** *Rebuild arms* keeps the rod's outer end and the
+pivot. It places both arms so the forces act along their pickups' motion,
+sizes the damper arm for a target motion ratio, and sets the damper's ride
+length for equal droop and bump margins. That gives a starting point; the
+target is your query argument.
+
+**Results:**
+- **Motion ratio** (damper / wheel) at ride and over the travel, and its
+  progression.
+- **Damper:** length at ride, full droop and full bump, against extended and
+  compressed; stroke used.
+- **Linkage:** rocker rotation, worst transmission angles, rod length.
+- **Forces:** rod force per N of wheel load; spring force and compression at
+  ride; rod force at ride.
+- **Packaging:** the closest member to the rod over the travel.
+- **For every spring available:** wheel rate (k·MR²), the wheel-rate
+  frequency and the roll stiffness.
+- **Roll budget:**
+  - the roll stiffness the target gradient needs, with the pendulum term;
+  - what the fitted springs give;
+  - the gradient with the springs alone;
+  - the anti-roll-bar stiffness that closes the gap at the chosen split.
+- **Curves:** MR and damper length vs travel.
+- **Linkage view:** front, side or top, at droop, ride and bump.
+
+**Underneath:**
+- The kinematics are `vdcore.analysis.rocker` on DWSolver. The rod keeps its
+  length to 1e-9 mm, and the force ratio is checked against the moment
+  balance about the rocker axis.
+- Once a rocker is drawn, the link-force tables on the maneuver page use its
+  pushrod line.
+- Not modelled: the spring-force × dMR/dz term, the tyre in series, rocker
+  and bracket packaging in the chassis.
+
 ## Tilt table
 
 **Simulation & analysis › Tilt table** shows the car on the tilt table,
@@ -360,6 +409,8 @@ apps/vdstudio/app.py    entry point; log file + error dialog when started withou
 apps/vdstudio/engine/recent.py  start-up file choice, recent list (no Qt)
 apps/vdstudio/engine/chassis.py chassis CAD survey vs pick-ups (scripts/compare_chassis.py)
 apps/vdstudio/engine/tilt.py    tilt table: tip angle, wheel loads, first lift
+apps/vdstudio/engine/suspension.py  rocker/damper/springs report, roll budget, layout helper
+vdcore/analysis/rocker.py       rod + rocker + damper kinematics on DWSolver
 apps/vdstudio/shortcut.py  Desktop / Start-menu / app-menu shortcuts (no Qt)
 apps/vdstudio/resources/   icon (.ico for shortcuts, .png for the window), from scripts/make_icon.py
 ```

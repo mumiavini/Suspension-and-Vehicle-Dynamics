@@ -19,6 +19,7 @@ NAV: tuple[tuple[str, str, str, str, str], ...] = (
     ("Design", "geometry", "Suspension geometry", "geometry", "GeometryPage"),
     ("Design", "hardpoints", "Hardpoints", "hardpoints", "HardpointsPage"),
     ("Design", "steering", "Steering", "steering", "SteeringPage"),
+    ("Design", "rocker", "Pushrod & rocker", "rocker", "RockerPage"),
     ("Simulation & analysis", "kinematics", "Kinematic sweeps", "kinematics", "KinematicsPage"),
     ("Simulation & analysis", "motion", "3D motion", "motion", "MotionPage"),
     ("Simulation & analysis", "tradeoff", "Trade-offs (what-if)", "tradeoff", "TradeoffPage"),

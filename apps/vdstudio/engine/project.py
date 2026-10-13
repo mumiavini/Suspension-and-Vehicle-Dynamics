@@ -131,6 +131,56 @@ class TurningEnvelope:
     source: Source = "estimate"
 
 
+@dataclass(frozen=True)
+class RockerSpec:
+    """Rod + rocker + damper of one axle (LEFT corner; the right is the Y-mirror).
+
+    Chassis frame, ISO 8855, mm, at ride height. ``mount_body`` is the member the
+    rod's outer end is fixed to (``lca`` for a pushrod, usually ``uca`` or
+    ``upright`` for a pullrod). Solved by ``vdcore.analysis.rocker`` on the
+    corner's DWSolver. ``enabled`` False = no rocker drawn yet.
+    """
+
+    enabled: bool = False
+    rod_type: str = "pushrod"
+    mount_body: str = "lca"
+    rod_mount: Pt = (0.0, 0.0, 0.0)
+    rocker_pivot: Pt = (0.0, 0.0, 0.0)
+    rocker_axis: Pt = (1.0, 0.0, 0.0)
+    rocker_rod: Pt = (0.0, 0.0, 0.0)
+    rocker_damper: Pt = (0.0, 0.0, 0.0)
+    damper_chassis: Pt = (0.0, 0.0, 0.0)
+    source: Source = "design_intent"
+
+
+@dataclass(frozen=True)
+class DamperSpec:
+    """The team's damper (one model on all four corners).
+
+    Eye-to-eye is centre-to-centre of the eyes, fully extended. Compressed
+    length = extended − stroke; a bump rubber on the shaft eats into the stroke.
+    """
+
+    eye_to_eye_extended_mm: float = 220.0
+    stroke_mm: float = 57.0
+    bump_rubber_mm: float = 0.0
+    bolt_mm: float = 12.0
+    bearing_od_mm: float = 40.0
+    length_source: Source = "measured"
+    stroke_source: Source = "estimate"
+
+
+@dataclass(frozen=True)
+class SpringSpec:
+    """Coil springs: the ones available and the one fitted per axle (lb/in, as marked)."""
+
+    available_lb_in: tuple[float, ...] = (220.0, 550.0)
+    front_lb_in: float = 220.0
+    rear_lb_in: float = 220.0
+    source: Source = "measured"          # the rating marked on the spring
+    roll_stiffness_front_share: float = 0.50   # design_intent: target split, springs + ARB
+
+
 CAD_AXES = ("+X", "-X", "+Y", "-Y", "+Z", "-Z")
 
 
@@ -418,6 +468,10 @@ class Project:
     rod_end_bolts: RodEndBolts = field(default_factory=RodEndBolts)
     turning_envelope: TurningEnvelope = field(default_factory=TurningEnvelope)
     cad_frame: CadFrame = field(default_factory=CadFrame)
+    rocker_front: RockerSpec = field(default_factory=RockerSpec)
+    rocker_rear: RockerSpec = field(default_factory=RockerSpec)
+    damper: DamperSpec = field(default_factory=DamperSpec)
+    springs: SpringSpec = field(default_factory=SpringSpec)
 
     geometry_mode: GeometryMode = "synthesis"
     hardpoints: HardpointSet | None = None
@@ -561,7 +615,7 @@ def project_from_dict(data: dict[str, Any]) -> Project:
     if isinstance(data.get("layout"), dict):
         p.layout = _merge_frozen(base.layout, data["layout"])
     for key in ("pushrod_front", "pushrod_rear", "rod_end_bolts", "turning_envelope",
-                "cad_frame"):
+                "cad_frame", "rocker_front", "rocker_rear", "damper", "springs"):
         if isinstance(data.get(key), dict):
             setattr(p, key, _merge_frozen(getattr(base, key), data[key]))
     for key in ("tire_source", "mass_source"):
