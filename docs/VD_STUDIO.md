@@ -63,15 +63,27 @@ Each maps onto the pages below.
   entered per axle because a point table cannot carry them.
 
 Every hardpoint carries `source` (`cad` / `measured` / `estimate` /
-`design_intent`) and a tolerance. The status bar counts estimate-tagged inputs.
+`design_intent`) and a tolerance. So do the non-point inputs: the tyre loaded
+radius (an `estimate` until TTC data exists) and the vehicle mass / CG (set to
+`estimate` when the subsystem CG estimate is applied). The status bar counts
+every estimate-tagged input.
+
+In synthesis mode the vehicle wheelbase is authoritative: the rear axle sits
+at the front axle station plus the wheelbase, the CG station is kept, and the
+rear toe link moves with the axle. In hardpoint mode the ISO origin must be on
+the ground (every wheel-centre z equal to its loaded radius), the front wheel
+centres must be ahead of the rear ones, and degenerate points (zero-length
+pivot axis, coincident ball joints) are refused with the corner named.
 
 ## Real time
 
 Every edit re-synthesises the car (~3 ms) and recomputes the static KPIs on
 `DWSolver` (~10 ms), so views and tables follow the spin boxes. The swept KPIs
 (rates, roll, bump steer, Ackermann, rod-end envelope; ~2 s) run on a worker
-thread after a short pause; the status bar shows progress and stale values are
-greyed until they land. Undo/redo (Ctrl+Z / Ctrl+Y) covers every edit.
+thread after a short pause; the status bar shows progress, values left from the
+previous geometry are greyed until the new ones land, and a failed computation
+replaces them with failed entries (the status bar says FAILED) instead of
+leaving old numbers on screen. Undo/redo (Ctrl+Z / Ctrl+Y) covers every edit.
 
 ## Conventions (same as the library)
 
@@ -83,7 +95,11 @@ greyed until they land. Undo/redo (Ctrl+Z / Ctrl+Y) covers every edit.
   **chassis-referenced**.
 * Synthesis inputs keep the scripts' DESIGN frame (y outboard, x rearward);
   every such field says so in its tooltip.
-* Positive roll lifts the LEFT side (a left turn); positive rack steers left.
+* Positive roll lifts the LEFT side (a left turn), so the outer wheel is the
+  RIGHT one. Every roll KPI, curve and the 3D view use this convention; an
+  asymmetric car also gets right-turn rows.
+* Positive rack steers left when the steering arms are ahead of the axle; the
+  Steering and 3D pages probe the linkage and label the direction accordingly.
 
 ## Where every number comes from
 
@@ -94,19 +110,23 @@ greyed until they land. Undo/redo (Ctrl+Z / Ctrl+Y) covers every edit.
 | Roll centre (static), FVIC, FVSA | `vdcore.analysis.roll_centre.roll_centre_height`: force-based RC (Milliken RCVD Ch. 17, SAE J670); FVIC = the upright's instantaneous front-view pole at the contact-patch station, from the solved UBJ/LBJ/tie rod (`instant_axis_fvic`). Chassis-referenced. |
 | Camber gain, RC migration, half-track change | `vdcore.analysis.axle.axle_rates` (same instant-axis FVIC) |
 | Roll cambers, RC in roll | `vdcore.analysis.axle.axle_roll` (both patches on the road; same instant-axis FVIC) |
-| Bump steer (linear + peak) | `vdcore.analysis.toe.bump_steer` |
-| Anti-dive / anti-squat | pivot-axis-rake construction (as `sla_geometry` / legacy `model_3d`) on the merged corner |
+| Bump steer (linear + peak) | linear rate: `vdcore.analysis.toe.bump_steer` over ±min(bump, droop); peak and full bump/droop toe: `toe_sweep` over the real −droop…+bump range |
+| Anti-dive / anti-squat / anti-lift | planar pivot-axis-rake construction (as `sla_geometry` / legacy `model_3d`) plus a 3D virtual-work row on `DWSolver`; the reference point (contact patch or wheel centre) follows the brake / drive layout on the Suspension geometry page (default: outboard brakes, inboard drive through a chassis diff) |
 | Ackermann | rack sweep on `DWSolver` (reproduces `steering_geometry` to 0.01 %) |
-| Steering ratio, effort | `steering_geometry` formulas on solved scrub/trail/rack-per-degree |
+| Steering ratio, effort | on-centre ratio and effort as `steering_geometry`, plus the lock-to-centre ratio, a ratio-vs-rack curve and the maximum steering-wheel torque over the stroke |
 | Rod-end swing | `DWSolver` bump × steer envelope, both rod ends in one frame |
 | Member lengths, e/a | the merged hardpoints (as `geometry_summary.member_lengths`) |
-| Roll budget, load cases, leg forces | `sla_geometry.solve_vehicle` / `load_cases` / `leg_forces` |
+| Roll budget, quasi-static maneuver | `engine.mass`: the SPRUNG CG (unsprung mass split equally, its CG at the wheel-centre height), so the transfer terms close on m·g·ay·h; the elastic term includes the pendulum moment |
+| Load cases, leg forces | `sla_geometry.load_cases` / `leg_forces` at the maneuver state; cases whose two-force UCA cannot react the Fx moment are reported as not computed |
 
 ## Telemetry
 
 Supported: MoTeC i2 `.ld` (read natively, no extra package) and CSV/TSV
-(metadata lines above the header and a units row are handled; `;` + decimal
-comma accepted). Channels at different rates are resampled onto the fastest.
+(metadata lines above the header and a units row are handled; a decimal comma
+is accepted with any delimiter other than `,`; the time unit is read from the
+units row or the header, and time resets are detected). Channels at different
+rates are resampled onto the fastest; data-quality checks run on the native
+samples.
 
 1. **Channel mapping** — auto-mapped by name, unit conversion guessed from the
    unit string or magnitude (and explained). Flip a sign where the logger uses a
@@ -118,12 +138,17 @@ comma accepted). Channels at different rates are resampled onto the fastest.
    once, with a diagnosis), steering and roll must rise with `ay`, sensors must
    read zero at standstill, net heading tells the lap direction.
 3. **Model vs measurement** — roll gradient per axle from the dampers against
-   the design-intent target, pitch gradient, understeer gradient
-   (`δ_road − L/R` vs `ay`), measured LLTD if wheel loads are logged.
+   the design-intent target, pitch gradient (braking and traction apart),
+   understeer gradient (`δ_road − L/R` vs `ay`, with the road-wheel angle from
+   a solved steer table, not a constant ratio, and the steering zero taken
+   from straight running), measured LLTD (slope ratio of per-axle transfer, so
+   static cross-weight drops out) if wheel loads are logged.
 4. **Kinematic replay** — the measured wheel travel and rack are pushed through
    camber/toe maps solved on `DWSolver` for the current geometry: road camber
    per corner over the lap, its distribution while cornering, and the share of
-   cornering time the outer wheel spent inside the outer-camber band.
+   cornering time the outer wheel spent inside the outer-camber band (outer and
+   inner reported apart; front wheels as inclination, i.e. wheel plane to
+   vertical, which differs from the projected camber at large steer).
 
 No tyre data is used anywhere — PUCPR Racing has no TTC data yet.
 
@@ -145,7 +170,8 @@ No tyre data is used anywhere — PUCPR Racing has no TTC data yet.
 Wheel/ride rates from the linkage, damping, frequency response, stress and
 buckling, lap time, and anything that needs tyre data. The setup sheet derives
 wheel rate and natural frequency only from the spring and motion-ratio values
-you type, and says so.
+you type (plus ride rate and ride frequency if you give a tyre vertical rate),
+and says so.
 
 ## For developers
 

@@ -112,6 +112,14 @@ into the upright, so ball joints, KPI and kingpin length are unaffected.
 Rate and roll Z values are **chassis-referenced**. Ground-referenced RC
 migration differs by exactly 1 mm per mm of travel — always state which.
 
+The front-view IC (and so RC height, FVSA, RC migration and RC in roll) is the
+upright's **3D instant axis** at the contact-patch station
+(`vdcore.analysis.roll_centre.instant_axis_fvic`, the force-based roll
+centre), solved analytically from the positions. The projected arm-line
+construction (`projected_fvic`) is a cross-check only: with caster the ball
+joints sit at different X and it overstated the 2027 front RC migration by
+~55 %.
+
 ## Numerical conventions
 
 Every solver returns convergence status. Non-convergence raises or returns an explicit failure object — **never a plausible-looking number silently.** Use scipy's default trust-region method (not LM — LM does not support bounds). Numerical Jacobian by default; analytic only after separate validation.
