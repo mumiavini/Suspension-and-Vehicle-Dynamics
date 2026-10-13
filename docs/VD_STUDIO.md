@@ -218,6 +218,15 @@ This is **CAD & cross-checks › SolidWorks**:
 | The car is upside down or lying on its side | The up axis is wrong; fix forward/left |
 | The right shape, but shifted | The origin is wrong |
 
+**Not sure of the axes or the origin?** Drag the `.SLDPRT` onto **`Survey
+chassis CAD.bat`** (or run `scripts/survey_chassis.py --file ...`). SolidWorks
+opens the model read-only and writes `projects/cad/<name>_survey.json` plus an
+isometric `.png`. The JSON holds every sketch (a weldment's layout sketch is the
+tube centrelines), the reference points and axes, the coordinate systems and the
+bounding boxes, in the model's own frame and in mm. Anyone can analyse it
+without SolidWorks: the frame's axes, where the front axle sits, and the
+distance from each pick-up point to the nearest sketch point.
+
 The preview table shows each point exactly as it will land in CAD. If you
 move skeleton points in CAD and read them back (**Read skeleton back**),
 use the same placement.
