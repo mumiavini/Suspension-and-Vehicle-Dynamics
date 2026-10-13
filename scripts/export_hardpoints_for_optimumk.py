@@ -157,7 +157,10 @@ def print_static_values(fl: Corner, fr: Corner) -> None:
     scrub = float(r.contact_patch.y_mm - kp_ground[1])
     mech_trail = float(kp_ground[0] - r.contact_patch.x_mm)
 
-    fvic = front_view_instant_centre(fl, ubj=r.ubj, lbj=r.lbj, contact_patch=r.contact_patch)
+    # Instant-axis FVIC at the patch station, the same one roll_centre_height uses.
+    fvic = front_view_instant_centre(
+        fl, ubj=r.ubj, lbj=r.lbj, contact_patch=r.contact_patch, tro=r.tro
+    )
     axle = Axle(left=fl, right=fr)
     rr = DWSolver(fr).solve()
     assert rr.converged

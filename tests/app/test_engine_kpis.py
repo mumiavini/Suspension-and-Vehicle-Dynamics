@@ -167,4 +167,6 @@ def test_dynamic_groups_can_be_requested_individually(geo) -> None:
 def test_edit_moves_the_static_roll_centre() -> None:
     p = with_path(Project(), "front.rc_height_mm", 45.0)
     st = K.compute_static(G.resolve(p))
-    assert st.value("front.rc_static") == pytest.approx(45.5, abs=0.1)
+    # 48.27 (45.5 before 2026-10-12): the instant-axis RC sees the 0.0126 deg/mm bump
+    # steer the fixed rack height leaves on the edited front; re-nulled it reads 45.42.
+    assert st.value("front.rc_static") == pytest.approx(48.27, abs=0.1)

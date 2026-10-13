@@ -71,7 +71,8 @@ def test_edit_is_real_time_and_undoable(app, window) -> None:
     ctrl = window.ctrl
     before = ctrl.static.value("front.rc_static")
     ctrl.set_value("front.rc_height_mm", 45.0)
-    assert ctrl.static.value("front.rc_static") == pytest.approx(45.5, abs=0.1)
+    # 48.27, not 45.5, since the 2026-10-12 instant-axis RC (see test_engine_kpis)
+    assert ctrl.static.value("front.rc_static") == pytest.approx(48.27, abs=0.1)
     assert ctrl.dirty
     ctrl.undo()
     assert ctrl.static.value("front.rc_static") == pytest.approx(before)

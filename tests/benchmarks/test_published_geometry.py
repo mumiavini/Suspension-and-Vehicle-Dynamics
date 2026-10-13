@@ -17,11 +17,12 @@ suspension with FSAE-scale dimensions:
   - ~15 deg KPI, ~5.6 deg caster
   - Tie rod behind the axle line (rear-steer)
 
-Regression values (updated 2026-08-25, contact-patch sign fix):
+Regression values (updated 2026-08-25, contact-patch sign fix; RC and FVSA
+updated 2026-10-12 for the instant-axis FVIC at the patch station):
   KPI       = 14.93 deg
   Caster    = 5.58 deg
-  RC height = 12.95 mm
-  FVSA      = -8761 mm
+  RC height = 13.54 mm
+  FVSA      = -8401 mm
   Camber gain = -0.0068 deg/mm
 
 All coordinates in ISO 8855: X+ forward, Y+ left, Z+ up.
@@ -209,7 +210,7 @@ class TestRCVDBumpTravel:
 class TestRCVDRollCentre:
     """Roll centre — regression anchor only (no external published value).
 
-    This geometry produces a long FVSA (-8761 mm) and low RC (12.69 mm).
+    This geometry produces a long FVSA (-8401 mm) and low RC (13.54 mm).
     The FVSA and camber gain are consistent: gain ≈ -(1/FVSA)*(180/pi)
     gives -0.0065 deg/mm vs solver's -0.0068 (4% from 3D/caster effects).
     """
@@ -250,7 +251,11 @@ class TestRCVDRollCentre:
         # lateral shift carried an inverted sign. This fixture has -1.5 deg of
         # static camber, so the corrected patch moves 2*r*sin(1.5 deg) outboard
         # and the n-line construction lands 0.26 mm higher.
-        assert rc.rc_height_mm == pytest.approx(12.95, abs=0.1)
+        # Re-anchored 2026-10-12: 12.95 -> 13.54. The FVIC is now the
+        # instant-axis one at the patch station; this upright has caster
+        # (UBJ x = -12, LBJ x = +10), so the projected arm lines met at
+        # y = -8155 instead of -7783 (a finite-difference screw-axis IC agrees).
+        assert rc.rc_height_mm == pytest.approx(13.54, abs=0.1)
 
     def test_rc_height_positive(self) -> None:
         """RC should be above ground for this geometry."""

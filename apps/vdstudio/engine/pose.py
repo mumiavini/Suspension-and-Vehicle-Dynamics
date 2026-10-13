@@ -146,8 +146,15 @@ class PoseSolver:
             corner = self.geo.corner(cp_.cid)
             dp = {k: DerivedPoint(x_mm=float(p[0]), y_mm=float(p[1]), z_mm=float(p[2]))
                   for k, p in cp_.points.items()}
-            fv = front_view_instant_centre(corner, ubj=dp["UCA_OUT"], lbj=dp["LCA_OUT"],
-                                           contact_patch=dp["CONTACT_PATCH"])
+            # instant-axis FVIC at the patch station; the rack is read back off
+            # the posed (rack-displaced) inboard tie-rod point
+            rack = float(cp_.points["TIE_ROD_IN"][1]) - corner.tie_rod_inboard.y_mm
+            try:
+                fv = front_view_instant_centre(corner, ubj=dp["UCA_OUT"], lbj=dp["LCA_OUT"],
+                                               contact_patch=dp["CONTACT_PATCH"],
+                                               tro=dp["TIE_ROD_OUT"], rack_mm=rack)
+            except (RuntimeError, ValueError):   # singular linkage at this pose: no RC
+                return None
             if not fv.is_finite:
                 return None
             c = cp_.points["CONTACT_PATCH"]

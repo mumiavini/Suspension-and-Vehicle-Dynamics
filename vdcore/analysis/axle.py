@@ -16,6 +16,13 @@ road. Equivalently, and as implemented here, the road tilts under a fixed
 chassis and the wheel travel per side is solved so both contact patches land on
 the tilted plane. Camber is reported relative to the ROAD, which is the frame
 the tyre works in.
+
+Roll centre: every RC here is the force-based one (Milliken RCVD Ch. 17,
+SAE J670) -- patch-to-FVIC lines with the FVIC taken from the upright's
+instantaneous 3D motion at the contact-patch station
+(:func:`vdcore.analysis.roll_centre.instant_axis_fvic`). Intersecting the
+projected arm lines instead is exact only without caster: on the 2027 front it
+gave -0.311 mm/mm of RC migration against the instant-axis -0.200.
 """
 
 from __future__ import annotations
@@ -28,7 +35,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel
 from scipy.optimize import brentq
 
-from vdcore.analysis.roll_centre import front_view_instant_centre
+from vdcore.analysis.roll_centre import instant_axis_fvic
 from vdcore.geometry.solver import CornerSolver, DWSolver, SolverResult
 from vdcore.models.hardpoint import Axle, Corner, DerivedPoint
 
@@ -62,8 +69,17 @@ class ConvergenceError(RuntimeError):
 class CornerSample(BaseModel, frozen=True):
     """One solved corner position, reduced to the front-view quantities.
 
-    All lengths mm, angles deg. ``camber_deg`` is relative to the CHASSIS;
-    :func:`axle_roll` adds the roll angle to convert to road-relative.
+    ISO 8855 (Y+ left, Z+ up), CHASSIS frame. All lengths mm, angles deg.
+    ``camber_deg`` is relative to the CHASSIS; :func:`axle_roll` adds the roll
+    angle to convert to road-relative.
+
+    ``fvic_*`` is the front-view instant centre of
+    :func:`vdcore.analysis.roll_centre.instant_axis_fvic`: the point of the
+    contact-patch station (plane ``x = x_CP``) with no Y-Z velocity relative to
+    the chassis. ``fvsa_mm`` is the patch-to-FVIC distance (negative when the
+    FVIC is inboard of the patch). ``rc_height_mm`` is where this corner's
+    patch-to-FVIC force line crosses the centreline (Y = 0): the force-based
+    roll centre of a symmetric axle (Milliken RCVD Ch. 17, SAE J670).
     """
 
     wheel_travel_mm: float
@@ -122,10 +138,15 @@ def sample_corner(
     """Solve one corner at a wheel travel and reduce it to the front view.
 
     ``wheel_travel_mm`` is positive in bump (wheel up relative to chassis).
-    All returned Z values are CHASSIS-referenced, not ground-referenced.
+    All returned Z values are CHASSIS-referenced, not ground-referenced. The
+    instant centre comes from the solved UBJ, LBJ and tie-rod outboard alone
+    (no extra solves), with ``roll_deg = rack_mm = 0``.
 
     Raises:
         ConvergenceError: if the solve did not converge.
+        InstantKinematicsError: if the linkage is singular at this position.
+        ValueError: if the solver's points do not fit the corner's link
+            lengths (a solver that does not honour DWSolver's frame).
     """
     r: SolverResult = solver.solve(wheel_travel_mm=wheel_travel_mm)
     if not r.converged:
@@ -136,10 +157,10 @@ def sample_corner(
         )
     # DWSolver drives travel by displacing the CHASSIS down by wheel_travel_mm,
     # so its results are world-frame. Convert the moving points to the CHASSIS
-    # frame BEFORE the instant-centre construction: front_view_instant_centre
-    # reads the inboard pivots off the Corner, and those are chassis-fixed, so
-    # feeding it world-frame ball joints mixes two frames and puts the FVIC in
-    # the wrong place at every travel except zero.
+    # frame BEFORE the instant-centre construction: instant_axis_fvic pairs
+    # them with the Corner's chassis-fixed pivots, and mixing the two frames
+    # would put the FVIC in the wrong place at every travel except zero (it
+    # refuses such input rather than returning a number).
     #
     # Chassis-referenced is also the right frame for these quantities -- ride
     # height measured from the sprung mass, which is what the roll-couple
@@ -150,12 +171,18 @@ def sample_corner(
             x_mm=p.x_mm, y_mm=p.y_mm, z_mm=p.z_mm + wheel_travel_mm
         )
 
-    ubj_c = to_chassis(r.ubj)
-    lbj_c = to_chassis(r.lbj)
     cp_c = to_chassis(r.contact_patch)
 
-    fvic = front_view_instant_centre(
-        corner, ubj=ubj_c, lbj=lbj_c, contact_patch=cp_c
+    # The FVIC from the upright's instantaneous 3D motion, evaluated at the
+    # contact-patch station (roll_centre module docstring). Computed from these
+    # positions alone, so a replay solver that holds only the travels it was
+    # asked for (the Altair cross-check) needs no extra states.
+    fvic = instant_axis_fvic(
+        corner,
+        ubj=to_chassis(r.ubj),
+        lbj=to_chassis(r.lbj),
+        tro=to_chassis(r.tro),
+        contact_patch=cp_c,
     )
     cp = np.array([cp_c.y_mm, cp_c.z_mm])
     ic = np.array([fvic.fvic_y_mm, fvic.fvic_z_mm])

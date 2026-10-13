@@ -91,9 +91,9 @@ greyed until they land. Undo/redo (Ctrl+Z / Ctrl+Y) covers every edit.
 |---|---|
 | Static camber/toe/caster/KPI | `vdcore.geometry.solver.DWSolver` |
 | Scrub radius, mechanical trail | `vdcore.geometry.derived` on the solved corner |
-| Roll centre (static), FVIC, FVSA | `vdcore.analysis.roll_centre` |
-| Camber gain, RC migration, half-track change | `vdcore.analysis.axle.axle_rates` |
-| Roll cambers, RC in roll | `vdcore.analysis.axle.axle_roll` (both patches on the road) |
+| Roll centre (static), FVIC, FVSA | `vdcore.analysis.roll_centre.roll_centre_height`: force-based RC (Milliken RCVD Ch. 17, SAE J670); FVIC = the upright's instantaneous front-view pole at the contact-patch station, from the solved UBJ/LBJ/tie rod (`instant_axis_fvic`). Chassis-referenced. |
+| Camber gain, RC migration, half-track change | `vdcore.analysis.axle.axle_rates` (same instant-axis FVIC) |
+| Roll cambers, RC in roll | `vdcore.analysis.axle.axle_roll` (both patches on the road; same instant-axis FVIC) |
 | Bump steer (linear + peak) | `vdcore.analysis.toe.bump_steer` |
 | Anti-dive / anti-squat | pivot-axis-rake construction (as `sla_geometry` / legacy `model_3d`) on the merged corner |
 | Ackermann | rack sweep on `DWSolver` (reproduces `steering_geometry` to 0.01 %) |

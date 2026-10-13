@@ -59,8 +59,10 @@ def test_grid_reports_unbuildable_points_as_failures() -> None:
 
 def test_sensitivity_sign_and_magnitude() -> None:
     s = W.sensitivity(Project(), ["front.rc_height_mm"], ["front.rc_static"])
-    # moving the RC target by +5 mm moves the solved RC by ~+5 mm
-    assert s.per_step("front.rc_static", "front.rc_height_mm") == pytest.approx(5.0, abs=0.05)
+    # moving the RC target by +5 mm moves the solved (instant-axis) RC by +6.46 mm, not
+    # ~+5 as with the projected arm lines: the rack height stays where it nulls bump steer
+    # at 35 mm, and the bump steer the edit creates tilts the force line (2026-10-12)
+    assert s.per_step("front.rc_static", "front.rc_height_mm") == pytest.approx(6.46, abs=0.05)
 
 
 def test_target_query_matches_the_bump_steer_back_solver() -> None:

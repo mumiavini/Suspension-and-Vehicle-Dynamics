@@ -64,8 +64,9 @@ def _rc_from_sample(corner, r: SolverResult, travel: float) -> tuple[float, floa
         return DerivedPoint(x_mm=p.x_mm, y_mm=p.y_mm, z_mm=p.z_mm + travel)
 
     cp = to_chassis(r.contact_patch)
+    # tro selects the instant-axis FVIC at the patch station (vdcore.analysis.roll_centre)
     fv = front_view_instant_centre(corner, ubj=to_chassis(r.ubj), lbj=to_chassis(r.lbj),
-                                   contact_patch=cp)
+                                   contact_patch=cp, tro=to_chassis(r.tro))
     if not fv.is_finite:
         return float("nan"), float("inf")
     dy = fv.fvic_y_mm - cp.y_mm
