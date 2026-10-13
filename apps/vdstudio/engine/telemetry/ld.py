@@ -44,6 +44,7 @@ class LdFile:
     path: str
     header: dict[str, str] = field(default_factory=dict)
     channels: list[LdChannel] = field(default_factory=list)
+    skipped: list[tuple[str, str]] = field(default_factory=list)   # (channel, why it was not read)
 
 
 class LdFormatError(ValueError):
@@ -86,21 +87,34 @@ def read_ld(path: str | Path) -> LdFile:
         else:
             fmt = None
         if fmt is None or dptr + n * size > len(data):
+            # unknown type or truncated block: skip, never guess -- but say so
+            out.skipped.append((name, f"dtype 0x{dtype_a:02x} size {size} not supported"
+                                if fmt is None else "truncated data block"))
             ptr = nxt
-            continue   # unknown type or truncated block: skip, never guess
+            continue
         raw = np.frombuffer(data, np.dtype(fmt), n, dptr).astype(float)
         val = (raw / (scale or 1) * 10.0 ** (-dec) + shift) * (mul or 1)
         out.channels.append(LdChannel(name, unit, float(freq), val, short))
         ptr = nxt
     if not out.channels:
-        raise LdFormatError(f"{Path(path).name}: no readable channels")
+        why = "; ".join(f"{n}: {w}" for n, w in out.skipped)
+        raise LdFormatError(f"{Path(path).name}: no readable channels" + (f" ({why})" if why
+                                                                         else ""))
     return out
 
 
 def write_ld(path: str | Path, channels: list[LdChannel], header: dict[str, str] | None = None
              ) -> None:
-    """Minimal ``.ld`` writer (float32 channels). Used for tests and data export."""
+    """Minimal ``.ld`` writer (float32 channels). Used for tests and data export.
+
+    The format stores the rate as an integer number of Hz, so a non-integer
+    rate is refused rather than truncated.
+    """
     header = header or {}
+    for ch in channels:
+        if ch.freq_hz != int(ch.freq_hz):
+            raise ValueError(f"{ch.name}: .ld stores the sample rate as whole Hz; "
+                             f"{ch.freq_hz:g} Hz cannot be written")
     head = bytearray(0x6E2)
     meta0 = len(head)
     block = 124
