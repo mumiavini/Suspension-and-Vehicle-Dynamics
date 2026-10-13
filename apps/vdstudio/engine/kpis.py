@@ -552,6 +552,7 @@ def compute_static(geo: CarGeometry) -> KpiSet:
     # vehicle roll budget uses the SOLVED static roll centres
     rc_f, rc_r = b.out.value("front.rc_static"), b.out.value("rear.rc_static")
     _vehicle_roll_kpis(b, geo, rc_f, rc_r)
+    _tilt_kpi(b, geo, rc_f, rc_r)
 
     geo.warnings[:] = [w for w in geo.warnings if not w.startswith(_ASYM_PREFIX)]
     if asym:
@@ -771,6 +772,36 @@ def _anti_kpis(b: _Builder, geo: CarGeometry, axle: str, l_res: SolverResult,
                            if at_inf else "",
                            f"3D virtual work: {l3:.2f} %" if math.isfinite(l3) else ""),
                 error=err(lift, sxb))
+
+
+def _tilt_kpi(b: _Builder, geo: CarGeometry, rc_f: float, rc_r: float) -> None:
+    """Tip angle on the tilt table with body roll (engine/tilt.py)."""
+    from .tilt import TiltInputs, tilt_table  # tilt imports this module
+
+    veh = geo.vehicle_data
+    spec = [("vehicle.tilt_angle", "Tilt table: tip angle (with body roll)", "Vehicle & rules",
+             "vehicle", "deg")]
+    if not (math.isfinite(rc_f) and math.isfinite(rc_r)):
+        b.fail(spec, "static roll centre unavailable")
+        return
+    try:
+        r = tilt_table(geo, {"front": rc_f, "rear": rc_r},
+                       TiltInputs(veh.tilt_test_angle_deg, veh.target_roll_gradient_deg_per_g))
+    except ValueError as exc:
+        b.fail(spec, str(exc))
+        return
+    if not math.isfinite(r.tip_angle_deg):
+        b.fail(spec, "; ".join(r.notes) or "tip angle not found")
+        return
+    b.add("vehicle.tilt_angle", spec[0][1], spec[0][2], "vehicle", r.tip_angle_deg, "deg", ".2f",
+          "tipping line through the downhill patches at the CG station; body roll from the "
+          "target roll gradient (design_intent)", (veh.tilt_test_angle_deg, 90.0), _RULES,
+          note=f"rigid {r.tip_angle_rigid_deg:.2f}°; at {veh.tilt_test_angle_deg:g}° the body "
+               f"rolls {r.roll_deg:.2f}° and the CG moves {r.cg_shift_mm:.1f} mm downhill; "
+               f"tips at {veh.tilt_test_angle_deg:g}° with h_cg = {r.max_cg_height_mm:.0f} mm. "
+               "Not modelled: springs extending under cos θ load (each +10 mm of CG ≈ "
+               "−0.7°), tyre side deflection (no tyre data). Mass and CG are the vehicle "
+               "data's (tilt test: tallest driver).")
 
 
 def _vehicle_roll_kpis(b: _Builder, geo: CarGeometry, rc_f: float, rc_r: float) -> None:
