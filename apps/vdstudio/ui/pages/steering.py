@@ -49,6 +49,7 @@ class SteeringPage(Page):
         self.bands = ParamForm(ctrl, fields.steering_band_fields())
         tabs.addTab(scroll(self.form), "Inputs")
         tabs.addTab(scroll(self.bands), "Bands")
+        tabs.addTab(scroll(ParamForm(ctrl, fields.rod_end_bolt_fields())), "Rod-end bolts")
         ll.addWidget(tabs, 1)
         q = QtWidgets.QGroupBox("Target queries (the answer is shown, nothing is applied)")
         ql = QtWidgets.QVBoxLayout(q)

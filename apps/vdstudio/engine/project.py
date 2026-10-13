@@ -90,6 +90,26 @@ class Pushrod:
     source: Source = "estimate"
 
 
+@dataclass(frozen=True)
+class RodEndBolts:
+    """Bolt axis of each tie-rod / toe-link rod end (LEFT corner, ISO 8855; right mirrored).
+
+    A rod end turns freely about its bolt and the rod about its own axis, so the
+    misalignment the bearing has to swallow is the tilt of the rod out of the
+    plane normal to the bolt: asin(|rod . bolt|). The inner bolt is fixed to the
+    chassis (it moves with the rack, without rotating); the outer one is fixed
+    to the upright and given at ride height (it turns with steer, bump and
+    camber). Directions only -- they are normalised. Default: vertical bolts
+    (double-shear clevises), an ``estimate`` until the brackets are drawn.
+    """
+
+    front_inner: Pt = (0.0, 0.0, 1.0)
+    front_outer: Pt = (0.0, 0.0, 1.0)
+    rear_inner: Pt = (0.0, 0.0, 1.0)
+    rear_outer: Pt = (0.0, 0.0, 1.0)
+    source: Source = "estimate"
+
+
 # --------------------------------------------------------------------------- #
 # Hardpoint-mode geometry
 # --------------------------------------------------------------------------- #
@@ -353,6 +373,7 @@ class Project:
     mass_source: Source = "design_intent"
     pushrod_front: Pushrod = field(default_factory=Pushrod)
     pushrod_rear: Pushrod = field(default_factory=Pushrod)
+    rod_end_bolts: RodEndBolts = field(default_factory=RodEndBolts)
 
     geometry_mode: GeometryMode = "synthesis"
     hardpoints: HardpointSet | None = None
@@ -495,7 +516,7 @@ def project_from_dict(data: dict[str, Any]) -> Project:
     p.synthesis_tol_mm = float(data.get("synthesis_tol_mm", base.synthesis_tol_mm))
     if isinstance(data.get("layout"), dict):
         p.layout = _merge_frozen(base.layout, data["layout"])
-    for key in ("pushrod_front", "pushrod_rear"):
+    for key in ("pushrod_front", "pushrod_rear", "rod_end_bolts"):
         if isinstance(data.get(key), dict):
             setattr(p, key, _merge_frozen(getattr(base, key), data[key]))
     for key in ("tire_source", "mass_source"):

@@ -1300,14 +1300,46 @@ def _steering_dynamic(b: _Builder, geo: CarGeometry, want: set[str],
                      "steering", "deg")], str(exc))
         tick("Ackermann")
     if "rod_end" in want:
+        envelopes: dict[str, dict[str, RodEndAngles] | Exception] = {}
+        for axle in ("front", "rear"):
+            try:
+                envelopes[axle] = rod_end_misalignment(geo, axle)
+            except (RuntimeError, ValueError) as exc:
+                envelopes[axle] = exc
         try:
+            front_env = envelopes["front"]
+            if isinstance(front_env, Exception):
+                raise front_env
             b.add("steering.rod_end", "Worst tie-rod swing (bump × steer)", g, "steering",
-                  worst_rod_end_swing(geo), "deg", ".2f",
+                  front_env["swing"].max_deg, "deg", ".2f",
                   _DW + " 9×9 envelope (steering_geometry method)",
                   (0.0, lim.rod_end_misalignment_deg), _STG,
-                  note="screening: swing of the rod direction, not the joint's cone angle")
+                  note="screening: swing of the rod direction from static; the per-joint "
+                       "misalignment rows below use the bolt axes")
         except (RuntimeError, ValueError) as exc:
             b.fail([("steering.rod_end", "Worst tie-rod swing", g, "steering", "deg")], str(exc))
+        prov = geo.rod_end_bolts.source
+        for axle, scope, link in (("front", "steering", "tie rod"), ("rear", "rear", "toe link")):
+            pre = "steering.rod_end" if axle == "front" else "rear.toe_link_rod_end"
+            try:
+                angles = envelopes[axle]
+                if isinstance(angles, Exception):
+                    raise angles
+                env = ("bump × rack 9×9" if axle == "front" else "bump, 9 points")
+                for joint, ra in ((j, angles[j]) for j in ("inner", "outer")):
+                    where = (f"bump {ra.at_bump_mm:+.1f} mm"
+                             + (f", rack {ra.at_rack_mm:+.1f} mm" if axle == "front" else ""))
+                    b.add(f"{pre}_{joint}", f"{link.capitalize()} rod end, {joint}: "
+                          f"misalignment (max)", g, scope, ra.max_deg, "deg", ".2f",
+                          _DW + f" {env}; asin(|rod · bolt|)",
+                          (0.0, lim.rod_end_misalignment_deg), _STG,
+                          note=f"static {ra.static_deg:.2f}°, max at {where}; bolt axis "
+                               f"({'chassis' if joint == 'inner' else 'upright'}-fixed) is "
+                               f"'{prov}' (Steering page)")
+            except (RuntimeError, ValueError) as exc:
+                b.fail([(f"{pre}_inner", f"{link.capitalize()} rod end, inner", g, scope, "deg"),
+                        (f"{pre}_outer", f"{link.capitalize()} rod end, outer", g, scope, "deg")],
+                       str(exc))
         tick("rod-end envelope")
 
 
@@ -1343,6 +1375,92 @@ def worst_rod_end_swing(geo: CarGeometry, n: int = 9) -> float:
         raise RuntimeError(f"{len(failed)}/{n * n} rod-end envelope points did not converge "
                            f"(e.g. bump {failed[0][0]:+.1f} mm, rack {failed[0][1]:+.1f} mm)")
     return worst
+
+
+@dataclass(frozen=True)
+class RodEndAngles:
+    """Rod-end misalignment, deg: asin(|rod . bolt|) at ride height and its envelope max."""
+
+    static_deg: float
+    max_deg: float
+    at_bump_mm: float
+    at_rack_mm: float
+
+
+def _unit(v: Iterable[float], what: str) -> np.ndarray:
+    a = np.asarray(tuple(v), dtype=float)
+    n = float(np.linalg.norm(a))
+    if not n > 1e-9:
+        raise ValueError(f"{what}: bolt axis has zero length")
+    return a / n
+
+
+def rod_end_misalignment(geo: CarGeometry, axle: str, n: int = 9) -> dict[str, RodEndAngles]:
+    """Per-joint misalignment (``inner``, ``outer``) plus the screening ``swing``.
+
+    ``swing`` is the old screening value (angle of the rod direction from
+    static, ``worst_rod_end_swing``) taken from the same solves, so the swept
+    tier pays for the envelope once.
+    """
+    return _rod_end_envelope(geo, axle, n)
+
+
+def _rod_end_envelope(geo: CarGeometry, axle: str, n: int) -> dict[str, RodEndAngles]:
+    """Per-joint misalignment of the left tie rod (front) or toe link (rear).
+
+    A rod end turns freely about its bolt and the rod about its own axis, so
+    the bearing has to swallow only the tilt of the rod out of the plane normal
+    to the bolt: asin(|d . b|), with d the rod direction. The inner bolt is
+    fixed to the chassis (it translates with the rack); the outer bolt is fixed
+    to the upright, so it is carried by the upright's rotation from ride height
+    (a Kabsch fit of UBJ/LBJ/TRO/WC). Everything is in the CHASSIS frame
+    (DWSolver displaces the chassis by -travel). Envelope: bump × rack (front,
+    n × n) or bump only (rear, no rack). ``RuntimeError`` if any point does
+    not converge -- a partial envelope would hide the points that matter.
+    """
+    cid = "FL" if axle == "front" else "RL"
+    inp = geo.axle_inputs(axle)
+    bolts = geo.rod_end_bolts
+    b_in = _unit(bolts.front_inner if axle == "front" else bolts.rear_inner, f"{axle} inner")
+    b_out0 = _unit(bolts.front_outer if axle == "front" else bolts.rear_outer, f"{axle} outer")
+    solver = DWSolver(geo.corner(cid))
+    s0 = solver.solve()
+    if not s0.converged:
+        raise RuntimeError("static solve failed")
+    a0 = _upright(s0)
+    tri0 = geo.p(cid, "TIE_ROD_IN")
+    racks = (np.linspace(-geo.steering_inputs.max_rack_travel_mm,
+                         geo.steering_inputs.max_rack_travel_mm, n)
+             if axle == "front" else np.zeros(1))
+    out = {"inner": [0.0, -1.0, 0.0, 0.0], "outer": [0.0, -1.0, 0.0, 0.0],
+           "swing": [0.0, -1.0, 0.0, 0.0]}
+    d_static = _xyz(s0.tro) - tri0
+    d_static /= np.linalg.norm(d_static)
+    failed: list[tuple[float, float]] = []
+    for bump in np.linspace(-inp.travel_droop_mm, inp.travel_bump_mm, n):
+        for rack in racks:
+            r = solver.solve(wheel_travel_mm=float(bump), rack_mm=float(rack))
+            if not r.converged:
+                failed.append((float(bump), float(rack)))
+                continue
+            lift = np.array([0.0, 0.0, float(bump)])          # world -> chassis frame
+            tro = _xyz(r.tro) + lift
+            tri = tri0 + np.array([0.0, float(rack), 0.0])
+            d = (tro - tri) / np.linalg.norm(tro - tri)
+            rot, _ = _rigid_fit(a0, _upright(r) + lift)
+            angles = {key: math.degrees(math.asin(min(1.0, abs(float(np.dot(d, b))))))
+                      for key, b in (("inner", b_in), ("outer", rot @ b_out0))}
+            angles["swing"] = math.degrees(math.acos(float(np.clip(np.dot(d, d_static), -1, 1))))
+            for key, ang in angles.items():
+                if ang > out[key][1]:
+                    out[key][1:] = [ang, float(bump), float(rack)]
+    if failed:
+        raise RuntimeError(f"{len(failed)}/{n * len(racks)} rod-end envelope points did not "
+                           f"converge (e.g. bump {failed[0][0]:+.1f} mm, rack "
+                           f"{failed[0][1]:+.1f} mm)")
+    for key, b in (("inner", b_in), ("outer", b_out0)):
+        out[key][0] = math.degrees(math.asin(min(1.0, abs(float(np.dot(d_static, b))))))
+    return {k: RodEndAngles(*v) for k, v in out.items()}
 
 
 def compute_all(geo: CarGeometry, groups: Iterable[str] | None = None,

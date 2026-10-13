@@ -39,6 +39,7 @@ from .project import (
     Layout,
     Project,
     Pt,
+    RodEndBolts,
 )
 
 POINT_ORDER: tuple[str, ...] = (*INPUT_POINTS, "CONTACT_PATCH")
@@ -90,6 +91,7 @@ class CarGeometry:
     steering_geometry: stg.SteeringGeometry | None = None
     warnings: list[str] = field(default_factory=list)
     mass_source: str = "design_intent"      # provenance of the vehicle mass / CG
+    rod_end_bolts: RodEndBolts = field(default_factory=RodEndBolts)
     # brake / drive layout: picks the anti-geometry reference point
     layout: Layout = field(default_factory=Layout)
 
@@ -254,6 +256,7 @@ def synthesize(project: Project) -> CarGeometry:
         vehicle=vehicle, vehicle_data=veh, front_inputs=front_in, rear_inputs=rear_in,
         steering_inputs=steer, design=design, steering_geometry=sg, warnings=warnings,
         layout=project.layout, mass_source=project.mass_source,
+        rod_end_bolts=project.rod_end_bolts,
     )
 
 
@@ -324,7 +327,7 @@ def from_hardpoints(project: Project) -> CarGeometry:
         mode="hardpoints", points=pts, sources=sources, tols=tols, axles=axles,
         vehicle=vehicle, vehicle_data=veh, front_inputs=front_in, rear_inputs=rear_in,
         steering_inputs=project.steering, warnings=warnings, layout=project.layout,
-        mass_source=project.mass_source,
+        mass_source=project.mass_source, rod_end_bolts=project.rod_end_bolts,
     )
 
 

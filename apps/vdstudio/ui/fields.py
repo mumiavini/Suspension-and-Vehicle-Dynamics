@@ -207,6 +207,28 @@ def layout_fields(axle: str) -> list[tuple[str, list[Field]]]:
     return [("Anti-geometry reference: brake / drive layout" + DI, rows)]
 
 
+def rod_end_bolt_fields() -> list[tuple[str, list[Field]]]:
+    """Bolt axis of each tie-rod / toe-link rod end (direction only; estimate by default)."""
+    tip = ("Direction of the rod end's bolt (normalised), ISO 8855 (X fwd, Y LEFT, Z up), "
+           "LEFT corner; the right one is mirrored. Inner: fixed to the chassis. Outer: fixed "
+           "to the upright, given at ride height. Misalignment = asin(|rod · bolt|): rotation "
+           "about the bolt and about the rod's own axis is free.")
+    out = []
+    for key, title in (("front_inner", "Front tie rod, inner"),
+                       ("front_outer", "Front tie rod, outer (upright)"),
+                       ("rear_inner", "Rear toe link, inner"),
+                       ("rear_outer", "Rear toe link, outer (upright)")):
+        b = f"rod_end_bolts.{key}."
+        out.append((title + " bolt axis", [
+            Field(b + str(i), f"{ax} component", "-", -1, 1, 0.05, 3, tip=tip)
+            for i, ax in enumerate("XYZ")]))
+    out.append(("Provenance", [Field("rod_end_bolts.source", "Bolt axes provenance",
+                                     kind="choice", choices=SOURCES,
+                                     tip="Default vertical bolts are an estimate until the "
+                                         "brackets are drawn.")]))
+    return out
+
+
 def pushrod_fields() -> list[tuple[str, list[Field]]]:
     """Pushrod line per axle for the link-force equilibrium (estimate: no rocker drawn yet)."""
     tip = ("Offset from the LEFT lower ball joint, ISO 8855 (X fwd, Y LEFT, Z up); the right "
