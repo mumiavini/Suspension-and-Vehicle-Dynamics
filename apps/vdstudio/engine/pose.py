@@ -17,6 +17,10 @@ mapping means a patch can sit a fraction of a millimetre off z = 0 at large
 angles -- this is a visualisation pose. Quantitative roll results (camber
 relative to the road, RC in roll) come from ``vdcore.analysis.axle.axle_roll``,
 which solves both patches onto the road exactly.
+
+``DWSolver`` assembles the linkage far beyond any physical articulation, so a
+corner whose travel leaves the design window [-droop, +bump] is flagged
+(``CornerPose.beyond_travel``) rather than shown as an ordinary pose.
 """
 
 from __future__ import annotations
@@ -47,6 +51,8 @@ class CornerPose:
     points: dict[str, np.ndarray]          # chassis frame
     spin_axis: np.ndarray                  # unit, outboard, chassis frame
     residual: float = 0.0
+    inclination_deg: float = math.nan      # wheel plane to chassis vertical, inclination_deg()
+    beyond_travel: bool = False            # travel outside [-droop, +bump] of its axle
 
 
 @dataclass
@@ -82,6 +88,21 @@ def spin_axis_from_angles(camber_deg: float, toe_deg: float, left: bool) -> np.n
     return v / np.linalg.norm(v)
 
 
+def inclination_deg(res: SolverResult) -> float:
+    """Inclination: angle of the wheel plane to the vertical, deg (ISO 8855).
+
+    ``-asin(s_z)`` of the outboard spin axis s, rebuilt from the solver's
+    angles exactly as :func:`spin_axis_from_angles` does (independent of side).
+    Negative = top inboard, like camber. ``DWSolver.camber_deg`` projects the
+    spin axis onto the vehicle Y-Z plane first, which for a steered wheel
+    reads about 1/cos(steer) too large; the two agree at zero toe and differ
+    by < 1e-5 deg for |toe| <= 0.2 deg, so this is the camber to quote when
+    the wheel is steered.
+    """
+    s = spin_axis_from_angles(res.camber_deg, res.toe_deg_per_side, True)
+    return -math.degrees(math.asin(float(np.clip(s[2], -1.0, 1.0))))
+
+
 class PoseSolver:
     """Keeps one DWSolver per corner so repeated poses (slider drags) are cheap."""
 
@@ -101,7 +122,9 @@ class PoseSolver:
             travel = heave_mm + (cp[0] - self.x_cg) * tp - cp[1] * tr
             rk = rack_mm if AXLE_OF[cid] == "front" else 0.0
             r = solver.solve(wheel_travel_mm=float(travel), rack_mm=float(rk))
-            corners[cid] = self._corner_pose(cid, r, travel, rk)
+            inp = geo.axle_inputs(AXLE_OF[cid])
+            beyond = not (-inp.travel_droop_mm <= travel <= inp.travel_bump_mm)
+            corners[cid] = self._corner_pose(cid, r, travel, rk, beyond)
 
         phi, th = math.radians(roll_deg), math.radians(pitch_deg)
         rx = np.array([[1, 0, 0], [0, math.cos(phi), -math.sin(phi)],
@@ -114,7 +137,8 @@ class PoseSolver:
             pose.rc_chassis[axle] = self._roll_centre(corners[lc], corners[rc])
         return pose
 
-    def _corner_pose(self, cid: str, r: SolverResult, travel: float, rack: float) -> CornerPose:
+    def _corner_pose(self, cid: str, r: SolverResult, travel: float, rack: float,
+                     beyond_travel: bool = False) -> CornerPose:
         geo = self.geo
         up = np.array([0.0, 0.0, travel])   # world (chassis displaced by -travel) -> chassis
 
@@ -134,7 +158,8 @@ class PoseSolver:
             camber_deg=r.camber_deg, toe_deg_per_side=r.toe_deg_per_side,
             caster_deg=r.caster_deg, kpi_deg=r.kpi_deg, points=pts,
             spin_axis=spin_axis_from_angles(r.camber_deg, r.toe_deg_per_side, cid in LEFT),
-            residual=r.residual_norm,
+            residual=r.residual_norm, inclination_deg=inclination_deg(r),
+            beyond_travel=beyond_travel,
         )
 
     def _roll_centre(self, lp: CornerPose, rp: CornerPose) -> np.ndarray | None:

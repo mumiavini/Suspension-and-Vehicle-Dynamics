@@ -11,7 +11,11 @@ Conventions (ISO 8855, CLAUDE.md):
 * toe per side, positive toe-IN; heave curves report toe CHANGE from ride
   height (bump steer), steer curves report steer angle from straight ahead;
 * camber negative = top inboard; roll curves report camber relative to the
-  ROAD, which is what the tyre sees.
+  ROAD, which is what the tyre sees; steer curves report INCLINATION (wheel
+  plane to vertical), because ``DWSolver.camber_deg`` is a Y-Z projection that
+  reads about 1/cos(steer) too large on a steered wheel;
+* positive roll lifts the LEFT side (a left turn): the outer wheel is the
+  RIGHT one, and RC lateral is ISO Y (+ = left, toward the inner wheel).
 """
 
 from __future__ import annotations
@@ -22,13 +26,14 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from vdcore.analysis.axle import axle_roll
 from vdcore.analysis.roll_centre import front_view_instant_centre
 from vdcore.geometry.derived import mechanical_trail_mm, scrub_radius_mm
 from vdcore.geometry.solver import DWSolver, SolverResult
 from vdcore.models.hardpoint import DerivedPoint
 
 from .geometry import CarGeometry
+from .kpis import turn_roll
+from .pose import inclination_deg
 
 Arr = np.ndarray
 Cancelled = Callable[[], bool]
@@ -121,17 +126,22 @@ class RollCurves:
 
 
 ROLL_QUANTITIES: dict[str, tuple[str, str]] = {
-    "outer_camber": ("Outer wheel camber (road)", "deg"),
-    "inner_camber": ("Inner wheel camber (road)", "deg"),
+    "outer_camber": ("Outer (right) wheel camber (road)", "deg"),
+    "inner_camber": ("Inner (left) wheel camber (road)", "deg"),
     "rc_height": ("Roll centre height", "mm"),
-    "rc_lateral": ("Roll centre lateral", "mm"),
+    "rc_lateral": ("Roll centre lateral (ISO Y, + = left)", "mm"),
     "travel": ("Wheel travel (outer bump / inner droop)", "mm"),
 }
 
 
 def roll_curves(geo: CarGeometry, roll_max_deg: float, n: int = 13,
                 cancelled: Cancelled | None = None) -> RollCurves:
-    """Both wheels on the road at each chassis roll (``vdcore.analysis.axle.axle_roll``)."""
+    """Both wheels on the road at each chassis roll, LEFT turn (+roll lifts the left side).
+
+    ``vdcore.analysis.axle.axle_roll`` mapped by :func:`.kpis.turn_roll`: outer =
+    RIGHT wheel, RC lateral in ISO Y -- the same convention as the roll KPIs and
+    the 3D pose.
+    """
     roll = np.linspace(0.0, roll_max_deg, n)
     out = RollCurves(roll=roll)
     for axle in ("front", "rear"):
@@ -141,7 +151,7 @@ def roll_curves(geo: CarGeometry, roll_max_deg: float, n: int = 13,
             if cancelled is not None and cancelled():
                 raise InterruptedError
             try:
-                s = axle_roll(ax, float(phi))
+                s = turn_roll(ax, float(phi), "left")
             except (RuntimeError, ValueError) as exc:
                 out.errors[axle] = str(exc)
                 continue
@@ -149,7 +159,7 @@ def roll_curves(geo: CarGeometry, roll_max_deg: float, n: int = 13,
             q["inner_camber"][i] = s.inner_camber_deg
             q["rc_height"][i] = s.rc_height_mm
             q["rc_lateral"][i] = s.rc_lateral_mm
-            q["travel"][i] = s.wheel_travel_mm
+            q["travel"][i] = s.outer_travel_mm
         out.axles[axle] = q
     return out
 
@@ -159,11 +169,11 @@ class SteerCurves:
     rack: Arr
     steer_fl: Arr
     steer_fr: Arr
-    camber_fl: Arr
+    camber_fl: Arr                # INCLINATION (wheel plane to vertical), chassis frame
     camber_fr: Arr
     caster_fl: Arr
     kpi_fl: Arr
-    scrub_fl: Arr
+    scrub_fl: Arr                 # vehicle-axis offsets, not the steered wheel's frame
     trail_fl: Arr
     # Ackermann view: outer vs inner on the positive-rack half
     ack_outer: Arr
@@ -171,13 +181,40 @@ class SteerCurves:
     ack_ideal: Arr
     ack_pct: Arr
     turn_radius_m: Arr
+    # local steering ratio along the stroke, SW deg per road-wheel deg (NaN if unsolved)
+    ratio_fl: Arr
+    ratio_fr: Arr
+    # turn direction of +rack from a +1 mm probe; None if the probe did not solve
+    left_turn_for_positive_rack: bool | None = None
+
+
+def _positive_rack_turns_left(fl: DWSolver, fr: DWSolver, l0: SolverResult,
+                              r0: SolverResult, probe_mm: float = 1.0) -> bool | None:
+    """Yaw of +rack: a LEFT wheel yaws left when it toes OUT, a RIGHT wheel when it toes IN.
+
+    Holds for steering arms ahead of the axle (+rack = left turn) and behind it
+    (+rack = right turn, possible in hardpoint mode).
+    """
+    a, c = fl.solve(rack_mm=probe_mm), fr.solve(rack_mm=probe_mm)
+    if not (a.converged and c.converged and l0.converged and r0.converged):
+        return None
+    yaw = -(a.toe_deg_per_side - l0.toe_deg_per_side) + (c.toe_deg_per_side - r0.toe_deg_per_side)
+    return bool(yaw > 0.0)
+
+
+def positive_rack_turns_left(geo: CarGeometry) -> bool | None:
+    """True if +rack steers left, False if right, None if the +1 mm probe fails."""
+    fl, fr = DWSolver(geo.corner("FL")), DWSolver(geo.corner("FR"))
+    return _positive_rack_turns_left(fl, fr, fl.solve(), fr.solve())
 
 
 def steer_curves(geo: CarGeometry, n: int = 41, cancelled: Cancelled | None = None
                  ) -> SteerCurves:
     """Rack sweep over ± max rack travel. Steer angle = toe change from straight ahead,
     signed as in ``vdcore`` (toe-in positive per side). For a positive rack (+Y,
-    left turn with the tie rods ahead of the axle) the left wheel toes out."""
+    left turn with the tie rods ahead of the axle) the left wheel toes out;
+    ``left_turn_for_positive_rack`` says which way this linkage turns.
+    ``camber_*`` is the inclination (:func:`.pose.inclination_deg`)."""
     steer = geo.steering_inputs
     rack = np.linspace(-steer.max_rack_travel_mm, steer.max_rack_travel_mm, n)
     fl, fr = DWSolver(geo.corner("FL")), DWSolver(geo.corner("FR"))
@@ -191,8 +228,8 @@ def steer_curves(geo: CarGeometry, n: int = 41, cancelled: Cancelled | None = No
             continue
         arrs["sfl"][i] = a.toe_deg_per_side - l0.toe_deg_per_side
         arrs["sfr"][i] = c.toe_deg_per_side - r0.toe_deg_per_side
-        arrs["cfl"][i] = a.camber_deg
-        arrs["cfr"][i] = c.camber_deg
+        arrs["cfl"][i] = inclination_deg(a)
+        arrs["cfr"][i] = inclination_deg(c)
         arrs["cas"][i] = a.caster_deg
         arrs["kpi"][i] = a.kpi_deg
         try:
@@ -213,9 +250,19 @@ def steer_curves(geo: CarGeometry, n: int = 41, cancelled: Cancelled | None = No
         ideal = np.degrees(np.arctan(1.0 / cot_i))
         pct = 100.0 * (inner - outer) / (ideal - outer)
         radius = wb / np.sin(np.radians(outer)) / 1000.0
+    # local ratio: steering-wheel deg per mm of rack over |d(steer)/d(rack)|
+    sw_per_mm = 360.0 / (2.0 * math.pi * steer.pinion_radius_mm) \
+        if steer.pinion_radius_mm > 0 else math.nan
+    ratio = {}
+    for k in ("sfl", "sfr"):
+        slope = np.abs(np.gradient(arrs[k], rack, edge_order=2)) if n > 2 else _nan(n)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio[k] = np.where(slope > 1e-12, sw_per_mm / slope, np.nan)
     return SteerCurves(
         rack=rack, steer_fl=arrs["sfl"], steer_fr=arrs["sfr"], camber_fl=arrs["cfl"],
         camber_fr=arrs["cfr"], caster_fl=arrs["cas"], kpi_fl=arrs["kpi"],
         scrub_fl=arrs["scr"], trail_fl=arrs["trl"], ack_outer=outer, ack_inner=inner,
-        ack_ideal=ideal, ack_pct=pct, turn_radius_m=radius,
+        ack_ideal=ideal, ack_pct=pct, turn_radius_m=radius, ratio_fl=ratio["sfl"],
+        ratio_fr=ratio["sfr"],
+        left_turn_for_positive_rack=_positive_rack_turns_left(fl, fr, l0, r0),
     )

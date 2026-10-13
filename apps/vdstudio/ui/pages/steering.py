@@ -20,6 +20,14 @@ from .base import Page
 GROUPS = ["Steering geometry", "Steering kinematics", "Steering effort (parking)", "Bump steer"]
 
 
+def rack_axis_label(left_for_positive: bool | None) -> str:
+    """Rack axis label from the +1 mm probe (``SteerCurves.left_turn_for_positive_rack``)."""
+    if left_for_positive is None:
+        return "rack [mm] (turn direction unknown: +1 mm probe did not solve)"
+    return "rack [mm] (+ = left turn)" if left_for_positive else \
+        "rack [mm] (+ = right turn: steering arms behind the axle)"
+
+
 class SteeringPage(Page):
     title = "Steering"
     subtitle = ("Caster and mechanical trail, the steering arm, rack position and hardware. "
@@ -76,16 +84,20 @@ class SteeringPage(Page):
         self.p_ack = plot("Ackermann: inner vs outer wheel", "outer wheel steer [deg]",
                           "inner wheel steer [deg]")
         self.p_pct = plot("Ackermann % along the stroke", "outer wheel steer [deg]", "% Ackermann")
-        self.p_rack = plot("Steer angle vs rack travel", "rack [mm] (+ = left turn)",
+        self.p_rack = plot("Steer angle vs rack travel", rack_axis_label(True),
                            "toe change per side [deg] (+ in)")
+        self.p_ratio = plot("Steering ratio vs rack (local, SW : road wheel)",
+                            rack_axis_label(True), "ratio [:1]")
         self.p_bump = plot("Bump steer (toe change vs wheel travel)", "toe per side [deg] (+ in)",
                            "wheel travel [mm] (+ bump)")
-        self.p_cam = plot("Camber and caster vs steer (FL)", "FL steer [deg]", "[deg]")
+        self.p_cam = plot("Inclination (wheel plane to vertical) and caster vs steer (FL)",
+                          "FL steer [deg]", "[deg]")
         self.p_rad = plot("Kinematic turning radius", "outer wheel steer [deg]",
-                          "outer front wheel path radius [m]")
+                          "outer front patch path radius [m]")
         for w, name in ((self.p_ack, "Ackermann"), (self.p_pct, "Ackermann %"),
-                        (self.p_rack, "Steer vs rack"), (self.p_bump, "Bump steer"),
-                        (self.p_cam, "Camber / caster"), (self.p_rad, "Turning radius")):
+                        (self.p_rack, "Steer vs rack"), (self.p_ratio, "Ratio vs rack"),
+                        (self.p_bump, "Bump steer"), (self.p_cam, "Inclination / caster"),
+                        (self.p_rad, "Turning radius")):
             pt.addTab(w, name)
         right.addWidget(pt)
         self.table = KpiTable(GROUPS)
@@ -125,7 +137,8 @@ class SteeringPage(Page):
     def _draw(self, res) -> None:
         s, h = res
         t = theme.current()
-        for w in (self.p_ack, self.p_pct, self.p_rack, self.p_bump, self.p_cam, self.p_rad):
+        for w in (self.p_ack, self.p_pct, self.p_rack, self.p_ratio, self.p_bump, self.p_cam,
+                  self.p_rad):
             w.clear()
         o = s.ack_outer
         self.p_ack.plot(o, s.ack_inner, pen=pen(0, 2.5), name="actual inner (solved)")
@@ -139,15 +152,22 @@ class SteeringPage(Page):
         self.p_pct.plot(o[m], s.ack_pct[m], pen=pen(0, 2.5), name="solved")
         self.p_rack.plot(s.rack, s.steer_fl, pen=pen(0), name="FL")
         self.p_rack.plot(s.rack, s.steer_fr, pen=pen(1), name="FR")
+        for w in (self.p_rack, self.p_ratio):
+            w.getPlotItem().setLabel("bottom", rack_axis_label(s.left_turn_for_positive_rack))
+        self.p_ratio.plot(s.rack, s.ratio_fl, pen=pen(0), name="FL", connect="finite")
+        self.p_ratio.plot(s.rack, s.ratio_fr, pen=pen(1), name="FR", connect="finite")
         for cid, i in (("FL", 0), ("RL", 2)):
             self.p_bump.plot(h.corners[cid]["toe"], h.travel, pen=pen(i), name=cid)
-        self.p_cam.plot(s.steer_fl, s.camber_fl, pen=pen(0), name="camber FL")
+        self.p_cam.plot(s.steer_fl, s.camber_fl, pen=pen(0),
+                        name="inclination FL (wheel plane to vertical)")
         self.p_cam.plot(s.steer_fl, s.caster_fl, pen=pen(1), name="caster FL")
         self.p_cam.plot(s.steer_fl, s.kpi_fl, pen=pen(2), name="KPI FL")
         m = np.isfinite(s.turn_radius_m) & (o > 2.0)
-        self.p_rad.plot(o[m], s.turn_radius_m[m], pen=pen(0, 2.5), name="L / sin(δ_outer)")
+        self.p_rad.plot(o[m], s.turn_radius_m[m], pen=pen(0, 2.5),
+                        name="patch-centre path (L / sin δo)")
         self.p_rad.addItem(pg.InfiniteLine(
-            4.5, angle=0, label="FSAE hairpin: 9 m outside Ø", labelOpts={"color": t.warn},
+            4.5, angle=0, label="FSAE hairpin outside edge (9 m Ø): the car's OUTERMOST point "
+            "must stay inside", labelOpts={"color": t.warn},
             pen=pg.mkPen(t.warn, width=1, style=QtCore.Qt.DashLine)))
         _ = math
 
