@@ -74,6 +74,22 @@ class Layout:
     rear_drive_inboard: bool = True
 
 
+@dataclass(frozen=True)
+class Pushrod:
+    """Pushrod line of one axle, for the link-force equilibrium (LEFT corner, ISO 8855).
+
+    Given as offsets from that corner's lower ball joint so the line follows the
+    geometry when the wishbones move; the right corner is the Y-mirror. The
+    rocker is not modelled, so this is an ``estimate`` until the spring/damper
+    package is drawn. Default: from the LBJ, 250 mm inboard and 300 mm up
+    (about 50 deg from horizontal in front view).
+    """
+
+    outboard_from_lbj_mm: Pt = (0.0, 0.0, 0.0)
+    inboard_from_lbj_mm: Pt = (0.0, -250.0, 300.0)
+    source: Source = "estimate"
+
+
 # --------------------------------------------------------------------------- #
 # Hardpoint-mode geometry
 # --------------------------------------------------------------------------- #
@@ -335,6 +351,8 @@ class Project:
     # "estimate" when the subsystem estimator is applied (concept.apply_cg_estimate).
     tire_source: Source = "estimate"
     mass_source: Source = "design_intent"
+    pushrod_front: Pushrod = field(default_factory=Pushrod)
+    pushrod_rear: Pushrod = field(default_factory=Pushrod)
 
     geometry_mode: GeometryMode = "synthesis"
     hardpoints: HardpointSet | None = None
@@ -477,6 +495,9 @@ def project_from_dict(data: dict[str, Any]) -> Project:
     p.synthesis_tol_mm = float(data.get("synthesis_tol_mm", base.synthesis_tol_mm))
     if isinstance(data.get("layout"), dict):
         p.layout = _merge_frozen(base.layout, data["layout"])
+    for key in ("pushrod_front", "pushrod_rear"):
+        if isinstance(data.get(key), dict):
+            setattr(p, key, _merge_frozen(getattr(base, key), data[key]))
     for key in ("tire_source", "mass_source"):
         if data.get(key) in SOURCES:
             setattr(p, key, data[key])

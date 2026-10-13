@@ -74,6 +74,10 @@ owns the tie rod that closes the sixth DOF.
 
 - `sla_geometry.py` — static synthesis only: hardpoints, static KPIs, checks,
   anti-geometry, leg forces. No sweeps. It cannot build a complete corner.
+  Its leg forces close the system with a two-force UCA (no tie rod, no
+  pushrod), which cannot react a longitudinal force. The full six-link upright
+  equilibrium (4 legs + tie rod + pushrod) is
+  `vdcore.analysis.upright_loads`, used by VD Studio's maneuver page.
 - `steering_geometry.py` — caster, tie rod, rack, bump steer, Ackermann, effort.
   Supersedes sla's zero-caster outboard ball joints.
 - `legacy_app/` — the 📊 Analysis tab (the old "Analysis" and

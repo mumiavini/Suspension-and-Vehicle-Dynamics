@@ -9,20 +9,18 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
-import sla_geometry as sla
-
 from ...engine.geometry import CarGeometry
+from ...engine.legs import LINK_LABELS, LINK_ORDER, leg_cases
 from ...engine.maneuver import ASSUMPTIONS, ManeuverInputs, ManeuverResult, run_maneuver
-from .. import theme
+from .. import fields, theme
 from ..asyncjob import Debounced
-from ..widgets import SimpleTable, banner, button, pen, plot
+from ..widgets import ParamForm, SimpleTable, banner, button, pen, plot
 from .base import Page
 
-LEG_CASES = ("Cornering", "Braking", "Combined")
-NOT_IN_EQUILIBRIUM = ("not computed: two-force UCA cannot react the Fx moment (equilibrium "
-                      "not satisfied)")
-LEGS_SCOPE = ("Screening only: zero-caster upright, UCA as two-force member, tyre μ assumed; "
-              "out-of-plane LBJ load (≈ Fz) assumed taken by the pushrod; not shown.")
+LEGS_SCOPE = ("Six-link equilibrium of the upright (vdcore.analysis.upright_loads): 4 wishbone "
+              "legs, tie rod / toe link and pushrod as two-force members, on the merged corner "
+              "at ride height. The pushrod line is an estimate (inputs below); arm "
+              "bending is not modelled; tyre μ assumed (no TTC data).")
 BEYOND_TRAVEL = ("travel outside the axle's design bump/droop range: bump stop and droop "
                  "limit are not modelled")
 
@@ -97,25 +95,36 @@ class ManeuverPage(Page):
                                      "unsprung [N]", "total ΔFz [N]"])
         self.transfer.setMaximumHeight(110)
         rl.addWidget(self.transfer)
+        tabs = QtWidgets.QTabWidget()
+        rl.addWidget(tabs, 1)
+        sweep_tab = QtWidgets.QWidget()
+        sl = QtWidgets.QVBoxLayout(sweep_tab)
         sweep_row = QtWidgets.QHBoxLayout()
         sweep_row.addWidget(QtWidgets.QLabel("Sweep ay from 0 to the value above:"))
         sweep_row.addWidget(button("Run sweep", self._sweep))
         sweep_row.addStretch(1)
-        rl.addLayout(sweep_row)
+        sl.addLayout(sweep_row)
         g = QtWidgets.QHBoxLayout()
         self.p_fz = plot("Wheel loads vs ay", "ay [g]", "Fz [N]")
         self.p_cam = plot("Camber vs road vs ay", "ay [g]", "camber [deg]")
         g.addWidget(self.p_fz)
         g.addWidget(self.p_cam)
-        rl.addLayout(g, 1)
-        self.legs = SimpleTable(["axle / case", "LCA front", "LCA rear", "UCA front", "UCA rear",
-                                 "Fz outer [N]"])
-        self.legs.setMaximumHeight(170)
-        self.legs_note = QtWidgets.QLabel("Wishbone leg forces from sla_geometry load cases "
-                                          "(N, + tension). " + LEGS_SCOPE)
+        sl.addLayout(g, 1)
+        tabs.addTab(sweep_tab, "Sweep vs ay")
+        legs_tab = QtWidgets.QWidget()
+        rl_legs = QtWidgets.QVBoxLayout(legs_tab)
+        self.legs = SimpleTable(["axle / case", "wheel", *(LINK_LABELS[k] for k in LINK_ORDER),
+                                 "Fz [N]", "Fx acts at"])
+        self.legs.setMinimumHeight(190)
+        self.legs_note = QtWidgets.QLabel("Link forces (N, + tension).")
+        self.legs_note.setToolTip(LEGS_SCOPE)
         self.legs_note.setWordWrap(True)
-        rl.addWidget(self.legs_note)
-        rl.addWidget(self.legs)
+        rl_legs.addWidget(self.legs_note)
+        rl_legs.addWidget(self.legs)
+        rl_legs.addWidget(ParamForm(ctrl, fields.pushrod_fields(), columns=2))
+        rl_legs.addStretch(1)
+        tabs.addTab(legs_tab, "Link forces (upright equilibrium)")
+        self.tabs = tabs
         split.addWidget(right)
         split.setSizes([440, 1000])
         self.job = Debounced(300, self)
@@ -240,60 +249,34 @@ class ManeuverPage(Page):
         self.p_fz.addItem(pg.InfiniteLine(0, angle=0, pen=pg.mkPen(theme.current().bad)))
 
     def _legs(self, geo: CarGeometry, r: ManeuverResult) -> None:
-        """Leg forces at the outer-wheel loads of the state on screen."""
+        """Link forces of the outer wheels at the state on screen."""
         self.legs.clearSpans()
-        if geo.design is None:
-            self.legs.set_rows([["available in synthesis mode only", "", "", "", "", ""]])
-            self.legs_note.setText("Wishbone leg forces from sla_geometry load cases (N, + "
-                                   "tension). " + LEGS_SCOPE)
-            return
         rows: list[list[str]] = []
         spans: list[int] = []
-        outer_txt = []
-        veh = geo.vehicle_data
-        for name, ag, cids in (("Front", geo.design.front, ("FL", "FR")),
-                               ("Rear", geo.design.rear, ("RL", "RR"))):
-            outer = max(cids, key=lambda c: r.wheels[c].fz_N)
-            fz = r.wheels[outer].fz_N
-            outer_txt.append(f"{outer} {fz:.0f} N")
-            if not fz > 0:
-                rows += [[f"{name} / {case}", "not computed: outer wheel not loaded", "", "", "",
-                          _num(fz, ".0f")] for case in LEG_CASES]
-                spans += [len(rows) - 3, len(rows) - 2, len(rows) - 1]
+        outer_txt: list[str] = []
+        for lc in leg_cases(geo, self.ctrl.project, r):
+            tag = f"{lc.corner} {lc.fz_N:.0f} N"
+            if tag not in outer_txt:
+                outer_txt.append(tag)
+            head = [f"{lc.axle.title()} / {lc.case}", lc.corner]
+            if lc.error:
+                rows.append([*head, lc.error, *[""] * (len(LINK_ORDER) - 1),
+                             _num(lc.fz_N, ".0f"), ""])
+                spans.append(len(rows) - 1)
                 continue
-            # sla_geometry's load cases are linear in the outer-wheel Fz. Take their
-            # shape (μ from vehicle data; at ay = 0 its Fz is the static load, > 0) and
-            # evaluate it at the Fz of the state above, not at sla's own lumped
-            # W·ay·h/T transfer, so both tables on this page use one wheel load.
-            lc = sla.load_cases(ag, veh, ay=0.0)
-            ref = sla.upright_reactions(ag)
-            lbj, ubj, cp = ref["lbj"], ref["ubj"], ref["cp"]
-            y_l, y_u = float(ag.lca_in[0]), float(ag.uca_in[0])
-            lf = np.array([ag.lca_in_front_x_mm, y_l, ag.lca_in_front_z_mm])
-            lr = np.array([ag.lca_in_rear_x_mm, y_l, ag.lca_in_rear_z_mm])
-            uf = np.array([ag.uca_in_front_x_mm, y_u, ag.uca_in_front_z_mm])
-            ur = np.array([ag.uca_in_rear_x_mm, y_u, ag.uca_in_rear_z_mm])
-            for case in LEG_CASES:
-                load = lc[case] * (fz / lc["Fz"])
-                F_lbj, F_ubj = sla.solve_ball_joint_forces(ag, load)
-                # moment of the loads on the upright about the LBJ: the two-force UCA
-                # reacts no x-force, so any Fx leaves it unbalanced
-                m = np.cross(cp - lbj, load) + np.cross(ubj - lbj, -F_ubj)
-                if float(np.linalg.norm(m)) > 1.0:          # N·mm
-                    rows.append([f"{name} / {case}", NOT_IN_EQUILIBRIUM, "", "", "",
-                                 f"{fz:.0f}"])
-                    spans.append(len(rows) - 1)
-                    continue
-                fl = sla.leg_forces(lbj, lf, lr, F_lbj)
-                fu = sla.leg_forces(ubj, uf, ur, F_ubj)
-                rows.append([f"{name} / {case}", f"{fl[0]:.0f}", f"{fl[1]:.0f}", f"{fu[0]:.0f}",
-                             f"{fu[1]:.0f}", f"{fz:.0f}"])
-        self.legs.set_rows(rows, right_cols=range(1, 6))
+            rows.append([*head, *(f"{lc.forces[k]:.0f}" for k in LINK_ORDER),
+                         f"{lc.fz_N:.0f}", lc.fx_point if lc.load_N[0] else "—"])
+        self.legs.set_rows(rows, right_cols=range(2, 2 + len(LINK_ORDER) + 1))
         for i in spans:
-            self.legs.setSpan(i, 1, 1, 4)
-        inp = r.inputs
+            self.legs.setSpan(i, 2, 1, len(LINK_ORDER))
+        veh, inp = geo.vehicle_data, r.inputs
         self.legs_note.setText(
-            f"Wishbone leg forces (N, + tension) for the sla_geometry load cases (μ lateral "
-            f"{veh.mu_lateral:g}, longitudinal {veh.mu_longitudinal:g}: vehicle data) at the "
-            f"outer-wheel loads of the state above (ay {inp.ay_g:+.2f} g, ax {inp.ax_g:+.2f} g, "
-            f"LLTD {_num(r.lltd_front, '.3f')}: {', '.join(outer_txt)}). " + LEGS_SCOPE)
+            f"<b>Link forces</b> (N, + tension), outer wheels at the state above "
+            f"({', '.join(outer_txt)}; μ {veh.mu_lateral:g} / {veh.mu_longitudinal:g}). "
+            "Six-link upright equilibrium; pushrod line is an estimate. Hover for the model.")
+        self.legs_note.setToolTip(
+            f"State: ay {inp.ay_g:+.2f} g, ax {inp.ax_g:+.2f} g, LLTD "
+            f"{_num(r.lltd_front, '.3f')}. μ lateral {veh.mu_lateral:g}, longitudinal "
+            f"{veh.mu_longitudinal:g} (vehicle data). Fx acts at the wheel centre when its "
+            "torque reacts on the chassis (brake / drive layout on the Suspension geometry "
+            "page), otherwise at the contact patch. " + LEGS_SCOPE)

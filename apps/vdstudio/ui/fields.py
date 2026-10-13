@@ -207,6 +207,27 @@ def layout_fields(axle: str) -> list[tuple[str, list[Field]]]:
     return [("Anti-geometry reference: brake / drive layout" + DI, rows)]
 
 
+def pushrod_fields() -> list[tuple[str, list[Field]]]:
+    """Pushrod line per axle for the link-force equilibrium (estimate: no rocker drawn yet)."""
+    tip = ("Offset from the LEFT lower ball joint, ISO 8855 (X fwd, Y LEFT, Z up); the right "
+           "corner is mirrored. The pushrod acts on the upright through its outboard point "
+           "(for an arm-mounted pushrod near the LBJ this is the usual approximation). "
+           "Source: estimate until the spring/damper package is drawn.")
+    out = []
+    for axle in ("front", "rear"):
+        b = f"pushrod_{axle}."
+        out.append((f"{axle.title()} pushrod (estimate)", [
+            Field(b + "inboard_from_lbj_mm.0", "Inboard end dx", "mm", -400, 400, 5, 1, tip=tip),
+            Field(b + "inboard_from_lbj_mm.1", "Inboard end dy", "mm", -600, 600, 5, 1, tip=tip),
+            Field(b + "inboard_from_lbj_mm.2", "Inboard end dz", "mm", -600, 600, 5, 1, tip=tip),
+            Field(b + "outboard_from_lbj_mm.1", "Outboard end dy", "mm", -200, 200, 5, 1,
+                  tip=tip),
+            Field(b + "outboard_from_lbj_mm.2", "Outboard end dz", "mm", -200, 200, 5, 1,
+                  tip=tip),
+        ]))
+    return out
+
+
 def toe_link_fields() -> list[tuple[str, list[Field]]]:
     rows: list[Field] = []
     for end, lab in (("inboard", "Inboard (chassis)"), ("outboard", "Outboard (upright)")):

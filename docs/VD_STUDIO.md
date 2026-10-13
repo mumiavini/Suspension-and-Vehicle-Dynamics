@@ -117,7 +117,7 @@ leaving old numbers on screen. Undo/redo (Ctrl+Z / Ctrl+Y) covers every edit.
 | Rod-end swing | `DWSolver` bump × steer envelope, both rod ends in one frame |
 | Member lengths, e/a | the merged hardpoints (as `geometry_summary.member_lengths`) |
 | Roll budget, quasi-static maneuver | `engine.mass`: the SPRUNG CG (unsprung mass split equally, its CG at the wheel-centre height), so the transfer terms close on m·g·ay·h; the elastic term includes the pendulum moment |
-| Load cases, leg forces | `sla_geometry.load_cases` / `leg_forces` at the maneuver state; cases whose two-force UCA cannot react the Fx moment are reported as not computed |
+| Link forces (4 wishbone legs, tie rod / toe link, pushrod) | six-link equilibrium of the upright, `vdcore.analysis.upright_loads`, on the merged corner at ride height: cornering, braking, combined and rear traction on the outer wheels at the maneuver state's Fz. Fx acts at the wheel centre when its torque reacts on the chassis (brake / drive layout). The pushrod line is an `estimate` input (offsets from the LBJ). Cross-checked against virtual work on `DWSolver` |
 
 ## Telemetry
 

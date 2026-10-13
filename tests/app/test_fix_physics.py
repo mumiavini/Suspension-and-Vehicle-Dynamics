@@ -481,42 +481,37 @@ def man_page(qapp):
 
 
 def test_ui_p14_legs_follow_the_state_and_share_its_outer_load(man_page) -> None:
-    import sla_geometry as sla
+    from apps.vdstudio.engine.legs import LINK_ORDER, leg_cases
 
     page = man_page
     wheels = {r[0]: r for r in _tab(page.wheels)}
     legs = _tab(page.legs)
     assert legs[0][0] == "Front / Cornering" and legs[3][0] == "Rear / Cornering"
-    assert legs[0][5] == wheels["FR"][1] and legs[3][5] == wheels["RR"][1]   # one outer load
-    # cornering legs scale with Fz from sla's own case (LCA -1337 at Fz 1233.6)
-    geo = page.ctrl.geometry
-    ag, veh = geo.design.front, geo.vehicle_data
-    lc = sla.load_cases(ag, veh)
-    ref = sla.upright_reactions(ag)
-    F_lbj, _ = sla.solve_ball_joint_forces(ag, lc["Cornering"])
-    y_l = float(ag.lca_in[0])
-    fl = sla.leg_forces(ref["lbj"], np.array([ag.lca_in_front_x_mm, y_l, ag.lca_in_front_z_mm]),
-                        np.array([ag.lca_in_rear_x_mm, y_l, ag.lca_in_rear_z_mm]), F_lbj)
-    fz = maneuver.run_maneuver(geo, page._inputs(), page._rc()).wheels["FR"].fz_N
-    assert float(legs[0][1]) == pytest.approx(fl[0] * fz / lc["Fz"], abs=0.5)
-    assert "ay +1.50 g" in page.legs_note.text() and "LLTD 0.472" in page.legs_note.text()
+    fz_col = 2 + len(LINK_ORDER)
+    assert legs[0][fz_col] == wheels["FR"][1] and legs[3][fz_col] == wheels["RR"][1]
+    # the table is the engine's six-link solve at this state
+    r = maneuver.run_maneuver(page.ctrl.geometry, page._inputs(), page._rc())
+    cases = leg_cases(page.ctrl.geometry, page.ctrl.project, r)
+    assert float(legs[0][2]) == pytest.approx(cases[0].forces[LINK_ORDER[0]], abs=0.5)
+    assert "FR 1277 N" in page.legs_note.text() and "LLTD 0.472" in page.legs_note.toolTip()
     page.inp["ay_g"].setValue(0.5)
     legs2 = _tab(page.legs)
     wheels2 = {r[0]: r for r in _tab(page.wheels)}
-    assert legs2[0][5] == wheels2["FR"][1] != legs[0][5]      # was fixed at 1234
-    assert "ay +0.50 g" in page.legs_note.text()
+    assert legs2[0][fz_col] == wheels2["FR"][1] != legs[0][fz_col]
+    assert "ay +0.50 g" in page.legs_note.toolTip()
 
 
-def test_ui_p03_unbalanced_cases_are_not_printed(man_page) -> None:
+def test_ui_p03_braking_cases_are_solved_by_the_upright_equilibrium(man_page) -> None:
+    """The two-force-UCA closure could not react Fx; the six-link solve can."""
     legs = {r[0]: r for r in _tab(man_page.legs)}
-    for name in ("Front", "Rear"):
-        assert legs[f"{name} / Cornering"][1].lstrip("-").isdigit()
-        for case in ("Braking", "Combined"):
+    for name, cases in (("Front", ("Cornering", "Braking", "Combined")),
+                        ("Rear", ("Cornering", "Braking", "Combined", "Traction"))):
+        for case in cases:
             row = legs[f"{name} / {case}"]
-            assert row[1].startswith("not computed: two-force UCA cannot react the Fx moment")
-            assert row[2:5] == ["", "", ""]
-    assert "out-of-plane LBJ load (≈ Fz) assumed taken by the pushrod; not shown" in \
-        man_page.legs_note.text()
+            assert all(c.lstrip("-").isdigit() for c in row[2:8]), row
+    assert legs["Rear / Traction"][-1] == "wheel centre"          # chassis diff
+    assert legs["Front / Braking"][-1] == "contact patch"          # outboard brakes
+    assert "pushrod line is an estimate" in man_page.legs_note.text()
 
 
 def test_ui_p11_assumptions_are_stated(man_page) -> None:
