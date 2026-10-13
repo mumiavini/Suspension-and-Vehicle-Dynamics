@@ -25,8 +25,8 @@ from pathlib import Path
 import export_solidworks_skeleton as swx
 import numpy as np
 
-from .geometry import CarGeometry
-from .project import CORNERS
+from .geometry import CarGeometry, freeze_to_hardpoints
+from .project import CORNERS, HardpointSet, Project
 
 CHASSIS_POINTS = ("UCA_IN_FRONT", "UCA_IN_REAR", "LCA_IN_FRONT", "LCA_IN_REAR")
 NO_NODE_MM = 100.0      # beyond this the nearest node is reported as "none nearby"
@@ -112,8 +112,19 @@ def _seg_distance(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
 
 
 def compare(geo: CarGeometry, survey: ChassisSurvey, frame: swx.Frame,
-            points: tuple[str, ...] = CHASSIS_POINTS) -> list[PickupCheck]:
+            points: tuple[str, ...] = CHASSIS_POINTS,
+            sketches: tuple[str, ...] | None = None) -> list[PickupCheck]:
+    """``sketches``: take nodes only from these sketches (e.g. the suspension-mount
+    sketches); tube distances still use the whole frame."""
     nodes = survey.nodes
+    if sketches:
+        nodes = {}
+        for ln in survey.lines:
+            if ln.sketch in sketches:
+                for p in (ln.a, ln.b):
+                    nodes.setdefault(p, ln.sketch)
+        if not nodes:
+            raise ValueError(f"no frame lines in the sketches {list(sketches)}")
     keys = list(nodes)
     node_iso = np.array([cad_to_iso(k, frame) for k in keys])
     segs = [(ln.sketch, cad_to_iso(ln.a, frame), cad_to_iso(ln.b, frame)) for ln in survey.lines]
@@ -250,3 +261,46 @@ def views_svg(geo: CarGeometry, survey: ChassisSurvey, frame: swx.Frame,
                'node, joined to its pick-up</tspan></text>')
     out.append("</svg>")
     return "\n".join(out) + "\n"
+
+
+CAD_TOL_MM = 0.5
+
+
+def cad_hardpoints(project: Project, survey: ChassisSurvey, frame: swx.Frame,
+                   sketches: tuple[str, ...] | None = None,
+                   max_distance_mm: float = NO_NODE_MM) -> tuple[HardpointSet, list[PickupCheck]]:
+    """The project's hardpoints with the chassis pick-ups taken from the CAD frame.
+
+    Each inboard wishbone pick-up becomes the nearest CAD frame node (source
+    ``cad``); every other point keeps its value and provenance from the project
+    (the CAD has no uprights, tie rods or wheels). Refuses, rather than guesses,
+    when a pick-up has no node within ``max_distance_mm`` or two pick-ups of one
+    corner land on the same node.
+    """
+    if project.geometry_mode == "hardpoints" and project.hardpoints is not None:
+        import copy
+
+        hs = copy.deepcopy(project.hardpoints)
+    else:
+        hs = freeze_to_hardpoints(project)
+    from .geometry import resolve
+
+    geo_base = resolve(project)
+    rows = compare(geo_base, survey, frame, sketches=sketches)
+    far = [f"{r.corner}/{r.point}" for r in rows
+           if r.node_mm is None or r.distance_mm > max_distance_mm]
+    if far:
+        raise ValueError(f"no CAD node within {max_distance_mm:g} mm of: {', '.join(far)}")
+    for c in CORNERS:
+        used = [r.node_mm for r in rows if r.corner == c]
+        if len(set(used)) != len(used):
+            raise ValueError(f"{c}: two pick-ups matched the same CAD node -- the frame "
+                             "sketch does not have one node per pick-up")
+    for r in rows:
+        hs.points[r.corner][r.point] = r.node_mm  # type: ignore[assignment]
+        hs.sources[r.corner][r.point] = "cad"
+        hs.tols[r.corner][r.point] = CAD_TOL_MM
+    where = f" ({', '.join(sketches)})" if sketches else ""
+    hs.origin = (f"chassis pick-ups from CAD '{survey.title}'{where}, placement "
+                 f"{frame.label}; other points from the project")
+    return hs, rows

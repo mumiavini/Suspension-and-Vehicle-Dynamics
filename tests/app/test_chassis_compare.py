@@ -105,3 +105,65 @@ def test_cli_writes_next_to_a_dotted_survey_name(geo, tmp_path, capsys) -> None:
     for ext in ("md", "csv", "svg"):
         assert (tmp_path / f"Xasis 33.3_comparison.{ext}").is_file()
     assert "| FL | LCA_IN_FRONT |" in capsys.readouterr().out
+
+
+def _proj():
+    from dataclasses import replace
+
+    from apps.vdstudio.engine.project import CadFrame
+    return replace(Project(), cad_frame=CadFrame("-Y", "-X", 0.0, -120.4, 75.0))
+
+
+def test_cad_hardpoints_take_only_the_chassis_pickups(geo, tmp_path) -> None:
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps(_survey(geo, moved=("FL", "UCA_IN_FRONT", (0.0, 45.0, 8.0)))))
+    hs, rows = C.cad_hardpoints(_proj(), C.load_survey(path), FRAME, ("Frame",))
+    assert hs.points["FL"]["UCA_IN_FRONT"] == pytest.approx(
+        np.add(geo.points["FL"]["UCA_IN_FRONT"], (0.0, 45.0, 8.0)))
+    assert hs.sources["FL"]["UCA_IN_FRONT"] == "cad" and hs.tols["FL"]["UCA_IN_FRONT"] == 0.5
+    # the CAD has no uprights or wheels: those keep the project's value and provenance
+    assert hs.points["FL"]["UCA_OUT"] == pytest.approx(geo.points["FL"]["UCA_OUT"])
+    assert hs.sources["FL"]["UCA_OUT"] == "design_intent"
+    assert not hs.missing() and "fake" in hs.origin
+    # the variant solves
+    from copy import copy
+
+    v = copy(_proj())
+    v.hardpoints, v.geometry_mode = hs, "hardpoints"
+    assert G.resolve(v).points["FL"]["UCA_IN_FRONT"] == pytest.approx(
+        hs.points["FL"]["UCA_IN_FRONT"])
+
+
+def test_cad_hardpoints_refuse_to_guess(geo, tmp_path) -> None:
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps(_survey(geo)))
+    with pytest.raises(ValueError, match="no frame lines in the sketches"):
+        C.cad_hardpoints(_proj(), C.load_survey(path), FRAME, ("PSD",))
+    with pytest.raises(ValueError, match="no CAD node within"):
+        C.cad_hardpoints(_proj(), C.load_survey(path),
+                         swx.axis_frame("-Y", "-X", (0.0, -120.4, 500.0)), None, 50.0)
+    # one node for two pick-ups: refused
+    d = _survey(geo)
+    lines = d["sketches"][0]["lines"]
+    lines[:] = [ln for ln in lines if not ln.get("construction")][:1]
+    path.write_text(json.dumps(d))
+    with pytest.raises(ValueError):
+        C.cad_hardpoints(_proj(), C.load_survey(path), FRAME, None, 1e6)
+
+
+def test_import_cli_writes_a_variant_and_leaves_the_project(geo, tmp_path, capsys) -> None:
+    cli = importlib.import_module("import_chassis_pickups")
+    survey = tmp_path / "Xasis 33.3_survey.json"
+    survey.write_text(json.dumps(_survey(geo, moved=("RL", "LCA_IN_FRONT", (-32.0, 40.0, 0.0)))))
+    proj = tmp_path / "team.vdproj.json"
+    save_project(_proj(), proj)
+    before = proj.read_bytes()
+    out = tmp_path / "variant.vdproj.json"
+    assert cli.main([str(survey), "--project", str(proj), "--out", str(out)]) == 0
+    assert proj.read_bytes() == before
+    from apps.vdstudio.engine.project import load_project
+
+    v = load_project(out)
+    assert v.geometry_mode == "hardpoints" and v.hardpoints.sources["RL"]["LCA_IN_FRONT"] == "cad"
+    text = capsys.readouterr().out
+    assert "RL LCA_IN_FRONT" in text and "Front RC height" in text

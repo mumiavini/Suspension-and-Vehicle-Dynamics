@@ -242,6 +242,20 @@ The frame nodes are taken as the CAD's intent for the pick-ups. A pick-up on a
 tab away from its node reads as a difference; the report says so and does not
 say which source is right.
 
+**Take the pick-ups from the CAD.** Run
+`scripts/import_chassis_pickups.py "projects/cad/<name>_survey.json" --sketches PSD PST`.
+
+- It writes a **new** project in hardpoint mode,
+  `projects/<project>_<model>_pickups.vdproj.json`. The team project is not
+  touched.
+- The 16 inboard wishbone pick-ups come from the CAD (source `cad`). Every
+  other point (uprights, tie rods, wheels: not in a chassis model) keeps its
+  value from the project.
+- It prints the KPIs of both projects side by side, without saying which to
+  keep.
+- It refuses, rather than guesses, when a pick-up has no node nearby or two
+  pick-ups share a node.
+
 The preview table shows each point exactly as it will land in CAD. If you
 move skeleton points in CAD and read them back (**Read skeleton back**),
 use the same placement.
