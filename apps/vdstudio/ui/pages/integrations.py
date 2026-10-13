@@ -9,9 +9,17 @@ from pathlib import Path
 from PySide6 import QtWidgets
 
 from ...engine import exports as X
-from ...engine.project import CORNERS, INPUT_POINTS, HardpointSet, Project
+from ...engine.project import (
+    CAD_AXES,
+    CORNERS,
+    INPUT_POINTS,
+    CadFrame,
+    HardpointSet,
+    Project,
+    with_path,
+)
 from ..asyncjob import Debounced
-from ..widgets import SimpleTable, banner, button, save_text
+from ..widgets import Field, ParamForm, SimpleTable, banner, button, save_text
 from .base import Page
 
 # Altair setup-sheet keys -> this app's KPI keys (per axle)
@@ -41,25 +49,49 @@ class IntegrationsPage(Page):
         ok, why = X.solidworks_available()
         sl.addWidget(banner(
             "Draws the suspension as 3D-sketch lines (scripts/export_solidworks_skeleton.py) and "
-            "reads them back by topology (scripts/import_solidworks_hardpoints.py). The frame "
-            "is explicit: reading a model in the wrong frame gives a mirrored car without any "
-            "error." + ("" if ok else f"<br><b>Live link unavailable here:</b> {why} The VBA "
-                                      "macro works on any machine.")))
+            "reads them back by topology (scripts/import_solidworks_hardpoints.py). To land the "
+            "wireframe on your chassis model, say how that model is placed: which CAD axis "
+            "points to the car's front and which to its left (up follows), and the CAD "
+            "coordinates of the ISO origin -- the ground, on the car centreline, under the "
+            "front axle. A wrong axis gives a rotated or mirrored car without any error."
+            + ("" if ok else f"<br><b>Live link unavailable here:</b> {why} The VBA "
+                             "macro works on any machine.")))
+        e = "cad_frame."
+        self.sw_form = ParamForm(ctrl, [("Chassis CAD placement (saved in the project)", [
+            Field(e + "forward", "CAD axis to the car's FRONT", kind="choice", choices=CAD_AXES,
+                  tip="In SolidWorks, the triad axis that points from the main hoop towards "
+                      "the front bulkhead."),
+            Field(e + "left", "CAD axis to the car's LEFT", kind="choice", choices=CAD_AXES,
+                  tip="Left as seen by the driver."),
+            Field(e + "origin_x_mm", "ISO origin in CAD: X", "mm", -1e5, 1e5, 1, 2,
+                  tip="CAD coordinates of the point on the ground, on the car centreline, "
+                      "under the front axle. 0, 0, 0 = the CAD origin is that point."),
+            Field(e + "origin_y_mm", "ISO origin in CAD: Y", "mm", -1e5, 1e5, 1, 2),
+            Field(e + "origin_z_mm", "ISO origin in CAD: Z", "mm", -1e5, 1e5, 1, 2),
+        ])], setter=self._set_cad)
+        sl.addWidget(self.sw_form)
+        presets = QtWidgets.QHBoxLayout()
+        presets.addWidget(QtWidgets.QLabel("Presets:"))
+        presets.addWidget(button("ISO 8855 (X front, Y left, Z up)",
+                                 lambda: self._preset("+X", "+Y")))
+        presets.addWidget(button("SolidWorks FSAE (X rear, Y right, Z up)",
+                                 lambda: self._preset("-X", "-Y")))
+        presets.addStretch(1)
+        sl.addLayout(presets)
+        self.sw_frame_label = QtWidgets.QLabel("")
+        self.sw_frame_label.setWordWrap(True)
+        sl.addWidget(self.sw_frame_label)
         form = QtWidgets.QFormLayout()
-        self.sw_frame = QtWidgets.QComboBox()
-        self.sw_frame.addItem(X.FRAME_LABELS["iso"], "iso")
-        self.sw_frame.addItem(X.FRAME_LABELS["sw_fsae"], "sw_fsae")
         self.sw_group = QtWidgets.QComboBox()
         self.sw_group.addItems(["corner", "part", "single"])
-        form.addRow("CAD frame", self.sw_frame)
         form.addRow("One 3D sketch per", self.sw_group)
         sl.addLayout(form)
         row = QtWidgets.QHBoxLayout()
-        row.addWidget(button("Save VBA macro (.bas)…", self._macro, primary=True))
+        self.btn_macro = button("Save VBA macro (.bas)…", self._macro, primary=True)
+        row.addWidget(self.btn_macro)
         self.btn_push = button("Push skeleton to running SolidWorks", self._push)
         self.btn_pull = button("Read skeleton back → hardpoint set", self._pull)
-        self.btn_push.setEnabled(ok)
-        self.btn_pull.setEnabled(ok)
+        self._sw_live = ok
         row.addWidget(self.btn_push)
         row.addWidget(self.btn_pull)
         row.addStretch(1)
@@ -67,11 +99,10 @@ class IntegrationsPage(Page):
         self.sw_status = QtWidgets.QLabel("")
         self.sw_status.setWordWrap(True)
         sl.addWidget(self.sw_status)
-        sl.addWidget(QtWidgets.QLabel("Preview: the points as they will land in the CAD frame "
+        sl.addWidget(QtWidgets.QLabel("Preview: the points as they will land in the CAD model "
                                       "(mm; the macro writes metres)."))
         self.sw_preview = SimpleTable(["corner", "point", "X", "Y", "Z"])
         sl.addWidget(self.sw_preview, 1)
-        self.sw_frame.currentIndexChanged.connect(lambda _i: self._preview())
         tabs.addTab(sw, "SolidWorks")
 
         # OptimumK
@@ -127,14 +158,48 @@ class IntegrationsPage(Page):
         self.optk.setPlainText(X.optimumk_text(geo))
         self._preview()
 
-    def _preview(self) -> None:
-        geo = self.ctrl.geometry
-        if geo is None:
+    def on_project(self) -> None:
+        self.sw_form.refresh()
+        self._preview()
+
+    def _set_cad(self, path: str, value) -> None:
+        """CAD placement edits: undoable and saved, but they cannot change the car."""
+        self.ctrl.apply(lambda p: with_path(p, path, value), geometry=False)
+
+    def _preset(self, forward: str, left: str) -> None:
+        cur = self.ctrl.project.cad_frame
+        if (cur.forward, cur.left) == (forward, left):
             return
-        fr = self.sw_frame.currentData()
+
+        def edit(p: Project) -> None:
+            p.cad_frame = CadFrame(forward, left, cur.origin_x_mm, cur.origin_y_mm,
+                                   cur.origin_z_mm)
+
+        self.ctrl.apply(edit, geometry=False)
+
+    def _frame(self):
+        """The CAD placement, or None (with the reason shown) when the axes clash."""
+        try:
+            fr = X.cad_frame(self.ctrl.project)
+        except ValueError as exc:
+            self.sw_frame_label.setText(f"<b>Invalid placement:</b> {exc}.")
+            return None
+        self.sw_frame_label.setText(f"Placement: {fr.label}.")
+        return fr
+
+    def _preview(self) -> None:
+        fr = self._frame()
+        valid = fr is not None
+        self.btn_macro.setEnabled(valid)
+        self.btn_push.setEnabled(valid and self._sw_live)
+        self.btn_pull.setEnabled(valid and self._sw_live)
+        geo = self.ctrl.geometry
+        if geo is None or fr is None:
+            self.sw_preview.set_rows([])
+            return
         rows = []
         for c, n, x, y, z, _s, _t in geo.rows():
-            X_, Y_, Z_ = X.to_frame((x, y, z), fr)
+            X_, Y_, Z_ = X.to_cad((x, y, z), fr)
             rows.append([c, n, f"{X_:.3f}", f"{Y_:.3f}", f"{Z_:.3f}"])
         self.sw_preview.set_rows(rows, right_cols=(2, 3, 4))
 
@@ -143,7 +208,10 @@ class IntegrationsPage(Page):
         geo = self.ctrl.geometry
         if geo is None:
             return
-        txt = X.solidworks_macro(geo, self.sw_frame.currentData(), self.sw_group.currentText())
+        fr = self._frame()
+        if fr is None:
+            return
+        txt = X.solidworks_macro(geo, fr, self.sw_group.currentText())
         p = save_text(self, txt, "solidworks_skeleton.bas", "VBA module (*.bas)")
         if p:
             self.sw_status.setText(f"Saved {p}. In SolidWorks: Tools › Macro › New, then in the "
@@ -154,14 +222,14 @@ class IntegrationsPage(Page):
         if geo is None:
             return
         try:
-            X.solidworks_push(geo, self.sw_frame.currentData(), self.sw_group.currentText())
+            X.solidworks_push(geo, X.cad_frame(self.ctrl.project), self.sw_group.currentText())
             self.sw_status.setText("Skeleton drawn in the active SolidWorks document (not saved).")
         except Exception as exc:
             self.sw_status.setText(f"SolidWorks push failed: {exc}")
 
     def _pull(self) -> None:
         try:
-            pts = X.solidworks_pull(self.sw_frame.currentData())
+            pts = X.solidworks_pull(X.cad_frame(self.ctrl.project))
         except Exception as exc:
             self.sw_status.setText(f"SolidWorks read failed: {exc}")
             return

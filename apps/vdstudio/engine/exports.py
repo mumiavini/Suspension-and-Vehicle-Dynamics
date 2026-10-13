@@ -158,15 +158,19 @@ def _sw_table(geo: CarGeometry) -> dict[tuple[str, str], Pt]:
     return {(c, n): geo.points[c][n] for c in CORNERS for n in POINT_ORDER}
 
 
-def _sw_frame(frame: str) -> None:
-    if frame not in swx.FRAMES:
-        raise ValueError(f"SolidWorks export supports the frames {sorted(swx.FRAMES)}, "
-                         f"not {frame!r}")
+def cad_frame(project: Project) -> swx.Frame:
+    """The project's CAD placement (axes + origin) as the SolidWorks scripts' frame."""
+    f = project.cad_frame
+    return swx.axis_frame(f.forward, f.left, (f.origin_x_mm, f.origin_y_mm, f.origin_z_mm))
 
 
-def solidworks_macro(geo: CarGeometry, frame: str = "iso", grouping: str = "corner",
-                     name: str = "vdstudio_hardpoints.csv") -> str:
-    _sw_frame(frame)
+def to_cad(p: Pt, frame: str | swx.Frame) -> Pt:
+    """An ISO 8855 point (mm) where the SolidWorks skeleton puts it in the CAD model."""
+    return swx._transform(tuple(float(v) for v in p), swx.resolve_frame(frame))
+
+
+def solidworks_macro(geo: CarGeometry, frame: str | swx.Frame = "iso",
+                     grouping: str = "corner", name: str = "vdstudio_hardpoints.csv") -> str:
     groups = swx.build_groups(_sw_table(geo), frame, grouping)
     return swx.render_macro(groups, Path(name), frame)
 
@@ -181,15 +185,14 @@ def solidworks_available() -> tuple[bool, str]:
     return True, ""
 
 
-def solidworks_push(geo: CarGeometry, frame: str = "iso", grouping: str = "corner",
-                    new_part: bool = False) -> None:
+def solidworks_push(geo: CarGeometry, frame: str | swx.Frame = "iso",
+                    grouping: str = "corner", new_part: bool = False) -> None:
     """Draw the skeleton in the running SolidWorks (scripts/export_solidworks_skeleton)."""
-    _sw_frame(frame)
     groups = swx.build_groups(_sw_table(geo), frame, grouping)
     swx.build_live(groups, Path("VD Studio"), frame, new_part=new_part)
 
 
-def solidworks_pull(frame: str = "iso", path: str | None = None
+def solidworks_pull(frame: str | swx.Frame = "iso", path: str | None = None
                     ) -> dict[str, dict[str, Pt]]:
     """Read the ``SUSP_`` skeleton back (scripts/import_solidworks_hardpoints)."""
     import import_solidworks_hardpoints as swi

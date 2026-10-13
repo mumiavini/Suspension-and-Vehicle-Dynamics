@@ -44,8 +44,12 @@ axle centreline on the ground plane). ``--frame iso`` (the default) puts those
 numbers into SolidWorks untransformed; ``--frame sw_fsae`` applies the
 "typical FSAE SolidWorks" convention from
 ``.claude/skills/vd-conventions/references/frames.md`` (X+ rearward, Y+ right,
-Z+ up). If the team's CAD uses neither, add its matrix to ``FRAMES`` below --
-do not eyeball a rotation afterwards.
+Z+ up). A model built any other way -- the car's length along CAD Y, the
+origin at the front bulkhead or the main hoop -- is described with
+``--forward``, ``--left`` and ``--origin``: which CAD axis points to the car's
+front, which to its left (up follows, right-handed), and where the ISO origin
+(ground, car centreline, under the front axle) sits in CAD millimetres. Do not
+eyeball a rotation afterwards.
 """
 
 from __future__ import annotations
@@ -54,6 +58,7 @@ import argparse
 import csv
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
@@ -120,6 +125,66 @@ FRAMES = {
     "sw_fsae": ((-1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, 1.0)),
 }
 
+AXES: dict[str, tuple[float, float, float]] = {
+    "+X": (1.0, 0.0, 0.0), "-X": (-1.0, 0.0, 0.0),
+    "+Y": (0.0, 1.0, 0.0), "-Y": (0.0, -1.0, 0.0),
+    "+Z": (0.0, 0.0, 1.0), "-Z": (0.0, 0.0, -1.0),
+}
+
+
+class Frame(NamedTuple):
+    """ISO 8855 -> CAD placement: ``cad_mm = matrix @ iso_mm + origin_mm``.
+
+    ``matrix`` is a proper rotation (orthonormal, det +1): CAD models are
+    right-handed, so only the forward and left axes are chosen and up follows.
+    ``origin_mm`` is where the ISO origin (ground plane, car centreline, front
+    axle) sits in the CAD model, in CAD coordinates.
+    """
+
+    matrix: tuple[tuple[float, float, float], ...]
+    origin_mm: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    label: str = "iso"
+
+
+def _axis_name(v: tuple[float, float, float]) -> str:
+    for name, a in AXES.items():
+        if a == tuple(float(x) for x in v):
+            return name
+    raise ValueError(f"{v} is not a CAD axis")
+
+
+def axis_frame(forward: str, left: str,
+               origin_mm: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> Frame:
+    """The frame whose CAD axis ``forward`` points to the car's front and ``left`` to its left.
+
+    Up is ``forward x left``, so the result is always right-handed (a CAD
+    model cannot be mirrored). ``origin_mm``: CAD coordinates of the ISO origin.
+    """
+    try:
+        f, lft = AXES[forward.upper()], AXES[left.upper()]
+    except KeyError as exc:
+        raise ValueError(f"axes are one of {sorted(AXES)}, not {exc.args[0]!r}") from None
+    if any(a * b for a, b in zip(f, lft, strict=True)):
+        raise ValueError(f"forward {forward} and left {left} must be different CAD axes")
+    up = (f[1] * lft[2] - f[2] * lft[1], f[2] * lft[0] - f[0] * lft[2],
+          f[0] * lft[1] - f[1] * lft[0])
+    matrix = tuple((f[r] + 0.0, lft[r] + 0.0, up[r] + 0.0) for r in range(3))  # no -0.0
+    o = tuple(float(v) for v in origin_mm)
+    label = (f"forward {forward.upper()}, left {left.upper()}, up {_axis_name(up)}; "
+             f"ISO origin at CAD ({o[0]:g}, {o[1]:g}, {o[2]:g}) mm")
+    return Frame(matrix, o, label)  # type: ignore[arg-type]
+
+
+def resolve_frame(frame: str | Frame) -> Frame:
+    """A named frame from ``FRAMES`` (origin at the CAD origin) or a ``Frame`` as is."""
+    if isinstance(frame, Frame):
+        return frame
+    if frame not in FRAMES:
+        raise ValueError(f"SolidWorks export supports the frames {sorted(FRAMES)}, "
+                         f"not {frame!r}")
+    return Frame(FRAMES[frame], (0.0, 0.0, 0.0), frame)
+
+
 SKETCH_PREFIX = "SUSP_"
 
 # swDocPART / swDocASSEMBLY. A 3D sketch cannot live in a drawing.
@@ -179,15 +244,16 @@ def load_hardpoints(csv_path: Path) -> dict[tuple[str, str], tuple[float, float,
     return hardpoints
 
 
-def _transform(xyz: tuple[float, float, float], matrix) -> tuple[float, float, float]:
-    """Rotate/mirror a mm point into the target CAD frame."""
+def _transform(xyz: tuple[float, float, float], frame: Frame) -> tuple[float, float, float]:
+    """Rotate a mm point into the target CAD frame and shift it to the CAD origin."""
     x, y, z = xyz
-    return tuple(row[0] * x + row[1] * y + row[2] * z for row in matrix)  # type: ignore[return-value]
+    return tuple(row[0] * x + row[1] * y + row[2] * z + o  # type: ignore[return-value]
+                 for row, o in zip(frame.matrix, frame.origin_mm, strict=True))
 
 
 def build_groups(
     hardpoints: dict[tuple[str, str], tuple[float, float, float]],
-    frame: str,
+    frame: str | Frame,
     grouping: str,
 ) -> list[Group]:
     """Turn hardpoints into ``(sketch_name, [(label, start_m, end_m), ...])``.
@@ -198,7 +264,7 @@ def build_groups(
     one click), one per part (drives a part model from its own sketch), or one
     for the whole car.
     """
-    matrix = FRAMES[frame]
+    placed = resolve_frame(frame)
     groups: dict[str, list[Segment]] = {}
     order: list[str] = []
 
@@ -216,8 +282,8 @@ def build_groups(
                 order.append(name)
 
             for start_pt, end_pt, segment_label in segments:
-                start_mm = _transform(hardpoints[(corner, start_pt)], matrix)
-                end_mm = _transform(hardpoints[(corner, end_pt)], matrix)
+                start_mm = _transform(hardpoints[(corner, start_pt)], placed)
+                end_mm = _transform(hardpoints[(corner, end_pt)], placed)
                 if start_mm == end_mm:
                     # SolidWorks rejects a zero-length line; a duplicated
                     # hardpoint is a data bug worth naming, not swallowing.
@@ -365,7 +431,7 @@ def _delete_sketch_named(model, name: str) -> bool:
 def build_live(
     groups: list[Group],
     csv_path: Path,
-    frame: str,
+    frame: str | Frame,
     new_part: bool = False,
     screenshot: Path | None = None,
 ) -> None:
@@ -450,7 +516,7 @@ def _vba_identifier(name: str) -> str:
     return "Build_" + "".join(c if c.isalnum() else "_" for c in name)
 
 
-def render_macro(groups: list[Group], csv_path: Path, frame: str) -> str:
+def render_macro(groups: list[Group], csv_path: Path, frame: str | Frame) -> str:
     """Render a VBA module that builds the same sketches without Python.
 
     VBA number literals are locale-independent, so the '.' decimal separator
@@ -461,7 +527,8 @@ def render_macro(groups: list[Group], csv_path: Path, frame: str) -> str:
 
     add("' FSAE26 suspension skeleton -- 3D sketch wireframe")
     add(f"' Generated by scripts/export_solidworks_skeleton.py from {csv_path.name}")
-    add(f"' Frame: {frame}. Coordinates in metres (the SolidWorks API is always metres).")
+    add(f"' Frame: {resolve_frame(frame).label}. Coordinates in metres "
+        "(the SolidWorks API is always metres).")
     add("' Do not hand-edit: change the hardpoint CSV and regenerate.")
     add("'")
     add("' Tools > Macro > New (save a blank .swp), then in the VBA editor")
@@ -541,6 +608,30 @@ def render_macro(groups: list[Group], csv_path: Path, frame: str) -> str:
 # --------------------------------------------------------------------------
 
 
+def add_placement_args(parser: argparse.ArgumentParser) -> None:
+    """``--forward/--left/--origin``: a CAD model placed any way (shared with the importer)."""
+    axes = sorted(AXES)
+    parser.add_argument("--forward", choices=axes, default=None,
+                        help="CAD axis pointing to the car's front (with --left; overrides "
+                             "--frame)")
+    parser.add_argument("--left", choices=axes, default=None,
+                        help="CAD axis pointing to the car's left (up = forward x left)")
+    parser.add_argument("--origin", nargs=3, type=float, default=None,
+                        metavar=("X", "Y", "Z"),
+                        help="CAD coordinates (mm) of the ISO origin: ground plane, car "
+                             "centreline, under the front axle (default 0 0 0)")
+
+
+def frame_from_args(args: argparse.Namespace) -> Frame:
+    if (args.forward is None) != (args.left is None):
+        raise ValueError("--forward and --left go together")
+    origin = tuple(args.origin) if args.origin else (0.0, 0.0, 0.0)
+    if args.forward is not None:
+        return axis_frame(args.forward, args.left, origin)  # type: ignore[arg-type]
+    base = resolve_frame(args.frame)
+    return Frame(base.matrix, origin, base.label) if args.origin else base  # type: ignore[arg-type]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Draw the suspension hardpoint skeleton as 3D sketches in SolidWorks.",
@@ -554,6 +645,7 @@ def main() -> int:
         help="target CAD frame: 'iso' passes the CSV through untouched (default); "
              "'sw_fsae' is X+ rearward, Y+ right, Z+ up",
     )
+    add_placement_args(parser)
     parser.add_argument(
         "--group", choices=("corner", "part", "single"), default="corner",
         help="one 3D sketch per corner (default), per part, or one for the whole car",
@@ -575,24 +667,25 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        frame = frame_from_args(args)
         hardpoints = load_hardpoints(args.csv)
-        groups = build_groups(hardpoints, args.frame, args.group)
+        groups = build_groups(hardpoints, frame, args.group)
     except (FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     if args.macro is not None:
         args.macro.parent.mkdir(parents=True, exist_ok=True)
-        args.macro.write_text(render_macro(groups, args.csv, args.frame), encoding="utf-8")
+        args.macro.write_text(render_macro(groups, args.csv, frame), encoding="utf-8")
         total = sum(len(segments) for _, segments in groups)
         print(f"Wrote {args.macro}")
-        print(f"{len(groups)} sketch(es), {total} line(s), frame {args.frame}.")
+        print(f"{len(groups)} sketch(es), {total} line(s), frame {resolve_frame(frame).label}.")
         print("In SolidWorks: Tools > Macro > New (save a blank .swp), then in the")
         print("VBA editor File > Import File... > this .bas, then F5.")
         return 0
 
     try:
-        build_live(groups, args.csv, args.frame, args.new_part, args.screenshot)
+        build_live(groups, args.csv, frame, args.new_part, args.screenshot)
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

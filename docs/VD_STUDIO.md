@@ -186,6 +186,42 @@ leaving old numbers on screen. Undo/redo (Ctrl+Z / Ctrl+Y) covers every edit.
 | Roll budget, quasi-static maneuver | `engine.mass`: the SPRUNG CG (unsprung mass split equally, its CG at the wheel-centre height), so the transfer terms close on m·g·ay·h; the elastic term includes the pendulum moment |
 | Link forces (4 wishbone legs, tie rod / toe link, pushrod) | six-link equilibrium of the upright, `vdcore.analysis.upright_loads`, on the merged corner at ride height: cornering, braking, combined and rear traction on the outer wheels at the maneuver state's Fz. Fx acts at the wheel centre when its torque reacts on the chassis (brake / drive layout). The pushrod line is an `estimate` input (offsets from the LBJ). Cross-checked against virtual work on `DWSolver` |
 
+## Checking the chassis CAD against the hardpoints
+
+The app does not read `.sldprt` files. Instead it draws the suspension into
+SolidWorks, so you see whether the inboard points land on the chassis tabs.
+This is **CAD & cross-checks › SolidWorks**:
+
+1. Open the chassis part or assembly in SolidWorks.
+2. **Tell the app how that model is placed.** This is saved in the project.
+   - **CAD axis to the car's FRONT** and **CAD axis to the car's LEFT**: up
+     follows, because CAD is right-handed. Read them off the SolidWorks
+     triad.
+   - **ISO origin in CAD (X, Y, Z)**: where, in the chassis model's
+     coordinates, the point on the ground, on the car centreline, under the
+     front axle sits. 0, 0, 0 means the CAD origin is that point.
+   - Presets cover ISO (X front, Y left, Z up) and the typical FSAE
+     SolidWorks frame (X rear, Y right, Z up).
+3. **Draw the skeleton.** Either **Save VBA macro (.bas)…** and run it in
+   SolidWorks (*Tools › Macro › New*, *File › Import File…*, F5), or
+   **Push skeleton to running SolidWorks**. The live push needs Windows and
+   `pywin32`, which the installer now includes. Re-running replaces the
+   `SUSP_*` sketches; nothing is saved.
+4. **Look.** Each corner's inner wishbone, tie-rod and pushrod ends should sit
+   on the chassis pick-up points. Measure any gap in SolidWorks.
+
+**Symptoms of a wrong placement:**
+
+| What you see | What is wrong |
+|---|---|
+| The wheels of one axle are spread along the chassis length, and the other axle sits a wheelbase off to the side | Forward and left are swapped |
+| The car is upside down or lying on its side | The up axis is wrong; fix forward/left |
+| The right shape, but shifted | The origin is wrong |
+
+The preview table shows each point exactly as it will land in CAD. If you
+move skeleton points in CAD and read them back (**Read skeleton back**),
+use the same placement.
+
 ## Telemetry
 
 Supported: MoTeC i2 `.ld` (read natively, no extra package) and CSV/TSV

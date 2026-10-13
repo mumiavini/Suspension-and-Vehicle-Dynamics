@@ -131,6 +131,27 @@ class TurningEnvelope:
     source: Source = "estimate"
 
 
+CAD_AXES = ("+X", "-X", "+Y", "-Y", "+Z", "-Z")
+
+
+@dataclass(frozen=True)
+class CadFrame:
+    """How the team's CAD model is placed relative to ISO 8855.
+
+    Used by the SolidWorks skeleton (draw and read back) so the wireframe lands
+    on the chassis model: which CAD axis points to the car's front and which to
+    its left (up follows: CAD is right-handed), and the CAD coordinates of the
+    ISO origin -- the ground plane, on the car centreline, under the front axle.
+    Default: the CAD model is in ISO 8855 itself.
+    """
+
+    forward: str = "+X"
+    left: str = "+Y"
+    origin_x_mm: float = 0.0
+    origin_y_mm: float = 0.0
+    origin_z_mm: float = 0.0
+
+
 # --------------------------------------------------------------------------- #
 # Hardpoint-mode geometry
 # --------------------------------------------------------------------------- #
@@ -396,6 +417,7 @@ class Project:
     pushrod_rear: Pushrod = field(default_factory=Pushrod)
     rod_end_bolts: RodEndBolts = field(default_factory=RodEndBolts)
     turning_envelope: TurningEnvelope = field(default_factory=TurningEnvelope)
+    cad_frame: CadFrame = field(default_factory=CadFrame)
 
     geometry_mode: GeometryMode = "synthesis"
     hardpoints: HardpointSet | None = None
@@ -538,7 +560,8 @@ def project_from_dict(data: dict[str, Any]) -> Project:
     p.synthesis_tol_mm = float(data.get("synthesis_tol_mm", base.synthesis_tol_mm))
     if isinstance(data.get("layout"), dict):
         p.layout = _merge_frozen(base.layout, data["layout"])
-    for key in ("pushrod_front", "pushrod_rear", "rod_end_bolts", "turning_envelope"):
+    for key in ("pushrod_front", "pushrod_rear", "rod_end_bolts", "turning_envelope",
+                "cad_frame"):
         if isinstance(data.get(key), dict):
             setattr(p, key, _merge_frozen(getattr(base, key), data[key]))
     for key in ("tire_source", "mass_source"):
