@@ -36,8 +36,11 @@ replay, OptimumK / Altair cross-checks, the setup sheet and a Markdown/PDF
 design report. Every number comes from `vdcore` or the design scripts above,
 and the tool never recommends a value.
 
+Windows: double-click **`Install VD Studio shortcut.bat`** once, then open VD
+Studio from the Desktop or Start-menu icon. Or, from a terminal:
+
 ```bash
-uv sync --extra desktop
+uv sync --extra desktop --inexact
 uv run --extra desktop python -m apps.vdstudio      # or double-click "VD Studio.bat"
 ```
 

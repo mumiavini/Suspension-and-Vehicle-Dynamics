@@ -17,18 +17,49 @@ CAD exchange, cross-checks and the Design Event documentation.
 
 ## Install and run
 
-Windows (PowerShell, from the repository root):
+### Windows: desktop shortcut (recommended)
+
+Double-click **`Install VD Studio shortcut.bat`** in the repository root, once.
+It installs the desktop dependencies into `.venv` (`uv sync --extra desktop
+--inexact`: `--inexact` keeps the packages the legacy Streamlit app needs) and
+puts a **VD Studio** icon on the Desktop and in the Start menu (so it is also
+found by typing "VD Studio" in the Start search). From then on, open the app
+from that icon: it starts `.venv\Scripts\pythonw.exe -m apps.vdstudio` in the
+repository folder, with no console window.
+
+- Run the installer again after moving the repository folder, or after a
+  `git pull` that changes `pyproject.toml` (new dependencies).
+- Without a console, output and tracebacks go to
+  `%LOCALAPPDATA%\VD Studio\vdstudio.log`, and an unexpected error is shown
+  in a dialog that names that file.
+- Remove the shortcuts with `"Install VD Studio shortcut.bat" --remove` from a
+  terminal.
+- The installer needs [uv](https://docs.astral.sh/uv/) (or an existing
+  `.venv` with the desktop extra) and PowerShell, which every Windows 10/11
+  has.
+
+### Windows: other ways
 
 ```powershell
-uv sync --extra desktop          # once; adds PySide6, pyqtgraph, PyOpenGL
+uv sync --extra desktop --inexact   # once; adds PySide6, pyqtgraph, PyOpenGL
 uv run --extra desktop python -m apps.vdstudio
 ```
 
-or double-click **`VD Studio.bat`** in the repository root. Open a project
-directly with `python -m apps.vdstudio path\to\car.vdproj.json`.
+or double-click **`VD Studio.bat`** in the repository root (opens with a
+console window, useful to see errors live). Open a project directly with
+`python -m apps.vdstudio path\to\car.vdproj.json`, or drop the file onto
+either launcher.
 
-Linux/macOS: `./run_vdstudio.sh`. Headless machines without OpenGL can set
-`VDSTUDIO_NO_GL=1` (the 3D view is replaced by a notice; everything else works).
+### Linux / macOS
+
+`./run_vdstudio.sh`, or create a launcher once with
+`.venv/bin/python -m apps.vdstudio.shortcut`: a `vdstudio.desktop` entry in
+the application menu and on the Desktop (Linux), or `VD Studio.command` on the
+Desktop (macOS). `--remove` takes them away. Headless machines without OpenGL
+can set `VDSTUDIO_NO_GL=1` (the 3D view is replaced by a notice; everything
+else works).
+
+The icon is drawn by `scripts/make_icon.py` into `apps/vdstudio/resources/`.
 
 ## The workflow, stage by stage
 
@@ -185,6 +216,9 @@ apps/vdstudio/engine/   Qt-free logic (testable from a REPL)
   concept.py, maneuver.py, whatif.py, exports.py
   telemetry/            ld.py, session.py, mapping.py, analysis.py
 apps/vdstudio/ui/       PySide6 + pyqtgraph presentation
+apps/vdstudio/app.py    entry point; log file + error dialog when started without a console
+apps/vdstudio/shortcut.py  Desktop / Start-menu / app-menu shortcuts (no Qt)
+apps/vdstudio/resources/   icon (.ico for shortcuts, .png for the window), from scripts/make_icon.py
 ```
 
 * `vdcore/` is untouched and stays pure (the layering test still guards it).
