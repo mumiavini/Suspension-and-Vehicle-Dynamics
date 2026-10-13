@@ -104,45 +104,26 @@ def test_steering_geometry_rod_end_raises_too() -> None:
 # swept-fvic-projection-with-caster
 # --------------------------------------------------------------------------- #
 
-def test_3d_instant_axis_rc_matches_the_independent_screw_solve(ks) -> None:
-    """Verifier's screw-axis RC: front 35.373 mm, -0.1999 mm/mm (projection: -0.3106)."""
-    assert ks.value("front.rc_static_3d") == pytest.approx(35.373, abs=0.005)
-    assert ks.value("front.rc_migration_3d") == pytest.approx(-0.1999, abs=5e-4)
-    assert ks.value("front.rc_migration") == pytest.approx(-0.3106, abs=5e-4)   # key unchanged
-    src = ks.get("front.rc_static_3d").source
-    assert src == "instant screw axis of the upright (3D), DWSolver"
+def test_rc_comes_from_the_3d_instant_axis(ks) -> None:
+    """Verifier's screw-axis RC, now vdcore's own: front 35.373 mm, -0.1999 mm/mm
+    (the old projected construction gave 35.500 / -0.3106)."""
+    assert ks.value("front.rc_static") == pytest.approx(35.373, abs=0.005)
+    assert ks.value("front.rc_migration") == pytest.approx(-0.1999, abs=5e-4)
+    assert ks.get("front.rc_static_3d") is None          # no duplicate rows any more
 
 
-def test_3d_rc_equals_the_projection_when_the_ball_joints_share_x(ks) -> None:
-    """Rear (no caster): every method agrees -- the known answer for the 3D construction."""
-    assert ks.value("rear.rc_static_3d") == pytest.approx(55.000, abs=1e-3)
-    assert ks.value("rear.rc_static_3d") == pytest.approx(ks.value("rear.rc_static"), abs=1e-3)
-    assert ks.value("rear.rc_migration_3d") == pytest.approx(-0.3380, abs=5e-4)
-    assert ks.value("rear.rc_migration_3d") == pytest.approx(ks.value("rear.rc_migration"),
-                                                             abs=1e-5)
+def test_rc_without_caster_is_the_planar_answer(ks) -> None:
+    """Rear (ball joints at the same X): the 3D and planar constructions agree."""
+    assert ks.value("rear.rc_static") == pytest.approx(55.000, abs=1e-3)
+    assert ks.value("rear.rc_migration") == pytest.approx(-0.3380, abs=5e-4)
 
 
-def test_3d_rc_tracks_caster_where_the_projection_does_not() -> None:
-    """Verifier: at 8 deg caster screw RC 38.08 mm / -0.1340 mm/mm, projection -0.3121."""
+def test_rc_tracks_caster() -> None:
+    """Verifier: at 8 deg caster screw RC 38.08 mm / -0.1340 mm/mm (projection: -0.3121)."""
     g = G.resolve(with_path(Project(), "steering.caster_deg", 8.0))
-    d = K.compute_dynamic(g, ["rates"])
-    assert d.value("front.rc_static_3d") == pytest.approx(38.08, abs=0.01)
-    assert d.value("front.rc_migration_3d") == pytest.approx(-0.1340, abs=5e-4)
-    assert d.value("front.rc_migration") == pytest.approx(-0.3121, abs=5e-4)
-
-
-def test_projected_rc_rows_carry_the_disclosure(ks) -> None:
-    for key in ("front.rc_migration", "front.rc_min", "front.rc_max", "front.rc_span",
-                "front.roll_rc_height", "front.roll_rc_lateral"):
-        assert "projected FVIC at each ball joint's X" in ks.get(key).note, key
-    assert "projected" not in ks.get("rear.rc_migration").note   # rear BJs share X
-
-
-def test_instant_axis_ic_is_the_zero_velocity_point(geo) -> None:
-    """Both wheels in the same heave: the left CP->IC line meets y = 0 at the axle RC."""
-    cp, ic = K.instant_axis_fvic(geo.corner("FL"), DWSolver(geo.corner("FL")), 0.0)
-    z0 = cp[1] + (0.0 - cp[0]) * (ic[1] - cp[1]) / (ic[0] - cp[0])
-    assert z0 == pytest.approx(K.instant_axis_rc(geo.axle("front"))[1], abs=1e-6)
+    d = K.compute_all(g, ["rates"])
+    assert d.value("front.rc_static") == pytest.approx(38.08, abs=0.01)
+    assert d.value("front.rc_migration") == pytest.approx(-0.1340, abs=5e-4)
 
 
 # --------------------------------------------------------------------------- #
@@ -152,7 +133,8 @@ def test_instant_axis_ic_is_the_zero_velocity_point(geo) -> None:
 def test_roll_kpis_describe_the_left_turn_like_the_pose(geo, ks) -> None:
     """+1.5 deg lifts the LEFT side: outer = RIGHT wheel; RC lateral sign matches the 3D pose."""
     pose = PoseSolver(geo).solve(roll_deg=1.5)
-    for axle, rc, lat in (("front", "FR", 86.90), ("rear", "RR", 56.34)):
+    # front 55.76: RC from the 3D instant axis (the projected FVIC gave 86.90); rear unchanged
+    for axle, rc, lat in (("front", "FR", 55.76), ("rear", "RR", 56.34)):
         assert ks.value(f"{axle}.roll_rc_lateral") == pytest.approx(lat, abs=0.01)  # was -lat
         world_y = pose.to_world(pose.rc_chassis[axle])[1]
         assert world_y > 0 and world_y == pytest.approx(lat, abs=0.1)
@@ -171,13 +153,14 @@ def test_asymmetric_axle_reports_both_turns(asym) -> None:
     d = K.compute_dynamic(asym, ["roll", "roll_camber"])
     assert d.value("front.roll_outer_camber") == pytest.approx(-0.7028, abs=1e-3)
     assert d.value("front.roll_inner_camber") == pytest.approx(-2.3924, abs=1e-3)
-    assert d.value("front.roll_rc_lateral") == pytest.approx(39.27, abs=0.02)
+    assert d.value("front.roll_rc_lateral") == pytest.approx(14.97, abs=0.02)  # 3D (proj. 39.27)
     pose = PoseSolver(asym).solve(roll_deg=1.5)
     assert pose.corners["FR"].camber_deg + 1.5 == pytest.approx(-0.7031, abs=1e-3)
-    assert pose.to_world(pose.rc_chassis["front"])[1] == pytest.approx(39.30, abs=0.05)
+    assert pose.to_world(pose.rc_chassis["front"])[1] == pytest.approx(14.97, abs=0.05)
     assert d.value("front.roll_outer_camber_right_turn") == pytest.approx(-0.6475, abs=1e-3)
     assert d.value("front.roll_inner_camber_right_turn") == pytest.approx(-2.3362, abs=1e-3)
-    assert d.value("front.roll_rc_lateral_right_turn") == pytest.approx(-122.35, abs=0.02)
+    # 3D instant-axis RC (the projected FVIC gave -122.35)
+    assert d.value("front.roll_rc_lateral_right_turn") == pytest.approx(-89.99, abs=0.02)
     assert d.value("front.roll_camber_right_turn") == pytest.approx(-0.4186, abs=1e-3)
     assert d.value("front.roll_camber") != pytest.approx(d.value("front.roll_camber_right_turn"),
                                                          abs=1e-3)

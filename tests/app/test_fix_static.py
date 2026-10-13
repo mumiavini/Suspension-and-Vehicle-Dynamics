@@ -272,7 +272,7 @@ def test_fvsa_is_horizontal_and_the_slant_value_is_an_info_row(default) -> None:
     assert ks.value("rear.fvsa_slant") == pytest.approx(1405.870, abs=1e-3)
     cp_y = geo.p("FL", "CONTACT_PATCH")[1]
     assert ks.value("front.fvsa") == pytest.approx(cp_y - ks.value("front.fvic_y"), abs=1e-9)
-    assert ks.value("front.fvsa") == pytest.approx(1486.298, abs=1e-3)
+    assert ks.value("front.fvsa") == pytest.approx(1489.614, abs=1e-3)  # 3D IC (proj. 1486.298)
     assert ks.get("front.fvsa_slant").band is None
     assert ks.value("rear.camber_gain_fvsa") == pytest.approx(math.degrees(1.0) / 1400.0)
 
@@ -365,7 +365,7 @@ def test_roll_budget_uses_the_sprung_cg(default) -> None:
     h_axis = rc_f + (rc_r - rc_f) * a_s / 1540.0
     assert ks.value("vehicle.roll_axis_at_cg") == pytest.approx(h_axis)
     assert ks.value("vehicle.roll_arm") == pytest.approx(h_s - h_axis)
-    assert ks.value("vehicle.roll_arm") == pytest.approx(286.11, abs=0.01)
+    assert ks.value("vehicle.roll_arm") == pytest.approx(286.17, abs=0.01)  # front RC 35.373 (3D)
     assert ks.value("vehicle.k_roll_required") == pytest.approx(
         270.0 * K.GRAVITY * (h_s - h_axis) / 1000.0)                 # 757.8 (was 725.1)
     arm = ks.get("vehicle.roll_arm")
@@ -393,8 +393,8 @@ def test_roll_axis_above_the_sprung_cg_fails_the_requirement() -> None:
 
 def test_synthesis_inputs_are_shown_next_to_the_achieved_values(default) -> None:
     _, ks = default
-    assert "synthesis input 35 mm, Δ +0.50 mm" in ks.get("front.rc_static").note
-    assert "synthesis input 1500 mm, Δ -13.70 mm" in ks.get("front.fvsa").note
+    assert "synthesis input 35 mm, Δ +0.37 mm" in ks.get("front.rc_static").note
+    assert "synthesis input 1500 mm, Δ -10.39 mm" in ks.get("front.fvsa").note
     assert "synthesis input 1400 mm, Δ +0.00 mm" in ks.get("rear.fvsa").note
     assert "7.50 %, Δ -0.02 %" in ks.get("front.anti").note
     _, kh = _static(_hp_project())

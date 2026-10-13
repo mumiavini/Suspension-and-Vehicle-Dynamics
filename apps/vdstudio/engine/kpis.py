@@ -432,8 +432,8 @@ def _synth_delta(geo: CarGeometry, axle: str, achieved: float, target: float,
     d = achieved - target
     s = f"synthesis input {target:g} {unit}, Δ {d:+.2f} {unit}"
     if axle == "front" and abs(d) >= 0.005:
-        s += (" (the caster merge moves the ball joints in X; on a raked pivot axis that "
-              "shifts the IC)")
+        s += (" (sla synthesises with the planar construction at zero caster; the caster "
+              "merge moves the ball joints in X and the IC here is the 3D instant axis)")
     return s
 
 
@@ -860,14 +860,10 @@ DYNAMIC_GROUPS: tuple[str, ...] = (
     "rates", "roll", "roll_camber", "bump_steer", "steer", "ackermann", "rod_end",
 )
 
-INSTANT_AXIS_STEP_MM = 0.05       # central difference for the upright's instantaneous twist
 ASYMMETRY_TOL_MM = 1e-3           # |left - mirrored right| above this: evaluate both turns
 EFFORT_STROKE_FRACTIONS = (0.0, 0.25, 0.5, 0.75, 0.95)
 EFFORT_RACK_STEP_MM = 0.25
 
-_RC3D = "instant screw axis of the upright (3D), DWSolver"
-_PROJECTED = ("projected FVIC at each ball joint's X (vdcore); with caster the 3D "
-              "instant-axis value differs, see rc_migration_3d")
 _EFFORT_MODEL = ("lever-arm friction model μ·Fz·√(rs²+tm²), no patch-twist (bore) torque, "
                  "μ assumed, no TTC data")
 
@@ -940,69 +936,6 @@ def _skew(a: np.ndarray) -> np.ndarray:
 def _in_chassis(p: DerivedPoint, travel: float) -> np.ndarray:
     # DWSolver drives travel by displacing the CHASSIS by -travel; add it back.
     return np.array([p.x_mm, p.y_mm, p.z_mm + travel])
-
-
-def instant_axis_fvic(corner: Corner, solver: DWSolver, travel_mm: float = 0.0,
-                      h: float = INSTANT_AXIS_STEP_MM) -> tuple[np.ndarray, np.ndarray]:
-    """(contact patch, front-view IC), each (y, z) in the CHASSIS frame.
-
-    The upright's instantaneous twist relative to the chassis comes from
-    central differences (±h mm of travel) of UBJ, LBJ and TRO:
-    v(p) = v_L + ω × (p − L), with ω fitted by least squares to v_U − v_L and
-    v_T − v_L. The front-view IC is the point of the plane x = x_patch whose
-    Y and Z velocities vanish: the 3D instant axis cut at the patch station.
-
-    ``vdcore.analysis.roll_centre.front_view_instant_centre`` instead
-    intersects each arm's projection through its own ball joint's X. The two
-    agree when both ball joints share X or the upright does not pitch, and
-    part with caster. vdcore is left unchanged; this is the app's 3D value.
-
-    Raises:
-        RuntimeError: a solve did not converge, or the instant axis has no
-            roll component (front-view IC at infinity).
-    """
-    res: dict[float, SolverResult] = {}
-    for d in (0.0, h, -h):
-        r = solver.solve(wheel_travel_mm=travel_mm + d)
-        if not r.converged:
-            raise RuntimeError(f"{corner.corner_id} did not converge at {travel_mm + d:+.3f} mm "
-                               f"travel (residual {r.residual_norm:.2e})")
-        res[d] = r
-    names = ("ubj", "lbj", "tro")
-    p = {n: _in_chassis(getattr(res[0.0], n), travel_mm) for n in names}
-    v = {n: (_in_chassis(getattr(res[h], n), travel_mm + h)
-             - _in_chassis(getattr(res[-h], n), travel_mm - h)) / (2.0 * h) for n in names}
-    # v_X − v_L = ω × (X − L) = −[X − L]× ω for X = UBJ, TRO
-    a = np.vstack([-_skew(p["ubj"] - p["lbj"]), -_skew(p["tro"] - p["lbj"])])
-    rhs = np.concatenate([v["ubj"] - v["lbj"], v["tro"] - v["lbj"]])
-    w = np.linalg.lstsq(a, rhs, rcond=None)[0]          # rad per mm of travel
-    if abs(w[0]) < 1e-9:
-        raise RuntimeError(f"{corner.corner_id}: the upright's instant axis has no roll "
-                           f"component at {travel_mm:+.3f} mm (front-view IC at infinity)")
-    cp = _in_chassis(res[0.0].contact_patch, travel_mm)
-    lbj, v_l = p["lbj"], v["lbj"]
-    qx = cp[0] - lbj[0]
-    ic = np.array([lbj[1] + (w[1] * qx - v_l[2]) / w[0], lbj[2] + (v_l[1] + w[2] * qx) / w[0]])
-    return cp[1:], ic
-
-
-def instant_axis_rc(axle: Axle, travel_mm: float = 0.0,
-                    solvers: tuple[DWSolver, DWSolver] | None = None) -> tuple[float, float]:
-    """(RC y, RC z) in the CHASSIS frame, both wheels at ``travel_mm``.
-
-    The RC is where the left and right patch-to-IC lines cross, each IC from
-    :func:`instant_axis_fvic`.
-    """
-    sl, sr = solvers if solvers is not None else (DWSolver(axle.left), DWSolver(axle.right))
-    cl, il = instant_axis_fvic(axle.left, sl, travel_mm)
-    cr, ir = instant_axis_fvic(axle.right, sr, travel_mm)
-    d1, d2 = il - cl, ir - cr
-    den = d1[0] * d2[1] - d1[1] * d2[0]
-    if abs(den) < 1e-12 * float(np.linalg.norm(d1) * np.linalg.norm(d2)):
-        raise RuntimeError("patch-to-IC lines are parallel: roll centre at infinity")
-    t = ((cr[0] - cl[0]) * d2[1] - (cr[1] - cl[1]) * d2[0]) / den
-    rc = cl + t * d1
-    return float(rc[0]), float(rc[1])
 
 
 def _steer_pair(fl: DWSolver, fr: DWSolver, rack: float) -> tuple[SolverResult, SolverResult]:
@@ -1126,11 +1059,6 @@ def compute_dynamic(geo: CarGeometry, groups: Iterable[str] | None = None,
         ax = geo.axle(axle)
         inp = geo.axle_inputs(axle)
         lim = inp.limits
-        lc = "FL" if axle == "front" else "RL"
-        # vdcore's FVIC projects each arm through its own ball joint's X: exact only
-        # when both share X (no caster) -- say so wherever that construction is quoted
-        proj = _PROJECTED if abs(geo.p(lc, "UCA_OUT")[0] - geo.p(lc, "LCA_OUT")[0]) > 0.1 \
-            else ""
         asym = axle_asymmetry_mm(geo, axle) > ASYMMETRY_TOL_MM
         if "rates" in want:
             g = "Kinematic rates"
@@ -1145,8 +1073,7 @@ def compute_dynamic(geo: CarGeometry, groups: Iterable[str] | None = None,
                       r.camber_gain_deg_per_mm * 1000.0, "deg/m", ".2f", "vdcore.analysis.axle")
                 b.add(f"{axle}.rc_migration", "RC migration (chassis-ref.)", g, axle,
                       r.rc_migration_mm_per_mm, "mm/mm", ".4f", "vdcore.analysis.axle",
-                      note="ground-referenced differs by exactly 1 mm/mm"
-                           + (f"; {proj}" if proj else ""))
+                      note="ground-referenced differs by exactly 1 mm/mm")
                 b.add(f"{axle}.half_track_change", "Half-track change", g, axle,
                       r.half_track_change_mm_per_mm, "mm/mm", ".4f", "vdcore.analysis.axle")
                 b.add(f"{axle}.camber_full_bump", f"Camber at +{inp.travel_bump_mm:g} mm", g,
@@ -1154,33 +1081,14 @@ def compute_dynamic(geo: CarGeometry, groups: Iterable[str] | None = None,
                 b.add(f"{axle}.camber_full_droop", f"Camber at −{inp.travel_droop_mm:g} mm", g,
                       axle, r.camber_full_droop_deg, "deg", ".3f", "vdcore.analysis.axle")
                 b.add(f"{axle}.rc_min", "RC min over travel (chassis-ref.)", g, axle,
-                      r.rc_min_mm, "mm", ".1f", "vdcore.analysis.axle", note=proj)
+                      r.rc_min_mm, "mm", ".1f", "vdcore.analysis.axle")
                 b.add(f"{axle}.rc_max", "RC max over travel (chassis-ref.)", g, axle,
-                      r.rc_max_mm, "mm", ".1f", "vdcore.analysis.axle", note=proj)
+                      r.rc_max_mm, "mm", ".1f", "vdcore.analysis.axle")
                 b.add(f"{axle}.rc_span", "RC span over travel", g, axle,
-                      r.rc_max_mm - r.rc_min_mm, "mm", ".1f", "vdcore.analysis.axle", note=proj)
+                      r.rc_max_mm - r.rc_min_mm, "mm", ".1f", "vdcore.analysis.axle")
             except (RuntimeError, ValueError) as exc:
                 b.fail([(f"{axle}.camber_gain", "Camber gain (per mm bump)", g, axle, "deg/mm"),
                         (f"{axle}.rc_migration", "RC migration", g, axle, "mm/mm")], str(exc))
-            try:
-                solvers = (DWSolver(ax.left), DWSolver(ax.right))
-                step = inp.travel_bump_mm / 20.0       # axle_rates' derivative step
-                rc0 = instant_axis_rc(ax, 0.0, solvers)[1]
-                mig = (instant_axis_rc(ax, +step, solvers)[1]
-                       - instant_axis_rc(ax, -step, solvers)[1]) / (2.0 * step)
-                b.add(f"{axle}.rc_static_3d", "Roll centre height, 3D instant axis (static)", g,
-                      axle, rc0, "mm", ".2f", _RC3D,
-                      note="IC where the upright's instant axis cuts the patch station, both "
-                           "sides; equals the projected FVIC value without caster")
-                b.add(f"{axle}.rc_migration_3d", "RC migration, 3D instant axis (chassis-ref.)",
-                      g, axle, mig, "mm/mm", ".4f", _RC3D,
-                      note=f"central difference ±{step:g} mm; ground-referenced differs by "
-                           "exactly 1 mm/mm")
-            except (RuntimeError, ValueError) as exc:
-                b.fail([(f"{axle}.rc_static_3d", "Roll centre height, 3D instant axis (static)",
-                         g, axle, "mm"),
-                        (f"{axle}.rc_migration_3d", "RC migration, 3D instant axis", g, axle,
-                         "mm/mm")], str(exc))
             tick(f"{axle} rates")
         if "roll" in want:
             g = f"Roll ({inp.roll_reference_deg:g}° reference)"
@@ -1202,12 +1110,11 @@ def compute_dynamic(geo: CarGeometry, groups: Iterable[str] | None = None,
                           f"Inner ({i}) wheel camber (road), {tn}", g, axle,
                           rs.inner_camber_deg, "deg", ".3f", src)
                     b.add(f"{axle}.roll_rc_height{sfx}", f"RC height in roll, {tn}", g, axle,
-                          rs.rc_height_mm, "mm", ".1f", src, note=proj)
+                          rs.rc_height_mm, "mm", ".1f", src)
                     b.add(f"{axle}.roll_rc_lateral{sfx}", f"RC lateral in roll (ISO Y), {tn}", g,
                           axle, rs.rc_lateral_mm, "mm", ".1f", src,
                           note="ISO Y, + = toward the LEFT wheel (the "
-                               f"{'inner' if turn == 'left' else 'outer'} one); road frame"
-                               + (f"; {proj}" if proj else ""))
+                               f"{'inner' if turn == 'left' else 'outer'} one); road frame")
                     b.add(f"{axle}.roll_travel{sfx}", f"Outer wheel travel at that roll, {tn}", g,
                           axle, rs.outer_travel_mm, "mm", ".2f", src,
                           note=f"outer ({o}) wheel in bump")

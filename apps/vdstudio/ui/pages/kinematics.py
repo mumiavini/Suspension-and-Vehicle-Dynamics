@@ -88,8 +88,7 @@ class KinematicsPage(Page):
                             "RIGHT one, in bump. RC lateral is ISO Y (+ = left, toward the inner "
                             "wheel). Positive camber relative to the road is the tyre leaning out "
                             "of the corner. Shaded = the outer-camber design-intent band. The RC "
-                            "here is vdcore's projected FVIC; with caster the 3D instant-axis "
-                            "value differs (Rates table: rc_static_3d / rc_migration_3d)."), 1, 2)
+                            "comes from the upright's 3D instant axis (vdcore)."), 1, 2)
         tabs.addTab(roll, "Roll")
         rates = QtWidgets.QWidget()
         rl = QtWidgets.QVBoxLayout(rates)

@@ -69,13 +69,13 @@ def test_p01_sprung_cg_known_answer(geo, rc) -> None:
     r = maneuver.run_maneuver(geo, maneuver.ManeuverInputs(ay_g=1.5, roll_gradient_deg_per_g=0.0),
                               rc)
     assert r.sprung.cg_height_mm == pytest.approx(hs, abs=1e-9)
-    assert r.roll_axis_at_cg_mm == pytest.approx(46.387, abs=1e-3)
-    assert r.roll_moment_arm_mm == pytest.approx(286.113, abs=1e-3)
+    assert r.roll_axis_at_cg_mm == pytest.approx(46.331, abs=1e-3)  # front RC 35.373 (3D IC)
+    assert r.roll_moment_arm_mm == pytest.approx(286.169, abs=1e-3)
     # verifier's independent decomposition (no pendulum at gradient 0)
-    assert r.transfer["front"]["total"] == pytest.approx(574.02, abs=0.01)
-    assert r.transfer["rear"]["total"] == pytest.approx(642.91, abs=0.01)
-    assert r.wheels["FL"].fz_N == pytest.approx(121.3, abs=0.05)
-    assert r.wheels["RL"].fz_N == pytest.approx(206.9, abs=0.05)
+    assert r.transfer["front"]["total"] == pytest.approx(573.93, abs=0.01)  # 3D RC (proj. 574.02)
+    assert r.transfer["rear"]["total"] == pytest.approx(643.00, abs=0.01)
+    assert r.wheels["FL"].fz_N == pytest.approx(121.36, abs=0.05)
+    assert r.wheels["RL"].fz_N == pytest.approx(206.79, abs=0.05)
     # the symptom: 1433.609 N·m (-3.35 %) before; m·g·ay·h now
     assert _moment_Nm(geo, r) == pytest.approx(1483.272, abs=1e-3)
 
@@ -130,12 +130,15 @@ def test_p01_concept_roll_budget_uses_the_sprung_cg() -> None:
 # physics-02: a failed static RC is an explicit failure, never NaN loads
 # --------------------------------------------------------------------------- #
 
-def _parallel_front_arms() -> Project:
+def _parallel_rear_arms() -> Project:
+    """Rear arms parallel in front view. The rear ball joints share X (no caster), so the
+    upright has no front-view rotation and the RC is genuinely undefined. (On the front,
+    caster puts the BJs at different X and the 3D instant axis still gives a finite IC.)"""
     p = Project()
     hs = G.freeze_to_hardpoints(p)
     p.hardpoints = hs
     p.geometry_mode = "hardpoints"
-    for c in ("FL", "FR"):
+    for c in ("RL", "RR"):
         pts = hs.points[c]
         zl, zu = pts["LCA_OUT"][2], pts["UCA_OUT"][2]
         for n in ("LCA_IN_FRONT", "LCA_IN_REAR"):
@@ -151,12 +154,12 @@ def _parallel_front_arms() -> Project:
 def test_p02_nan_static_rc_raises(geo) -> None:
     with pytest.raises(ValueError, match="static roll centre unavailable"):
         maneuver.run_maneuver(geo, maneuver.ManeuverInputs(), {"front": math.nan, "rear": 55.0})
-    p = _parallel_front_arms()
+    p = _parallel_rear_arms()
     pg = G.resolve(p)
     st = K.compute_static(pg)
-    assert not st.get("front.rc_static").ok
+    assert not st.get("rear.rc_static").ok
     rcs = {"front": st.value("front.rc_static"), "rear": st.value("rear.rc_static")}
-    with pytest.raises(ValueError, match=r"front\.rc_static"):
+    with pytest.raises(ValueError, match=r"rear\.rc_static"):
         maneuver.run_maneuver(pg, maneuver.ManeuverInputs(), rcs)
     # the design RCs remain a valid query
     r = maneuver.run_maneuver(pg, maneuver.ManeuverInputs(rc_source="design"), rcs)
@@ -266,9 +269,9 @@ def test_p10_stiffness_matches_concept_pendulum_definition(geo) -> None:
 def test_p10_default_solved_numbers(geo, rc) -> None:
     r = maneuver.run_maneuver(geo, maneuver.ManeuverInputs(), rc)
     # 757.82 N·m per g of W_s·d times (1 + π/180); was 725.15 (whole-car h, no pendulum)
-    assert r.k_roll_total_Nm_per_deg == pytest.approx(771.05, abs=0.01)
-    assert r.transfer["front"]["total"] == pytest.approx(582.02, abs=0.01)
-    assert r.transfer["rear"]["total"] == pytest.approx(651.18, abs=0.01)
+    assert r.k_roll_total_Nm_per_deg == pytest.approx(771.20, abs=0.01)  # d 286.17 (3D RC)
+    assert r.transfer["front"]["total"] == pytest.approx(581.93, abs=0.01)  # 3D RC (proj. 582.02)
+    assert r.transfer["rear"]["total"] == pytest.approx(651.27, abs=0.01)
 
 
 def test_p16_lltd_defined_at_zero_ay_and_rigid_k(geo, rc) -> None:
@@ -433,7 +436,7 @@ def test_whatif21_kpi_csv_carries_full_precision(static) -> None:
             assert float(by_key[key]["value_raw"]) == k.value     # exact round trip
         else:
             assert by_key[key]["value_raw"] == ""
-    assert by_key["front.rc_static"]["value"] == "35.50"
+    assert by_key["front.rc_static"]["value"] == "35.37"                 # 3D instant-axis RC
 
 
 # --------------------------------------------------------------------------- #
@@ -567,13 +570,13 @@ def test_ui_p04_failure_clears_every_table(man_page, monkeypatch) -> None:
 def test_ui_p02_failed_static_rc_shows_the_reason(qapp) -> None:
     from apps.vdstudio.ui.pages.maneuver import ManeuverPage
 
-    ctrl = _ctrl(_parallel_front_arms())
+    ctrl = _ctrl(_parallel_rear_arms())
     page = ManeuverPage(ctrl)
     page.job.request = lambda *a, **k: None
     page.on_geometry(ctrl.geometry)
     txt = page.warn.label.text()
     assert txt.startswith("Failed: static roll centre unavailable")
-    assert "<br>front.rc_static: " in txt and "FVIC is at infinity" in txt
+    assert "<br>rear.rc_static: " in txt and "FVIC is at infinity" in txt
     assert "All four wheels loaded" not in txt
     assert page.wheels.rowCount() == 0
     ctrl.shutdown()
