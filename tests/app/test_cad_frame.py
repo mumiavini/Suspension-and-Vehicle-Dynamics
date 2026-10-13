@@ -144,3 +144,20 @@ def test_integrations_page_preview_follows_the_placement() -> None:
     finally:
         ctrl.shutdown()
         page.close()
+
+
+def test_hardpoints_in_cad_coordinates(geo) -> None:
+    fr = swx.axis_frame("-Y", "-X", (0.0, -120.4, 75.0))
+    rows = X.hardpoints_cad_csv(geo, fr).splitlines()
+    assert rows[0].split(",")[:6] == ["corner", "point", "mounts_to", "cad_x_mm", "cad_y_mm",
+                                     "cad_z_mm"]
+    by = {(r.split(",")[0], r.split(",")[1]): r.split(",") for r in rows[1:]}
+    assert len(by) == 40
+    fl = by[("FL", "LCA_IN_FRONT")]
+    assert fl[2] == "chassis"
+    cad = [float(v) for v in fl[3:6]]
+    assert cad == pytest.approx(X.to_cad(geo.points["FL"]["LCA_IN_FRONT"], fr), abs=1e-3)
+    assert [float(v) for v in fl[6:9]] == pytest.approx(geo.points["FL"]["LCA_IN_FRONT"],
+                                                        abs=1e-3)
+    # the contact patch sits on the chassis model's ground plane (CAD Z = +75)
+    assert float(by[("FL", "CONTACT_PATCH")][5]) == pytest.approx(75.0)

@@ -91,7 +91,9 @@ class IntegrationsPage(Page):
         row.addWidget(self.btn_macro)
         self.btn_push = button("Push skeleton to running SolidWorks", self._push)
         self.btn_pull = button("Read skeleton back → hardpoint set", self._pull)
+        self.btn_points = button("Export points in CAD coordinates (.csv)…", self._points_csv)
         self._sw_live = ok
+        row.addWidget(self.btn_points)
         row.addWidget(self.btn_push)
         row.addWidget(self.btn_pull)
         row.addStretch(1)
@@ -191,6 +193,7 @@ class IntegrationsPage(Page):
         fr = self._frame()
         valid = fr is not None
         self.btn_macro.setEnabled(valid)
+        self.btn_points.setEnabled(valid)
         self.btn_push.setEnabled(valid and self._sw_live)
         self.btn_pull.setEnabled(valid and self._sw_live)
         geo = self.ctrl.geometry
@@ -216,6 +219,15 @@ class IntegrationsPage(Page):
         if p:
             self.sw_status.setText(f"Saved {p}. In SolidWorks: Tools › Macro › New, then in the "
                                    "VBA editor File › Import File… › this .bas, run main().")
+
+    def _points_csv(self) -> None:
+        geo, fr = self.ctrl.geometry, self._frame()
+        if geo is None or fr is None:
+            return
+        p = save_text(self, X.hardpoints_cad_csv(geo, fr), "hardpoints_cad.csv", "CSV (*.csv)")
+        if p:
+            self.sw_status.setText(f"Saved {p}: every hardpoint in the chassis model's own "
+                                   "coordinates (mm), with what it mounts to.")
 
     def _push(self) -> None:
         geo = self.ctrl.geometry

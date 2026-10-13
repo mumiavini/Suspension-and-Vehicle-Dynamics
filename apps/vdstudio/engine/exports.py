@@ -74,6 +74,32 @@ def hardpoints_csv(geo: CarGeometry, frame: str = "iso", extended: bool = False)
     return buf.getvalue()
 
 
+MOUNT_OF = {
+    "UCA_IN_FRONT": "chassis", "UCA_IN_REAR": "chassis", "LCA_IN_FRONT": "chassis",
+    "LCA_IN_REAR": "chassis", "TIE_ROD_IN": "chassis (rack / toe link)",
+    "UCA_OUT": "upright", "LCA_OUT": "upright", "TIE_ROD_OUT": "upright",
+    "WHEEL_CENTER": "wheel", "CONTACT_PATCH": "wheel",
+}
+
+
+def hardpoints_cad_csv(geo: CarGeometry, frame: swx.Frame) -> str:
+    """Every hardpoint where it sits in the chassis CAD model (the project's placement).
+
+    Columns: the point, what it mounts to, its CAD coordinates (mm, the model's
+    own axes and origin -- type them straight into SolidWorks) and the same
+    point in ISO 8855 for reference.
+    """
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["corner", "point", "mounts_to", "cad_x_mm", "cad_y_mm", "cad_z_mm",
+                "iso_x_mm", "iso_y_mm", "iso_z_mm", "source"])
+    for c, n, x, y, z, src, _tol in geo.rows():
+        cx, cy, cz = to_cad((x, y, z), frame)
+        w.writerow([c, n, MOUNT_OF.get(n, ""), f"{cx:.3f}", f"{cy:.3f}", f"{cz:.3f}",
+                    f"{x:.3f}", f"{y:.3f}", f"{z:.3f}", src])
+    return buf.getvalue()
+
+
 def read_hardpoints(path: str | Path, frame: str = "iso"
                     ) -> tuple[dict[str, dict[str, Pt]], dict[str, dict[str, str]],
                                dict[str, dict[str, float]]]:
