@@ -30,7 +30,7 @@ from .. import APP_NAME, __version__
 from . import mass
 from .geometry import POINT_ORDER, CarGeometry
 from .kpis import GRAVITY, KPI, KpiSet
-from .project import CORNERS, INPUT_POINTS, STAGES, Project, Pt
+from .project import CORNERS, INPUT_POINTS, SOURCES, STAGES, Project, Pt
 
 FRAMES: dict[str, np.ndarray] = {
     "iso": np.eye(3),
@@ -100,17 +100,26 @@ def read_hardpoints(path: str | Path, frame: str = "iso"
             need = {"corner", "point", "x_mm", "y_mm", "z_mm"}
             if not need <= set(rd.fieldnames or ()):
                 raise ValueError(f"{p.name}: needs columns {sorted(need)}")
+            seen: dict[tuple[str, str], int] = {}
             for line, row in enumerate(rd, start=2):
                 c, n = row["corner"].strip().upper(), row["point"].strip().upper()
                 if n not in INPUT_POINTS:
                     continue
+                if (c, n) in seen:
+                    raise ValueError(f"{p.name} line {line}: {c} {n} already given on line "
+                                     f"{seen[(c, n)]}")
+                seen[(c, n)] = line
                 try:
                     xyz = (float(row["x_mm"]), float(row["y_mm"]), float(row["z_mm"]))
                 except ValueError as exc:
                     raise ValueError(f"{p.name} line {line}: bad coordinate ({exc})") from exc
                 pts.setdefault(c, {})[n] = from_frame(xyz, frame)
                 if row.get("source"):
-                    src.setdefault(c, {})[n] = row["source"].strip()
+                    s = row["source"].strip().lower()
+                    if s not in SOURCES:
+                        raise ValueError(f"{p.name} line {line}: unknown source {s!r} "
+                                         f"(one of {', '.join(SOURCES)})")
+                    src.setdefault(c, {})[n] = s
                 if row.get("tol_mm"):
                     tol.setdefault(c, {})[n] = float(row["tol_mm"])
     unknown = set(pts) - set(CORNERS)
@@ -149,8 +158,15 @@ def _sw_table(geo: CarGeometry) -> dict[tuple[str, str], Pt]:
     return {(c, n): geo.points[c][n] for c in CORNERS for n in POINT_ORDER}
 
 
+def _sw_frame(frame: str) -> None:
+    if frame not in swx.FRAMES:
+        raise ValueError(f"SolidWorks export supports the frames {sorted(swx.FRAMES)}, "
+                         f"not {frame!r}")
+
+
 def solidworks_macro(geo: CarGeometry, frame: str = "iso", grouping: str = "corner",
                      name: str = "vdstudio_hardpoints.csv") -> str:
+    _sw_frame(frame)
     groups = swx.build_groups(_sw_table(geo), frame, grouping)
     return swx.render_macro(groups, Path(name), frame)
 
@@ -168,6 +184,7 @@ def solidworks_available() -> tuple[bool, str]:
 def solidworks_push(geo: CarGeometry, frame: str = "iso", grouping: str = "corner",
                     new_part: bool = False) -> None:
     """Draw the skeleton in the running SolidWorks (scripts/export_solidworks_skeleton)."""
+    _sw_frame(frame)
     groups = swx.build_groups(_sw_table(geo), frame, grouping)
     swx.build_live(groups, Path("VD Studio"), frame, new_part=new_part)
 

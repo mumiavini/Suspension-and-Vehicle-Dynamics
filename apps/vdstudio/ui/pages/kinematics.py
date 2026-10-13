@@ -145,8 +145,7 @@ class KinematicsPage(Page):
                 w.plot(r.roll, r.axles[axle][k], pen=pen(2 * i), name=axle, connect="finite")
                 if k == "outer_camber" and geo is not None:
                     lo, hi = geo.axle_inputs(axle).limits.outer_camber_in_roll_deg
-                    if i == 0:
-                        band_region(w, lo, hi)
+                    band_region(w, lo, hi)
         if r.errors:
             self.status.setText("roll: " + "; ".join(f"{a}: {e}" for a, e in r.errors.items()))
 

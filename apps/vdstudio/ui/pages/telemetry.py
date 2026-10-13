@@ -79,6 +79,8 @@ class TelemetryPage(Page):
             self.map_table.setItem(i, 0, QtWidgets.QTableWidgetItem(r.label))
             self.map_table.setItem(i, 1, QtWidgets.QTableWidgetItem(r.unit))
             co = QtWidgets.QComboBox()
+            # side swaps are the classic logging error: the full name must be readable
+            co.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
             co.addItem("—", "")
             co.currentIndexChanged.connect(lambda _i, k=r.key: self._map_changed(k))
             self.map_table.setCellWidget(i, 2, co)
@@ -150,7 +152,7 @@ class TelemetryPage(Page):
         lay = QtWidgets.QVBoxLayout(w)
         lay.addWidget(QtWidgets.QLabel("<b>Physics consistency</b> (no model involved)"))
         self.checks = SimpleTable(["check", "status", "value", "expected", "meaning"])
-        self.checks.setMaximumHeight(230)
+        self.checks.setMinimumHeight(190)       # every check row visible without scrolling
         lay.addWidget(self.checks)
         lay.addWidget(QtWidgets.QLabel("<b>Channel quality</b>"))
         self.quality = SimpleTable(["channel", "unit", "rate Hz", "missing %", "min", "max",
@@ -290,6 +292,7 @@ class TelemetryPage(Page):
             fl.blockSignals(True)
             fl.setChecked(bool(tel.flip_sign.get(r.key, False)))
             fl.blockSignals(False)
+        self.map_table.resizeColumnsToContents()
 
     def _map_changed(self, role: str) -> None:
         ch = self._combos[role].currentData() or ""

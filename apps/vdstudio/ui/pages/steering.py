@@ -194,16 +194,25 @@ class SteeringPage(Page):
         if not r.roots:
             self.q_status.setText(r.message)
             return
+        k = self.ctrl.kpis.get(r.output) if self.ctrl.kpis is not None else None
+        out = f"{k.scope} {k.label} [{k.unit}]" if k is not None else r.output
         roots = ", ".join(f"{x:.4f}" for x in r.roots)
-        self.q_status.setText(f"<b>{par.label}</b> = {roots} {par.unit} puts <i>{r.output}</i> "
+        self.q_status.setText(f"<b>{par.label}</b> = {roots} {par.unit} puts <i>{out}</i> "
                               f"at {r.target:g} (current {base:.4f}). {r.message}")
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle("Target query")
         box.setText(f"{par.label} = {roots} {par.unit}\n(current value {base:.4f})\n\n"
                     f"{r.message}\n\nApply a value? (Your decision -- it is recorded and "
                     "undoable.)")
-        apply = box.addButton(f"Apply {r.roots[0]:.4f}", QtWidgets.QMessageBox.AcceptRole)
+        # every root gets its own button: the query fills the table, it never picks a row
+        buttons = {box.addButton(f"Apply {x:.4f}", QtWidgets.QMessageBox.AcceptRole): float(x)
+                   for x in r.roots}
         box.addButton("Keep current", QtWidgets.QMessageBox.RejectRole)
         box.exec()
-        if box.clickedButton() is apply:
-            self.ctrl.set_value(r.param, float(r.roots[0]))
+        x = buttons.get(box.clickedButton())
+        if x is not None:
+            self.ctrl.apply(lambda p, par=par, v=x: par.apply(p, v))
+            others = ", ".join(f"{y:.4f}" for y in r.roots if y != x)
+            self.q_status.setText(f"Applied <b>{par.label}</b> = {x:.4f} {par.unit} (your "
+                                  "decision; Ctrl+Z undoes)."
+                                  + (f" Other roots: {others} {par.unit}." if others else ""))

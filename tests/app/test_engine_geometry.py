@@ -52,7 +52,8 @@ def test_synthesis_provenance_is_design_intent() -> None:
         for n in INPUT_POINTS:
             assert geo.sources[c][n] == "design_intent"
     assert geo.corner("FL").hardpoints()[0].source == "design_intent"
-    assert geo.estimate_count() == 0
+    # the points are design intent; the tyre loaded radius is an estimate (no TTC data)
+    assert geo.estimate_count() == 2
 
 
 def test_left_right_signs_follow_iso8855() -> None:

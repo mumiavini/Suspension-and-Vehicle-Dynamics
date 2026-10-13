@@ -330,6 +330,11 @@ class Project:
     rear_static_toe_deg_per_side: float = 0.0
     synthesis_tol_mm: float = 0.5
     layout: Layout = field(default_factory=Layout)
+    # Provenance of inputs that are not points. The synthesis tyre loaded radius
+    # is an estimate until TTC data exists; the vehicle mass / CG become
+    # "estimate" when the subsystem estimator is applied (concept.apply_cg_estimate).
+    tire_source: Source = "estimate"
+    mass_source: Source = "design_intent"
 
     geometry_mode: GeometryMode = "synthesis"
     hardpoints: HardpointSet | None = None
@@ -472,6 +477,9 @@ def project_from_dict(data: dict[str, Any]) -> Project:
     p.synthesis_tol_mm = float(data.get("synthesis_tol_mm", base.synthesis_tol_mm))
     if isinstance(data.get("layout"), dict):
         p.layout = _merge_frozen(base.layout, data["layout"])
+    for key in ("tire_source", "mass_source"):
+        if data.get(key) in SOURCES:
+            setattr(p, key, data[key])
     p.geometry_mode = data.get("geometry_mode", "synthesis")
     hp = data.get("hardpoints")
     if hp:

@@ -6,6 +6,7 @@ REARWARD of the front axle. Hardpoint tables are ISO 8855. Tooltips say which.
 
 from __future__ import annotations
 
+from ..engine.project import SOURCES
 from .widgets import Field
 
 DI = " (design_intent)"
@@ -32,6 +33,15 @@ def vehicle_fields() -> list[tuple[str, list[Field]]]:
             Field(v + "chassis_factor_target", "Chassis torsion factor (target)", "×", 1, 20,
                   0.5, 1),
             Field(v + "tilt_test_angle_deg", "Tilt-test angle", "deg", 30, 80, 1, 0),
+        ]),
+        ("Provenance of non-point inputs", [
+            Field("mass_source", "Mass / CG provenance", kind="choice", choices=SOURCES,
+                  tip="Set to 'estimate' automatically when the subsystem CG estimate is "
+                      "applied. Counted in the status bar's estimate-tagged inputs."),
+            Field("tire_source", "Tyre loaded radius provenance (synthesis)", kind="choice",
+                  choices=SOURCES,
+                  tip="An estimate until TTC data exists. Hardpoint mode has its own field "
+                      "per axle on the Hardpoints page."),
         ]),
         ("Load-case assumptions (tyre: no TTC data)", [
             Field(v + "brake_bias_front", "Brake bias front", "-", 0, 1, 0.01, 2),

@@ -89,6 +89,7 @@ class CarGeometry:
     design: sla.DesignReport | None = None
     steering_geometry: stg.SteeringGeometry | None = None
     warnings: list[str] = field(default_factory=list)
+    mass_source: str = "design_intent"      # provenance of the vehicle mass / CG
     # brake / drive layout: picks the anti-geometry reference point
     layout: Layout = field(default_factory=Layout)
 
@@ -119,6 +120,7 @@ class CarGeometry:
     def estimate_count(self) -> int:
         n = sum(1 for c in self.sources.values() for s in c.values() if s == "estimate")
         n += sum(1 for a in self.axles.values() if a.tire_source == "estimate")
+        n += self.mass_source == "estimate"
         return n
 
     def rows(self) -> list[tuple[str, str, float, float, float, str, float]]:
@@ -238,9 +240,9 @@ def synthesize(project: Project) -> CarGeometry:
     tols = {c: {n: tol for n in pts[c]} for c in CORNERS}
     axles = {
         "front": AxleSetup(front_in.static_camber_deg, steer.static_toe_deg_per_side,
-                           front_in.loaded_radius_mm, "design_intent", 1.0),
+                           front_in.loaded_radius_mm, project.tire_source, 1.0),
         "rear": AxleSetup(rear_in.static_camber_deg, project.rear_static_toe_deg_per_side,
-                          rear_in.loaded_radius_mm, "design_intent", 1.0),
+                          rear_in.loaded_radius_mm, project.tire_source, 1.0),
     }
     vehicle = _build_vehicle(pts, sources, tols, axles)
     warnings = []
@@ -251,7 +253,7 @@ def synthesize(project: Project) -> CarGeometry:
         mode="synthesis", points=pts, sources=sources, tols=tols, axles=axles,
         vehicle=vehicle, vehicle_data=veh, front_inputs=front_in, rear_inputs=rear_in,
         steering_inputs=steer, design=design, steering_geometry=sg, warnings=warnings,
-        layout=project.layout,
+        layout=project.layout, mass_source=project.mass_source,
     )
 
 
@@ -322,6 +324,7 @@ def from_hardpoints(project: Project) -> CarGeometry:
         mode="hardpoints", points=pts, sources=sources, tols=tols, axles=axles,
         vehicle=vehicle, vehicle_data=veh, front_inputs=front_in, rear_inputs=rear_in,
         steering_inputs=project.steering, warnings=warnings, layout=project.layout,
+        mass_source=project.mass_source,
     )
 
 
@@ -390,10 +393,12 @@ def freeze_to_hardpoints(project: Project, origin: str = "") -> HardpointSet:
                                   origin=origin or "frozen from synthesis")
     hs.front = AxleAlignment(geo.axles["front"].static_camber_deg,
                              geo.axles["front"].static_toe_deg_per_side,
-                             geo.axles["front"].loaded_radius_mm, "design_intent", 1.0)
+                             geo.axles["front"].loaded_radius_mm, geo.axles["front"].tire_source,
+                             1.0)
     hs.rear = AxleAlignment(geo.axles["rear"].static_camber_deg,
                             geo.axles["rear"].static_toe_deg_per_side,
-                            geo.axles["rear"].loaded_radius_mm, "design_intent", 1.0)
+                            geo.axles["rear"].loaded_radius_mm, geo.axles["rear"].tire_source,
+                            1.0)
     return hs
 
 

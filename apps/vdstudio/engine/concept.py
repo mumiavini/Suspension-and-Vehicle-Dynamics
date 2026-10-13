@@ -72,6 +72,8 @@ def apply_cg_estimate(project: Project, est: CgEstimate) -> Project:
     if est.cg_x_mm is not None:
         kw["cg_from_front_axle_mm"] = est.cg_x_mm
     p.vehicle = replace(p.vehicle, **kw)
+    if est.estimate_share > 0:
+        p.mass_source = "estimate"
     return p
 
 
