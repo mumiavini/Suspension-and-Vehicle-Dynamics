@@ -1,8 +1,8 @@
 {
   "name": "FSAE 2027 -- PUCPR Racing",
   "team": "PUCPR Racing #27",
-  "author": "",
-  "notes": "",
+  "author": "Vinicius Trento",
+  "notes": "Since 2026-10-13 the 16 inboard wishbone pick-ups come from the chassis CAD 'Xasis 33.3' (sketches PSD/PST, source 'cad'): the chassis team placed them within rules agreed with suspension, so the CAD is the master for these points. Uprights, tie rods / toe links and wheels are still the synthesis values (design_intent). Previous synthesis-only project: projects/archive/FSAE_2027_synthesis_before_CAD_pickups.vdproj.json.",
   "created": "2026-10-13",
   "vehicle": {
     "name": "FSAE 2027 -- PUCPR Racing",
@@ -296,8 +296,306 @@
     "origin_y_mm": -120.4,
     "origin_z_mm": 75.0
   },
-  "geometry_mode": "synthesis",
-  "hardpoints": null,
+  "geometry_mode": "hardpoints",
+  "hardpoints": {
+    "points": {
+      "FL": {
+        "UCA_IN_FRONT": [
+          101.07,
+          255.0,
+          329.503
+        ],
+        "UCA_IN_REAR": [
+          -105.9,
+          255.0,
+          319.753
+        ],
+        "UCA_OUT": [
+          -12.28341209184732,
+          536.9660816038582,
+          385.400042666186
+        ],
+        "LCA_IN_FRONT": [
+          120.44,
+          205.0,
+          117.38300000000001
+        ],
+        "LCA_IN_REAR": [
+          -120.4,
+          205.0,
+          117.38300000000001
+        ],
+        "LCA_OUT": [
+          10.06119630548126,
+          582.0,
+          130.0
+        ],
+        "TIE_ROD_IN": [
+          -30.0,
+          270.0,
+          157.3915
+        ],
+        "TIE_ROD_OUT": [
+          84.59050256303692,
+          590.293516816554,
+          178.7503855121271
+        ],
+        "WHEEL_CENTER": [
+          0.0,
+          613.5844492155492,
+          245.0
+        ]
+      },
+      "FR": {
+        "UCA_IN_FRONT": [
+          101.07,
+          -255.0,
+          329.503
+        ],
+        "UCA_IN_REAR": [
+          -105.9,
+          -255.0,
+          319.753
+        ],
+        "UCA_OUT": [
+          -12.28341209184732,
+          -536.9660816038582,
+          385.400042666186
+        ],
+        "LCA_IN_FRONT": [
+          120.44,
+          -205.0,
+          117.38300000000001
+        ],
+        "LCA_IN_REAR": [
+          -120.4,
+          -205.0,
+          117.38300000000001
+        ],
+        "LCA_OUT": [
+          10.06119630548126,
+          -582.0,
+          130.0
+        ],
+        "TIE_ROD_IN": [
+          -30.0,
+          -270.0,
+          157.3915
+        ],
+        "TIE_ROD_OUT": [
+          84.59050256303692,
+          -590.293516816554,
+          178.7503855121271
+        ],
+        "WHEEL_CENTER": [
+          0.0,
+          -613.5844492155492,
+          245.0
+        ]
+      },
+      "RL": {
+        "UCA_IN_FRONT": [
+          -1335.5911,
+          255.0,
+          336.859
+        ],
+        "UCA_IN_REAR": [
+          -1460.7211,
+          210.0,
+          327.929
+        ],
+        "UCA_OUT": [
+          -1540.0,
+          519.6921287083526,
+          390.3386457127574
+        ],
+        "LCA_IN_FRONT": [
+          -1272.0011000000002,
+          215.0,
+          128.649
+        ],
+        "LCA_IN_REAR": [
+          -1440.7211,
+          175.0,
+          128.599
+        ],
+        "LCA_OUT": [
+          -1540.0,
+          558.6,
+          130.0
+        ],
+        "TIE_ROD_IN": [
+          -1440.0,
+          175.0,
+          169.0
+        ],
+        "TIE_ROD_OUT": [
+          -1594.6,
+          520.81,
+          183.53
+        ],
+        "WHEEL_CENTER": [
+          -1540.0,
+          593.5844492155492,
+          245.0
+        ]
+      },
+      "RR": {
+        "UCA_IN_FRONT": [
+          -1335.5911,
+          -255.0,
+          336.859
+        ],
+        "UCA_IN_REAR": [
+          -1460.7211,
+          -210.0,
+          327.929
+        ],
+        "UCA_OUT": [
+          -1540.0,
+          -519.6921287083526,
+          390.3386457127574
+        ],
+        "LCA_IN_FRONT": [
+          -1272.0011000000002,
+          -215.0,
+          128.649
+        ],
+        "LCA_IN_REAR": [
+          -1440.7211,
+          -175.0,
+          128.599
+        ],
+        "LCA_OUT": [
+          -1540.0,
+          -558.6,
+          130.0
+        ],
+        "TIE_ROD_IN": [
+          -1440.0,
+          -175.0,
+          169.0
+        ],
+        "TIE_ROD_OUT": [
+          -1594.6,
+          -520.81,
+          183.53
+        ],
+        "WHEEL_CENTER": [
+          -1540.0,
+          -593.5844492155492,
+          245.0
+        ]
+      }
+    },
+    "sources": {
+      "FL": {
+        "UCA_IN_FRONT": "cad",
+        "UCA_IN_REAR": "cad",
+        "UCA_OUT": "design_intent",
+        "LCA_IN_FRONT": "cad",
+        "LCA_IN_REAR": "cad",
+        "LCA_OUT": "design_intent",
+        "TIE_ROD_IN": "design_intent",
+        "TIE_ROD_OUT": "design_intent",
+        "WHEEL_CENTER": "design_intent"
+      },
+      "FR": {
+        "UCA_IN_FRONT": "cad",
+        "UCA_IN_REAR": "cad",
+        "UCA_OUT": "design_intent",
+        "LCA_IN_FRONT": "cad",
+        "LCA_IN_REAR": "cad",
+        "LCA_OUT": "design_intent",
+        "TIE_ROD_IN": "design_intent",
+        "TIE_ROD_OUT": "design_intent",
+        "WHEEL_CENTER": "design_intent"
+      },
+      "RL": {
+        "UCA_IN_FRONT": "cad",
+        "UCA_IN_REAR": "cad",
+        "UCA_OUT": "design_intent",
+        "LCA_IN_FRONT": "cad",
+        "LCA_IN_REAR": "cad",
+        "LCA_OUT": "design_intent",
+        "TIE_ROD_IN": "design_intent",
+        "TIE_ROD_OUT": "design_intent",
+        "WHEEL_CENTER": "design_intent"
+      },
+      "RR": {
+        "UCA_IN_FRONT": "cad",
+        "UCA_IN_REAR": "cad",
+        "UCA_OUT": "design_intent",
+        "LCA_IN_FRONT": "cad",
+        "LCA_IN_REAR": "cad",
+        "LCA_OUT": "design_intent",
+        "TIE_ROD_IN": "design_intent",
+        "TIE_ROD_OUT": "design_intent",
+        "WHEEL_CENTER": "design_intent"
+      }
+    },
+    "tols": {
+      "FL": {
+        "UCA_IN_FRONT": 0.5,
+        "UCA_IN_REAR": 0.5,
+        "UCA_OUT": 0.5,
+        "LCA_IN_FRONT": 0.5,
+        "LCA_IN_REAR": 0.5,
+        "LCA_OUT": 0.5,
+        "TIE_ROD_IN": 0.5,
+        "TIE_ROD_OUT": 0.5,
+        "WHEEL_CENTER": 0.5
+      },
+      "FR": {
+        "UCA_IN_FRONT": 0.5,
+        "UCA_IN_REAR": 0.5,
+        "UCA_OUT": 0.5,
+        "LCA_IN_FRONT": 0.5,
+        "LCA_IN_REAR": 0.5,
+        "LCA_OUT": 0.5,
+        "TIE_ROD_IN": 0.5,
+        "TIE_ROD_OUT": 0.5,
+        "WHEEL_CENTER": 0.5
+      },
+      "RL": {
+        "UCA_IN_FRONT": 0.5,
+        "UCA_IN_REAR": 0.5,
+        "UCA_OUT": 0.5,
+        "LCA_IN_FRONT": 0.5,
+        "LCA_IN_REAR": 0.5,
+        "LCA_OUT": 0.5,
+        "TIE_ROD_IN": 0.5,
+        "TIE_ROD_OUT": 0.5,
+        "WHEEL_CENTER": 0.5
+      },
+      "RR": {
+        "UCA_IN_FRONT": 0.5,
+        "UCA_IN_REAR": 0.5,
+        "UCA_OUT": 0.5,
+        "LCA_IN_FRONT": 0.5,
+        "LCA_IN_REAR": 0.5,
+        "LCA_OUT": 0.5,
+        "TIE_ROD_IN": 0.5,
+        "TIE_ROD_OUT": 0.5,
+        "WHEEL_CENTER": 0.5
+      }
+    },
+    "front": {
+      "static_camber_deg": -1.5,
+      "static_toe_deg_per_side": 0.0,
+      "loaded_radius_mm": 245.0,
+      "tire_source": "estimate",
+      "tire_tol_mm": 1.0
+    },
+    "rear": {
+      "static_camber_deg": -1.5,
+      "static_toe_deg_per_side": 0.0,
+      "loaded_radius_mm": 245.0,
+      "tire_source": "estimate",
+      "tire_tol_mm": 1.0
+    },
+    "origin": "chassis pick-ups from CAD 'Xasis 33.3' (PSD, PST), placement forward -Y, left -X, up -Z; ISO origin at CAD (0, -120.4, 75) mm; other points from the project"
+  },
   "mass_items": [
     {
       "name": "Driver",
@@ -455,7 +753,17 @@
       "notes": ""
     }
   },
-  "design_log": [],
+  "design_log": [
+    {
+      "date": "2026-10-13",
+      "stage": "geometry",
+      "title": "Chassis CAD pick-ups adopted as the master",
+      "decision": "Inboard UCA/LCA pick-ups (16) taken from the chassis CAD 'Xasis 33.3' (PSD/PST frame nodes) via scripts/import_chassis_pickups.py; project switched to hardpoint mode.",
+      "rationale": "The chassis team moved the pick-ups within the rules suspension gave them; front-view geometry is nearly unchanged (camber gain change < 1e-4 deg/mm, RC height -1.8 / -1.2 mm). Consequences recorded: front RC migration -0.200 -> -0.278 mm/mm, bump steer ~0.002 deg/mm both axles (tie rods sized for the old arms), rear anti-squat 0 -> 15 %, front UCA/LCA ratio 0.82 -> 0.77, rear wishbone sweep e/a above 2.",
+      "alternatives": "Keep the synthesis pick-ups and ask the chassis to move its nodes 30-58 mm.",
+      "author": "Vinicius Trento"
+    }
+  ],
   "telemetry": {
     "channel_map": {},
     "scale": {},
