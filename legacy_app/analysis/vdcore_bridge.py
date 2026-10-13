@@ -264,14 +264,14 @@ def df_to_vdcore_axles(
 class RcHeightSweep:
     """Chassis-referenced RC height vs parallel wheel travel, for plotting.
 
-    Built from :func:`vdcore.analysis.axle.sample_corner`, which constructs the
-    front-view instant centre in the CHASSIS frame -- the same path
-    ``axle_rates`` uses and that the benchmark pins. This is deliberately NOT
-    ``roll_centre_migration``: that function feeds the FVIC world-frame ball
-    joints against chassis-fixed pivots, so its RC barely migrates (~1 mm over
-    50 mm) -- the exact artefact of the legacy solver we are correcting. Plotting
-    that curve would visually contradict the (correct) migration range in the
-    delta table, so we plot this chassis-referenced sweep instead.
+    Built from :func:`vdcore.analysis.axle.sample_corner`, which takes the
+    front-view instant centre from the upright's instantaneous 3D motion at the
+    contact-patch station, in the CHASSIS frame -- the same path ``axle_rates``
+    uses and that the benchmark pins. ``roll_centre_migration`` once fed the
+    FVIC world-frame ball joints against chassis-fixed pivots (an RC that barely
+    migrated, the legacy artefact); since 2026-10-12 it works in the chassis
+    frame on the same instant-axis FVIC, but this left-corner sweep stays the
+    plotted curve so it is the same construction as the delta table.
     """
 
     wheel_travel_mm: list[float]
@@ -862,13 +862,13 @@ def delegated_axle_dynamic_kpis(
     row: dict[str, float] = {}
 
     # Camber gain AND the RC-height migration range both come from ``axle_rates``,
-    # which builds the RC in the CHASSIS frame (the golden-pinned path,
-    # rc_migration_mm_per_mm = -0.3914 on the 2027 geometry). We deliberately do
-    # NOT use ``roll_centre_migration`` for the RC span: that function feeds the
-    # FVIC construction world-frame ball joints against chassis-fixed inboard
-    # pivots, so its RC barely moves (~1 mm over 50 mm) -- the very artefact the
-    # legacy strut-to-midpoint solver produced. Using ``axle_rates`` keeps this
-    # delegation consistent with the vdcore tab's delta table and the benchmark.
+    # which builds the RC in the CHASSIS frame from the instant-axis FVIC (the
+    # golden-pinned path, rc_migration_mm_per_mm = -0.1999 on the 2027 front).
+    # ``roll_centre_migration`` used to feed the FVIC world-frame ball joints
+    # against chassis-fixed pivots (an RC that barely moved, the legacy
+    # artefact); it is chassis-framed since 2026-10-12, but ``axle_rates`` stays
+    # the source so this delegation matches the vdcore tab's delta table and the
+    # benchmark exactly.
     try:
         rates = axle_rates(
             axle,

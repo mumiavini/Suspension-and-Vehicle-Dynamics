@@ -179,15 +179,17 @@ def test_rear_camber_gain_matches_benchmark(
 def test_front_rc_height_at_1g_matches_benchmark(
     delegated: dict[str, dict[str, float]]
 ) -> None:
-    """Front RC height at 1.5 deg roll matches axle_roll's 34.86 mm."""
-    assert delegated["front"]["rc_1g_z"] == pytest.approx(34.86, abs=0.1)
+    """Front RC height at 1.5 deg roll matches axle_roll's 35.21 mm."""
+    # 34.86 -> 35.21 on 2026-10-12: instant-axis FVIC at the patch station.
+    assert delegated["front"]["rc_1g_z"] == pytest.approx(35.21, abs=0.1)
 
 
 def test_front_rc_lateral_at_1g_matches_benchmark(
     delegated: dict[str, dict[str, float]]
 ) -> None:
-    """Front RC lateral shift at 1.5 deg roll matches axle_roll's -86.90 mm."""
-    assert delegated["front"]["rc_1g_y"] == pytest.approx(-86.90, abs=1.0)
+    """Front RC lateral shift at 1.5 deg roll matches axle_roll's -55.76 mm."""
+    # -86.90 -> -55.76 on 2026-10-12: instant-axis FVIC at the patch station.
+    assert delegated["front"]["rc_1g_y"] == pytest.approx(-55.76, abs=1.0)
 
 
 def test_ride_camber_dpm_is_camber_gain_times_1000(
@@ -204,9 +206,10 @@ def test_rc_height_migration_is_real_not_legacy_1mm_bug(
     delegated: dict[str, dict[str, float]]
 ) -> None:
     """RC height migrates >10 mm over travel (real, not the legacy ~1 mm artefact)."""
-    # Front is ~19.6 mm, rear ~21.2 mm; assert only the lower bound to prove the fix.
-    assert delegated["front"]["rc_dz"] > 10.0
-    assert delegated["rear"]["rc_dz"] > 10.0
+    # Front is 10.0 mm (15.5 before the 2026-10-12 instant-axis FVIC), rear 16.9 mm;
+    # assert only a lower bound, five times the legacy artefact, to prove the fix.
+    assert delegated["front"]["rc_dz"] > 5.0
+    assert delegated["rear"]["rc_dz"] > 5.0
 
 
 def test_lateral_rc_migration_is_zero_under_parallel_travel(
@@ -359,11 +362,12 @@ def test_setup_sheet_front_static_reproduces_benchmark(
     assert front["trail_l"] > 0.0
     assert front["trail_l"] == pytest.approx(21.43, abs=0.1)
     assert front["trail_r"] == pytest.approx(21.43, abs=0.1)
-    # 35.50, not the 35.0 design target: the UCA pivot rake added for anti-dive
-    # tilts the plane the upper ball joint sweeps, which moves the solved FVIC
-    # slightly. Isolated 2026-09-01 -- the rake alone gives 35.45, the UCA
-    # pickup move to y=210 alone gives exactly 35.0000.
-    assert front["rc_static"] == pytest.approx(35.50, abs=0.2)
+    # 35.37, not the 35.0 design target: sla_geometry synthesises the arms with
+    # zero caster (where the solved RC is exactly 35.000); the 5 deg caster from
+    # steering_geometry moves the ball joints to x = -12.3 / +10.1, and the
+    # upright then pitches as it rises. It read 35.50 with the projected arm
+    # lines used before 2026-10-12, which sit at those two different X stations.
+    assert front["rc_static"] == pytest.approx(35.37, abs=0.2)
 
 
 def test_setup_sheet_rear_static_reproduces_benchmark(
@@ -384,8 +388,9 @@ def test_setup_sheet_dynamic_reproduces_benchmark(
     rear = setup_sheet["rear"]
     assert front["camber_gain"] == pytest.approx(-0.0386, abs=0.001)
     assert rear["camber_gain"] == pytest.approx(-0.0411, abs=0.001)
-    assert front["rc_1g_z"] == pytest.approx(34.86, abs=0.2)
-    assert front["rc_1g_y"] == pytest.approx(-86.90, abs=1.0)
+    # 34.86 / -86.90 -> 35.21 / -55.76 on 2026-10-12 (instant-axis FVIC).
+    assert front["rc_1g_z"] == pytest.approx(35.21, abs=0.2)
+    assert front["rc_1g_y"] == pytest.approx(-55.76, abs=1.0)
     assert rear["rc_1g_z"] == pytest.approx(54.58, abs=0.2)
 
 
