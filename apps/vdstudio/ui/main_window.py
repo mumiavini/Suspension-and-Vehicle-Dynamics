@@ -33,7 +33,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, ctrl: ProjectController) -> None:
         super().__init__()
         self.ctrl = ctrl
-        self.resize(1500, 920)
+        # 1500x920 where the screen allows; pages scroll, so the window also fits 1366x768
+        screen = QtGui.QGuiApplication.primaryScreen()
+        avail = screen.availableGeometry() if screen is not None else QtCore.QRect(0, 0, 1500, 920)
+        self.resize(min(1500, avail.width()), min(920, avail.height()))
         self.pages: dict[str, QtWidgets.QWidget] = {}
         self._build()
         ctrl.dirtyChanged.connect(lambda _d: self._title())
@@ -42,6 +45,8 @@ class MainWindow(QtWidgets.QMainWindow):
         ctrl.message.connect(lambda m: self.statusBar().showMessage(m, 8000))
         ctrl.dynamicBusy.connect(self._busy)
         ctrl.dynamicProgress.connect(self._progress)
+        ctrl.dynamicStale.connect(self._calc_status)
+        ctrl.dynamicFailed.connect(lambda _m: self._calc_status())
         ctrl.geometryFailed.connect(self._geo_failed)
         ctrl.geometryChanged.connect(self._geo_ok)
         self._title()
@@ -52,16 +57,19 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build(self) -> None:
         import importlib
 
-        split = QtWidgets.QSplitter()
-        split.setHandleWidth(1)
+        # A plain row, not a splitter: the nav has a fixed width, and a splitter laid out at
+        # a small window size keeps a dead band beside it once the window grows.
+        central = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(central)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
         self.nav = QtWidgets.QListWidget()
         self.nav.setObjectName("nav")
         self.nav.setFixedWidth(230)
         self.stack = QtWidgets.QStackedWidget()
-        split.addWidget(self.nav)
-        split.addWidget(self.stack)
-        split.setStretchFactor(1, 1)
-        self.setCentralWidget(split)
+        row.addWidget(self.nav)
+        row.addWidget(self.stack, 1)
+        self.setCentralWidget(central)
 
         brand = QtWidgets.QListWidgetItem(f"{APP_NAME}")
         f = brand.font()
@@ -157,21 +165,44 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_redo.setEnabled(self.ctrl.can_redo())
 
     def _busy(self, busy: bool) -> None:
+        if busy:
+            self.calc_bar.setValue(0)
         self.calc_bar.setVisible(busy)
-        self.calc_label.setText("computing swept KPIs…" if busy else "swept KPIs up to date")
+        self._calc_status()
+
+    def _calc_status(self) -> None:
+        """Swept-KPI state, from the controller: never 'up to date' unless it is."""
+        c = self.ctrl
+        tip = ""
+        if c.geometry is None:
+            text = "swept KPIs: none (geometry failed)"
+        elif c.dynamic_busy:
+            text = "computing swept KPIs… (stale)"
+        elif c.dynamic_error:
+            text = f"<span style='color:{theme.current().bad}'><b>swept KPIs FAILED</b></span>"
+            tip = c.dynamic_error
+        elif c.dynamic_stale:
+            text = "swept KPIs: recomputing… (stale)"
+        else:
+            text = "swept KPIs up to date"
+        self.calc_label.setText(text)
+        self.calc_label.setToolTip(tip)
 
     def _progress(self, f: float, msg: str) -> None:
         self.calc_bar.setValue(int(100 * f))
-        self.calc_label.setText(f"computing: {msg}")
+        self.calc_label.setText(f"computing swept KPIs: {msg} (stale)")
 
     def _geo_failed(self, msg: str) -> None:
         self.geo_status.setText(f"<span style='color:{theme.current().bad}'>geometry: "
                                 f"{msg[:90]}</span>")
+        self.geo_status.setToolTip(msg)
+        self._calc_status()
 
     def _geo_ok(self, geo) -> None:
         n = geo.estimate_count()
         warn = f" · {len(geo.warnings)} warning(s)" if geo.warnings else ""
         self.geo_status.setText(f"geometry OK · {n} estimate-tagged input(s){warn}")
+        self.geo_status.setToolTip("\n".join(geo.warnings))
 
     # -- files -------------------------------------------------------------------------
     def _confirm_discard(self) -> bool:

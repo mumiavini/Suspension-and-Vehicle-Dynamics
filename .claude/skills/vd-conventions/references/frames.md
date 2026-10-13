@@ -10,7 +10,7 @@ All transforms are 3×3 sign/permutation matrices. To convert a vector **from** 
 | **J670e (SAE z-down)** | Forward | Right | Down | Right | Front axle CL, ground, vehicle CL |
 | **Legacy project frame** | Forward | Left | Up | Right | Front axle CL, ground, vehicle CL |
 | **Optimum Kinematics** | Forward | Right | Up | Left | Varies (usually front axle) |
-| **SolidWorks (typical FSAE)** | Rearward | Right | Up | Left | Varies (usually CG or rear axle) |
+| **SolidWorks (typical FSAE)** | Rearward | Right | Up | Right | Varies (usually CG or rear axle) |
 
 ## Transform matrices
 
@@ -56,7 +56,7 @@ M = [[ 1,  0,  0],
 
 ### ISO 8855 → SolidWorks (typical FSAE setup)
 
-SolidWorks FSAE models commonly use X+ rearward, Y+ right, Z+ up (left-handed). Negate X and Y.
+SolidWorks FSAE models commonly use X+ rearward, Y+ right, Z+ up (right-handed: a 180° rotation about Z, det = +1). Negate X and Y.
 
 ```
 M = [[-1,  0,  0],

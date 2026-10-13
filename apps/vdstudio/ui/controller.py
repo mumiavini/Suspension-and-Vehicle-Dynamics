@@ -8,7 +8,11 @@ Every page edits the project through :meth:`ProjectController.set_value` (or
    real-time;
 2. after a short debounce, recomputes the swept KPIs (~2 s) on a worker
    thread. A newer edit supersedes an older computation: stale results are
-   dropped by generation number and the old job is asked to stop.
+   dropped by generation number and the old job is asked to stop. Until the
+   new values land, the previous ones stay in :attr:`kpis` and are named in
+   ``kpis.stale_keys`` (the widgets grey them). If the computation fails, the
+   previous values are replaced by failed entries -- never left on screen as
+   if they described the current car.
 
 Undo/redo keeps whole-project snapshots (they are small).
 """
@@ -16,9 +20,11 @@ Undo/redo keeps whole-project snapshots (they are small).
 from __future__ import annotations
 
 import copy
+import math
 import threading
 import traceback
 from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +108,17 @@ def run_task(fn: Callable[..., Any], on_done: Callable[[Any], None],
     return t
 
 
+@dataclass
+class LiveKpiSet(K.KpiSet):
+    """The controller's KPI set: static + latest swept KPIs.
+
+    ``stale_keys`` names the swept values left over from the previous geometry
+    while the new ones are computed (empty once they land).
+    """
+
+    stale_keys: frozenset[str] = frozenset()
+
+
 class ProjectController(QtCore.QObject):
     projectChanged = QtCore.Signal()            # any input changed (incl. load/new)
     projectReplaced = QtCore.Signal()           # new/open: editors must rebuild
@@ -111,6 +128,8 @@ class ProjectController(QtCore.QObject):
     dynamicReady = QtCore.Signal(object)        # KpiSet (static + dynamic)
     dynamicBusy = QtCore.Signal(bool)
     dynamicProgress = QtCore.Signal(float, str)
+    dynamicStale = QtCore.Signal()              # swept values are from the previous geometry
+    dynamicFailed = QtCore.Signal(str)          # swept KPIs failed; kpis hold failed entries
     dirtyChanged = QtCore.Signal(bool)
     message = QtCore.Signal(str)
 
@@ -122,8 +141,10 @@ class ProjectController(QtCore.QObject):
         self.geometry: G.CarGeometry | None = None
         self.geometry_error = ""
         self.static: K.KpiSet = K.KpiSet()
-        self.kpis: K.KpiSet = K.KpiSet()       # static + latest dynamic
+        self.kpis: K.KpiSet = LiveKpiSet()     # static + latest dynamic
         self.dynamic_stale = True
+        self.dynamic_busy = False
+        self.dynamic_error = ""                # why the last swept computation failed
         self._history: list[Project] = []
         self._future: list[Project] = []
         self._gen = 0
@@ -232,19 +253,31 @@ class ProjectController(QtCore.QObject):
             self.geometry = None
             self.geometry_error = str(exc)
             self.static = K.KpiSet()
-            self.kpis = K.KpiSet()
-            self.geometryFailed.emit(self.geometry_error)
+            self.kpis = LiveKpiSet()
+            self._debounce.stop()
             self._cancel_dynamic()
+            self._gen += 1                      # a job still running reports to nobody
+            self.dynamic_error = ""
+            if self.dynamic_busy:
+                self.dynamic_busy = False
+                self.dynamicBusy.emit(False)
+            self.geometryFailed.emit(self.geometry_error)
             return
         self.geometry = geo
         self.geometry_error = ""
         self.static = st
-        # keep the previous dynamic values visible (marked stale) until the new ones land
-        merged = K.KpiSet(dict(self.kpis.items))
+        # a job still running computed the previous geometry: drop its result (the
+        # debounced restart below cancels it)
+        self._gen += 1
+        # keep the previous dynamic values visible, marked stale, until the new ones land
+        stale = frozenset(k for k in self.kpis.items if k not in st.items)
+        merged = LiveKpiSet(dict(self.kpis.items), stale)
         merged.items.update(st.items)
         self.kpis = merged
         self.dynamic_stale = True
+        self.dynamic_error = ""
         self.geometryChanged.emit(geo)
+        self.dynamicStale.emit()
         self.staticReady.emit(st)
         self._debounce.start()
 
@@ -267,8 +300,10 @@ class ProjectController(QtCore.QObject):
         def done(dyn: K.KpiSet) -> None:
             if gen != self._gen:
                 return
-            self.kpis = st.merge(dyn)
+            self.kpis = LiveKpiSet(st.merge(dyn).items)
             self.dynamic_stale = False
+            self.dynamic_error = ""
+            self.dynamic_busy = False
             self._task = None
             self.dynamicBusy.emit(False)
             self.dynamicReady.emit(self.kpis)
@@ -276,10 +311,25 @@ class ProjectController(QtCore.QObject):
         def failed(msg: str) -> None:
             if gen != self._gen:
                 return
+            first = (msg.splitlines() or ["unknown error"])[0]
+            err = "swept KPIs failed: " + first
+            # The previous geometry's swept values must not stay on screen as if they
+            # described this car: each becomes a failed entry (NaN + the reason).
+            items = dict(self.kpis.items)
+            for key, k in self.kpis.items.items():
+                if key not in st.items:
+                    items[key] = replace(k, value=math.nan, error=err)
+            self.kpis = LiveKpiSet(items)
+            self.dynamic_stale = False
+            self.dynamic_error = err
+            self.dynamic_busy = False
             self._task = None
             self.dynamicBusy.emit(False)
-            self.message.emit("Swept KPIs failed: " + msg.splitlines()[0])
+            self.dynamicFailed.emit(err)
+            self.dynamicReady.emit(self.kpis)
+            self.message.emit("Swept KPIs failed: " + first)
 
+        self.dynamic_busy = True
         self.dynamicBusy.emit(True)
         self._task = run_task(work, done, failed,
                               lambda f, m: self.dynamicProgress.emit(f, m)

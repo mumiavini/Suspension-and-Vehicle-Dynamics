@@ -482,6 +482,7 @@ def altair_kpis_from_csv(
     static_camber_deg: float | None = None,
     loaded_radius_mm: float | None = None,
     workdir: Path | None = None,
+    per_axle: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, AxleAltairResult]:
     """Run MotionSolve over a hardpoint CSV and return the app's KPI keys.
 
@@ -489,6 +490,12 @@ def altair_kpis_from_csv(
         static_camber_deg: Static camber to build into the upright. When None,
             it is recovered from the CSV's ``CONTACT_PATCH`` row.
         loaded_radius_mm: Tyre loaded radius. When None, likewise from the CSV.
+        per_axle: Per-axle overrides, ``{"front": {...}, "rear": {...}}``, of
+            any of ``static_toe_deg``, ``static_camber_deg``,
+            ``loaded_radius_mm``, ``roll_deg`` and ``travel_mm``. An axle or key
+            not given falls back to the keyword above. Without it both axles
+            are built from the same settings, so a rear alignment that differs
+            from the front would show up as a fake solver disagreement.
 
     Both overrides exist so this column can be built from the SAME design
     inputs as the vdcore column it sits beside. Static camber is a design
@@ -512,25 +519,36 @@ def altair_kpis_from_csv(
         "front": ("Front", "FL", "FR"),
         "rear": ("Rear", "RL", "RR"),
     }
-    roll_angles = (roll_deg, +_ROLL_CAMBER_PROBE_DEG, -_ROLL_CAMBER_PROBE_DEG)
+    settings = ("static_toe_deg", "static_camber_deg", "loaded_radius_mm", "roll_deg",
+                "travel_mm")
+    unknown = {
+        f"{a}.{k}" for a, d in (per_axle or {}).items() for k in d if k not in settings
+    } | {a for a in (per_axle or {}) if a not in axles}
+    if unknown:
+        raise ValueError(f"per_axle: unknown axle or setting {sorted(unknown)}")
 
     out: dict[str, AxleAltairResult] = {}
     tmp = tempfile.TemporaryDirectory(prefix="altair_kpis_") if workdir is None else None
     work = Path(tmp.name) if tmp is not None else Path(workdir)  # type: ignore[arg-type]
     try:
         for key, (label, left_id, right_id) in axles.items():
+            over = (per_axle or {}).get(key, {})
+            toe = float(over.get("static_toe_deg", static_toe_deg))
+            ax_roll = float(over.get("roll_deg", roll_deg))
+            ax_travel = float(over.get("travel_mm", travel_mm))
+            camber = over.get("static_camber_deg", static_camber_deg)
+            radius = over.get("loaded_radius_mm", loaded_radius_mm)
             axle = Axle(
                 left=build_corner(
-                    left_id, points[left_id], static_toe_deg,
-                    static_camber_deg=static_camber_deg,
-                    loaded_radius_mm=loaded_radius_mm,
+                    left_id, points[left_id], toe,
+                    static_camber_deg=camber, loaded_radius_mm=radius,
                 ),
                 right=build_corner(
-                    right_id, points[right_id], static_toe_deg,
-                    static_camber_deg=static_camber_deg,
-                    loaded_radius_mm=loaded_radius_mm,
+                    right_id, points[right_id], toe,
+                    static_camber_deg=camber, loaded_radius_mm=radius,
                 ),
             )
+            roll_angles = (ax_roll, +_ROLL_CAMBER_PROBE_DEG, -_ROLL_CAMBER_PROBE_DEG)
             # vdcore supplies the roll travel; Altair is evaluated there. See
             # the module docstring for why, and roll_patch_residual_mm for the
             # size of the approximation.
@@ -540,7 +558,7 @@ def altair_kpis_from_csv(
             }
             out[key] = _axle_result(
                 axle, label, csv_path, work,
-                roll_deg=roll_deg, travel_mm=travel_mm,
+                roll_deg=ax_roll, travel_mm=ax_travel,
                 sweep_steps=sweep_steps, roll_travels=roll_travels,
             )
     finally:

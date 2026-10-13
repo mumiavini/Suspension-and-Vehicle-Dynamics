@@ -263,8 +263,14 @@ def _item(text: str, status: str | None = None, align_right: bool = False,
     return it
 
 
-def kpi_tip(k: KPI) -> str:
+STALE_TIP = ("stale: computed for the previous geometry; the swept KPIs are being "
+             "recomputed")
+
+
+def kpi_tip(k: KPI, stale: bool = False) -> str:
     lines = [f"<b>{k.label}</b>", f"value: {k.text()} {k.unit}"]
+    if stale:
+        lines.append(f"<i>{STALE_TIP}</i>")
     if k.band:
         lines.append(f"band: {k.band_text()} ({k.band_source}) → {theme.status_text(k.status)}")
     if k.source:
@@ -274,6 +280,34 @@ def kpi_tip(k: KPI) -> str:
     if k.error:
         lines.append(f"<span style='color:{theme.current().bad}'>failed: {k.error}</span>")
     return "<br>".join(lines)
+
+
+def pair_band_text(f: KPI | None, r: KPI | None) -> tuple[str, str]:
+    """Band cell text and tooltip for a front/rear row.
+
+    One band when both axles share it; ``F … / R …`` when they differ, with
+    ``—`` for an axle without a band, so a rear value never sits beside the
+    front band.
+    """
+    bf = f.band_text() if f is not None else ""
+    br = r.band_text() if r is not None else ""
+    if f is None or r is None or (bf == br and f.band_source == r.band_source):
+        k = f if f is not None else r
+        return (bf or br), (k.band_source if k is not None else "")
+    text = bf if bf == br else f"F {bf or '—'} / R {br or '—'}"
+    tip = "\n".join(f"{axle}: {band or 'no band'}" + (f" ({src})" if src else "")
+                    for axle, band, src in (("front", bf, f.band_source),
+                                            ("rear", br, r.band_source)))
+    return text, tip
+
+
+def stale_keys(ks: KpiSet) -> frozenset[str]:
+    """Keys of ``ks`` whose values are left over from the previous geometry.
+
+    The controller's KPI set carries them (``ProjectController.kpis``); any
+    other set has none.
+    """
+    return frozenset(getattr(ks, "stale_keys", frozenset()))
 
 
 class KpiTable(QtWidgets.QTableWidget):
@@ -298,6 +332,9 @@ class KpiTable(QtWidgets.QTableWidget):
         self.stale = False
 
     def set_kpis(self, ks: KpiSet, stale_groups: set[str] | None = None) -> None:
+        """Fill the table. Values are greyed when their group is in ``stale_groups`` or
+        when the set marks them stale (the controller's set while swept KPIs recompute)."""
+        stale_k = stale_keys(ks)
         groups = self.groups or ks.groups()
         if self.group_filter is not None:
             groups = [g for g in groups if self.group_filter(g)]
@@ -323,6 +360,23 @@ class KpiTable(QtWidgets.QTableWidget):
         self.clearSpans()
         self.setRowCount(len(rows))
         muted = QtGui.QColor(theme.current().text_muted)
+
+        def is_stale(k: KPI | None, group_stale: bool) -> bool:
+            return k is not None and k.ok and (group_stale or k.key in stale_k)
+
+        def value_item(k: KPI | None, group_stale: bool) -> QtWidgets.QTableWidgetItem:
+            if k is None:
+                return _item("")
+            if not is_stale(k, group_stale):
+                return _item(k.text(), k.status, True, kpi_tip(k))
+            # a stale value is not coloured against its band: it is not this car's value
+            it = _item(k.text(), None, True, kpi_tip(k, True))
+            it.setForeground(muted)
+            fnt = it.font()
+            fnt.setItalic(True)
+            it.setFont(fnt)
+            return it
+
         for i, (label, f, r, single) in enumerate(rows):
             if f is None and r is None and single is None:
                 it = _item(label, bold=True)
@@ -334,29 +388,23 @@ class KpiTable(QtWidgets.QTableWidget):
                 continue
             ref = single or f or r
             assert ref is not None
-            stale = stale_groups is not None and ref.group in stale_groups
-            self.setItem(i, 0, _item("   " + label, tip=kpi_tip(ref)))
+            gs = stale_groups is not None and ref.group in stale_groups
+            self.setItem(i, 0, _item("   " + label, tip=kpi_tip(ref, is_stale(ref, gs))))
             if single is not None:
-                v = _item(single.text(), single.status, True, kpi_tip(single))
-                self.setItem(i, 1, v)
+                self.setItem(i, 1, value_item(single, gs))
                 self.setItem(i, 2, _item(""))
+                self.setItem(i, 4, _item(single.band_text(), tip=single.band_source))
             else:
-                self.setItem(i, 1, _item(f.text() if f else "", f.status if f else None, True,
-                                         kpi_tip(f) if f else ""))
-                self.setItem(i, 2, _item(r.text() if r else "", r.status if r else None, True,
-                                         kpi_tip(r) if r else ""))
+                self.setItem(i, 1, value_item(f, gs))
+                self.setItem(i, 2, value_item(r, gs))
+                band, band_tip = pair_band_text(f, r)
+                self.setItem(i, 4, _item(band, tip=band_tip))
             self.setItem(i, 3, _item(ref.unit))
-            self.setItem(i, 4, _item(ref.band_text(), tip=ref.band_source))
             src = ref.source + (" — " + ref.note if ref.note else "")
             if (single or f or r) and any(x is not None and x.error for x in (single, f, r)):
                 src = "FAILED: " + next(x.error for x in (single, f, r)
                                         if x is not None and x.error)
             self.setItem(i, 5, _item(src, tip=src))
-            if stale:
-                for c in (1, 2):
-                    it = self.item(i, c)
-                    if it is not None:
-                        it.setForeground(muted)
         self.resizeRowsToContents()
 
 
@@ -369,14 +417,20 @@ class Card(QtWidgets.QFrame):
         lay.setSpacing(2)
         self.value = QtWidgets.QLabel("—")
         self.value.setObjectName("cardValue")
+        # Word-wrapped so a narrow card moves the unit to the next line rather than
+        # clipping it ("[deg/mm]" cut to "[deg/m" reads as a unit 1000x larger).
         self.lab = QtWidgets.QLabel(label + (f"  [{unit}]" if unit else ""))
         self.lab.setObjectName("cardLabel")
+        self.lab.setWordWrap(True)
+        self.lab.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
         self.sub = QtWidgets.QLabel("")
         self.sub.setObjectName("cardLabel")
+        self.sub.setWordWrap(True)
         lay.addWidget(self.lab)
         lay.addWidget(self.value)
         lay.addWidget(self.sub)
-        self.setMinimumWidth(150)
+        lay.addStretch(1)
+        self.setMinimumWidth(120)
 
     def set(self, text: str, status: str = "info", sub: str = "", tip: str = "") -> None:
         self.value.setText(text)
@@ -386,9 +440,15 @@ class Card(QtWidgets.QFrame):
         self.sub.setText(sub)
         self.setToolTip(tip)
 
-    def set_kpi(self, k: KPI | None, sub: str = "") -> None:
+    def set_kpi(self, k: KPI | None, sub: str = "", stale: bool = False) -> None:
+        """``stale``: the value belongs to the previous geometry -- shown muted and
+        italic, not coloured against its band."""
         if k is None:
             self.set("—", "info", sub)
+            return
+        if stale and k.ok:
+            self.set(k.text(), "info", (sub or k.band_text()) + "  (stale)", kpi_tip(k, True))
+            self.value.setStyleSheet(f"color: {theme.current().text_muted}; font-style: italic;")
             return
         self.set(k.text(), k.status, sub or k.band_text(), kpi_tip(k))
 

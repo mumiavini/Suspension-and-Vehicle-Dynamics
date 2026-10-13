@@ -197,8 +197,14 @@ class IntegrationsPage(Page):
         if geo is None:
             return
         csv_text = X.hardpoints_csv(geo, "iso")
-        fa = geo.axles["front"]
-        inp = geo.front_inputs
+        # each axle with its own alignment, tyre radius, roll reference and travel -- the
+        # same inputs the vdcore column used, so a difference is a kinematics difference
+        per_axle = {a: {"static_toe_deg": geo.axles[a].static_toe_deg_per_side,
+                        "static_camber_deg": geo.axles[a].static_camber_deg,
+                        "loaded_radius_mm": geo.axles[a].loaded_radius_mm,
+                        "roll_deg": geo.axle_inputs(a).roll_reference_deg,
+                        "travel_mm": geo.axle_inputs(a).travel_bump_mm}
+                    for a in ("front", "rear")}
 
         def work(progress, cancelled):
             from altair_model.kpi_runner import altair_kpis_from_csv
@@ -206,11 +212,7 @@ class IntegrationsPage(Page):
                 path = Path(tmp) / "hardpoints.csv"
                 path.write_text(csv_text, encoding="utf-8")
                 progress(0.05, "MotionSolve (~150 s)")
-                res = altair_kpis_from_csv(
-                    path, roll_deg=inp.roll_reference_deg, travel_mm=inp.travel_bump_mm,
-                    static_toe_deg=fa.static_toe_deg_per_side,
-                    static_camber_deg=fa.static_camber_deg,
-                    loaded_radius_mm=fa.loaded_radius_mm, workdir=Path(tmp))
+                res = altair_kpis_from_csv(path, per_axle=per_axle, workdir=Path(tmp))
                 return {k: dict(v.values) for k, v in res.items()}
 
         self.altair_status.setText("running MotionSolve…")

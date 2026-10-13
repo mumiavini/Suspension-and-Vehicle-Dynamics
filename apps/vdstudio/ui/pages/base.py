@@ -7,7 +7,21 @@ from PySide6 import QtWidgets
 from ...engine.geometry import CarGeometry
 from ...engine.kpis import KpiSet
 from ..controller import ProjectController
-from ..widgets import page_header
+from ..widgets import page_header, scroll
+
+
+class _PageLayout(QtWidgets.QVBoxLayout):
+    """The page body's layout, as seen by its scroll area.
+
+    A word-wrapped label makes a layout height-for-width, and a resizable
+    scroll area then sizes the body to its *preferred* height, so a page would
+    scroll although it fits. Hiding that from the scroll area sizes the body to
+    the viewport, down to the body's minimum size; inside, the layout still
+    gives every wrapped label the height its width needs.
+    """
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return False
 
 
 class Page(QtWidgets.QWidget):
@@ -20,9 +34,17 @@ class Page(QtWidgets.QWidget):
         self._need_geo = True
         self._need_kpi = True
         self._need_project = True
-        self.root = QtWidgets.QVBoxLayout(self)
+        # Pages lay out into ``self.root`` inside a scroll area: a page whose content
+        # needs more room than the window has scrolls instead of forcing the window
+        # larger than the screen (every page must be usable at 1366x768).
+        body = QtWidgets.QWidget()
+        body.setObjectName("pageBody")
+        self.root = _PageLayout(body)
         self.root.setContentsMargins(18, 14, 18, 14)
         self.root.setSpacing(8)
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll(body))
         if self.title:
             self.root.addWidget(page_header(self.title, self.subtitle))
         ctrl.geometryChanged.connect(self._sig_geometry)
