@@ -131,7 +131,15 @@ class ReportsPage(Page):
             self.report.setPlainText("Geometry failed: " + self.ctrl.geometry_error)
             return
         p = self.ctrl.project
-        self._md = X.markdown_report(p, geo, self.ctrl.kpis, concept_kpis(p))
+        try:
+            concept = concept_kpis(p)
+            concept_err = ""
+        except (ValueError, ZeroDivisionError) as exc:
+            concept, concept_err = None, str(exc)
+        self._md = X.markdown_report(p, geo, self.ctrl.kpis, concept)
+        if concept_err:
+            self._md = (f"> **Note:** the concept-stage numbers could not be computed "
+                        f"({concept_err}); that section is left out.\n\n" + self._md)
         if self.ctrl.dynamic_stale:
             self._md = ("> **Note:** swept KPIs were still being recomputed when this report "
                         "was built; some values may be from the previous design state.\n\n"

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 import sla_geometry as sla
 
+from . import mass
 from .kpis import (
     FSAE_MIN_TRACK_RATIO,
     FSAE_MIN_WHEELBASE_MM,
@@ -40,7 +41,15 @@ class CgEstimate:
 
 
 def cg_estimate(items: list[MassItem], wheelbase_mm: float) -> CgEstimate:
-    """Mass-weighted CG: h = Σ m_i h_i / Σ m_i (same for x when every x is known)."""
+    """Mass-weighted CG: h = Σ m_i h_i / Σ m_i (same for x when every x is known).
+
+    Raises:
+        ValueError: if an item's mass is negative (or not a number): a negative
+            mass puts the CG outside the span of the item heights.
+    """
+    for i in items:
+        if not i.mass_kg >= 0.0:
+            raise ValueError(f"'{i.name}' has mass {i.mass_kg:g} kg; masses must be ≥ 0")
     m = sum(i.mass_kg for i in items)
     if m <= 0:
         return CgEstimate(0.0, float("nan"), None, None, 0.0)
@@ -87,13 +96,17 @@ def concept_kpis(project: Project, track_front_mm: float | None = None,
           ".1f", "axle inputs", (100 * FSAE_MIN_TRACK_RATIO, 100.0), "FSAE rules")
     b.add("concept.t_over_l", "Mean track / wheelbase", g, "vehicle", 0.5 * (tf + tr) / wb, "-",
           ".3f", "axle inputs",
-          note="0.75-0.80 is the FSAE consensus band quoted in the concept notes; "
-               "higher = calmer, lower = more agile (information).")
+          note="0.75-0.80 is the FSAE consensus band quoted in the concept notes; at fixed "
+               "track a higher T/L (shorter wheelbase) raises the yaw gain V/L (more "
+               "responsive), a lower one is calmer (information).")
     ssf = narrow / (2.0 * h)
     b.add("concept.ssf", "Static stability factor T/(2h)", g, "vehicle", ssf, "-", ".3f",
           "narrow track, CG height", (math.tan(math.radians(veh.tilt_test_angle_deg)), math.inf),
           f"tan({veh.tilt_test_angle_deg:g}°) tilt-test equivalent",
-          note="rollover before sliding needs T/(2h) > μ; the tilt test asks for tan(60°)")
+          note=f"sliding before rollover needs T/(2h) > μ (rigid body); the tilt test asks "
+               f"for tan({veh.tilt_test_angle_deg:g}°). Rigid body: on the table the normal "
+               "load falls to W·cos θ (suspension extends, CG rises) and the body rolls by "
+               "about gradient·sin θ, both reducing the margin")
     tilt_min = 2.0 * h * math.tan(math.radians(veh.tilt_test_angle_deg))
     b.add("concept.tilt_min_track", "Minimum track for the tilt test", g, "vehicle", tilt_min,
           "mm", ".0f", "2·h·tan(tilt)")
@@ -107,26 +120,60 @@ def concept_kpis(project: Project, track_front_mm: float | None = None,
     b.add("concept.weight", "Total weight", g, "vehicle", W, "N", ".0f", "m·g")
 
     g = "Roll budget (design-intent RCs)"
-    frac = veh.cg_from_front_axle_mm / wb
-    h_axis = rcf + (rcr - rcf) * frac
-    d = h - h_axis
-    w_s = veh.sprung_mass_kg * GRAVITY
     grad = veh.target_roll_gradient_deg_per_g
-    k = w_s * d / 1000.0 / grad if grad > 0 else float("nan")
-    k_p = w_s * d / 1000.0 * (1.0 + 1.0 / math.radians(grad)) * math.pi / 180.0 \
-        if grad > 0 else float("nan")
-    b.add("concept.roll_axis", "Roll axis height at CG", g, "vehicle", h_axis, "mm", ".1f",
-          "RC targets, CG station")
-    b.add("concept.roll_arm", "Roll moment arm d", g, "vehicle", d, "mm", ".1f", "h − h_axis")
-    b.add("concept.k_roll", "Required roll stiffness", g, "vehicle", k, "N·m/deg", ".1f",
-          "W_s·d / gradient (sla_geometry)", note=f"for {grad:g} deg/g (design_intent)")
-    b.add("concept.k_roll_pend", "Required roll stiffness, with pendulum term", g, "vehicle",
-          k_p, "N·m/deg", ".1f", "W_s·d·(1 + 1/φ) (Milliken Ch.16)")
-    b.add("concept.torsion_min", "Chassis torsion, min factor", g, "vehicle",
-          veh.chassis_factor_min * k, "N·m/deg", ".0f", f"{veh.chassis_factor_min:g} × K_roll")
-    b.add("concept.torsion_target", "Chassis torsion, target factor", g, "vehicle",
-          veh.chassis_factor_target * k, "N·m/deg", ".0f",
-          f"{veh.chassis_factor_target:g} × K_roll")
+    specs = [("concept.roll_axis", "Roll axis height at sprung CG", g, "vehicle", "mm"),
+             ("concept.roll_arm", "Roll moment arm d (sprung CG)", g, "vehicle", "mm"),
+             ("concept.k_roll", "Required roll stiffness", g, "vehicle", "N·m/deg"),
+             ("concept.k_roll_pend", "Required roll stiffness, with pendulum term", g,
+              "vehicle", "N·m/deg"),
+             ("concept.torsion_min", "Chassis torsion, min factor", g, "vehicle", "N·m/deg"),
+             ("concept.torsion_target", "Chassis torsion, target factor", g, "vehicle",
+              "N·m/deg")]
+    try:
+        # the springs react the SPRUNG mass about the roll axis: sprung CG, not whole-car
+        sm = mass.sprung_mass(veh.total_mass_kg, veh.unsprung_mass_kg, h,
+                              veh.cg_from_front_axle_mm, wb, project.front.loaded_radius_mm,
+                              project.rear.loaded_radius_mm)
+    except ValueError as exc:
+        b.fail(specs, f"sprung CG: {exc}")
+        sm = None
+    if sm is not None:
+        h_axis = rcf + (rcr - rcf) * sm.cg_from_front_axle_mm / wb
+        d = sm.cg_height_mm - h_axis
+        w_s = sm.mass_kg * GRAVITY
+        err = ""
+        if d <= 0:
+            err = "roll axis at or above the sprung CG: requirement undefined"
+        elif grad <= 0:
+            err = "target roll gradient must be positive"
+        k = w_s * d / 1000.0 / grad if not err else math.nan
+        k_p = w_s * d / 1000.0 * (1.0 + 1.0 / math.radians(grad)) * math.pi / 180.0 \
+            if not err else math.nan
+        # the whole-car CG paired with the sprung weight (sla_geometry.solve_vehicle)
+        d_whole = h - (rcf + (rcr - rcf) * veh.cg_from_front_axle_mm / wb)
+        parity = (f"; sla_geometry.solve_vehicle (whole-car CG) gives "
+                  f"{w_s * d_whole / 1000.0 / grad:.1f} N·m/deg" if grad > 0 else "")
+        b.add("concept.roll_axis", "Roll axis height at sprung CG", g, "vehicle", h_axis, "mm",
+              ".1f", "RC targets, sprung CG station",
+              note=f"sprung CG {sm.cg_from_front_axle_mm:.1f} mm behind the front axle "
+                   f"(whole car {veh.cg_from_front_axle_mm:.1f} mm)")
+        b.add("concept.roll_arm", "Roll moment arm d (sprung CG)", g, "vehicle", d, "mm", ".1f",
+              "h_s − h_axis (engine.mass)",
+              note=f"sprung CG height h_s {sm.cg_height_mm:.1f} mm; {mass.UNSPRUNG_ASSUMPTION}; "
+                   f"the whole-car CG ({h:g} mm) gives d = {d_whole:.1f} mm")
+        b.add("concept.k_roll", "Required roll stiffness", g, "vehicle", k, "N·m/deg", ".1f",
+              "W_s·d / gradient on the sprung CG",
+              note=f"for {grad:g} deg/g (design_intent){parity}", error=err)
+        b.add("concept.k_roll_pend", "Required roll stiffness, with pendulum term", g,
+              "vehicle", k_p, "N·m/deg", ".1f", "W_s·d·(1 + 1/φ) (Milliken Ch.16)",
+              note="sprung CG; the Maneuver page's implied stiffness uses this definition",
+              error=err)
+        b.add("concept.torsion_min", "Chassis torsion, min factor", g, "vehicle",
+              veh.chassis_factor_min * k, "N·m/deg", ".0f",
+              f"{veh.chassis_factor_min:g} × K_roll", error=err)
+        b.add("concept.torsion_target", "Chassis torsion, target factor", g, "vehicle",
+              veh.chassis_factor_target * k, "N·m/deg", ".0f",
+              f"{veh.chassis_factor_target:g} × K_roll", error=err)
 
     g = f"Lateral transfer at {veh.design_ay_g:g} g (LLTD {veh.lltd_front:.2f} front)"
     ay = veh.design_ay_g
@@ -140,12 +187,14 @@ def concept_kpis(project: Project, track_front_mm: float | None = None,
         b.add(f"concept.{axle}_fz_inner", f"{axle.title()} inner wheel load", g, axle,
               fz_s - dW, "N", ".0f", "sla_geometry.load_cases", (0.0, math.inf),
               "inner wheel must stay loaded", note="≤ 0 = the inner wheel has lifted")
-    lo = 1.0 - (1 - veh.front_mass_fraction) * tr / (2.0 * ay * h)
-    hi = veh.front_mass_fraction * tf / (2.0 * ay * h)
+    # no transfer at ay = 0: no wheel can lift, so the band has no edges
+    no_ay = "" if ay > 0 else "undefined at design ay ≤ 0 (no lateral transfer)"
+    lo = 1.0 - (1 - veh.front_mass_fraction) * tr / (2.0 * ay * h) if not no_ay else math.nan
+    hi = veh.front_mass_fraction * tf / (2.0 * ay * h) if not no_ay else math.nan
     b.add("concept.lltd_lo", "LLTD band lower edge (rear inner lifts below)", g, "vehicle", lo,
-          "-", ".3f", "geometry_summary.lltd_lift_threshold")
+          "-", ".3f", "geometry_summary.lltd_lift_threshold", error=no_ay)
     b.add("concept.lltd_hi", "LLTD band upper edge (front inner lifts above)", g, "vehicle", hi,
-          "-", ".3f", "geometry_summary.lltd_lift_threshold")
+          "-", ".3f", "geometry_summary.lltd_lift_threshold", error=no_ay)
 
     g = "Camber recovery in roll (first order)"
     roll = grad * ay
