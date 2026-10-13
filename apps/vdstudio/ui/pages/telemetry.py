@@ -43,6 +43,11 @@ class TelemetryPage(Page):
         self.travel: dict[str, np.ndarray] = {}
         self.maps: A.KinematicMaps | None = None
         self._maps_geo = None
+        # SW -> mean road-wheel steer, solved on DWSolver, cached per geometry
+        self._steer_fn = None
+        self._steer_geo = None
+        self._steer_err = ""
+        self.steer_zero: dict[str, float] = {}
         self._build_mapping()
         self._build_quality()
         self._build_channels()
@@ -117,6 +122,8 @@ class TelemetryPage(Page):
             sb.valueChanged.connect(lambda _v: self._settings_changed())
         self.zero_mode = QtWidgets.QComboBox()
         self.zero_mode.addItems(["median of straight running", "as logged (sensor zeroed)"])
+        self.zero_mode.setToolTip("Dampers: median while straight and steady. Steering: median "
+                                  "while straight (|ay| < 0.05 g, |yaw| < 1 deg/s).")
         self.zero_mode.currentIndexChanged.connect(lambda _i: self._recompute())
         self.ratio_override = QtWidgets.QDoubleSpinBox()
         self.ratio_override.setRange(0, 50)
@@ -128,7 +135,7 @@ class TelemetryPage(Page):
         f.addRow("Damper / wheel motion ratio, rear", self.mr_r)
         f.addRow("Motion ratio provenance", self.mr_src)
         f.addRow(self.comp_pos)
-        f.addRow("Damper zero reference", self.zero_mode)
+        f.addRow("Zero reference (dampers, steering)", self.zero_mode)
         f.addRow("Steady-state: min speed", self.min_v)
         f.addRow("Steady-state: min |ay|", self.min_ay)
         f.addRow("Steering ratio", self.ratio_override)
@@ -223,9 +230,9 @@ class TelemetryPage(Page):
         g.addWidget(self.p_cam_t, 0, 0)
         g.addWidget(self.p_hist, 0, 1)
         g.addWidget(self.p_toe_t, 1, 0)
-        self.replay_table = SimpleTable(["corner", "mean road camber cornering", "outer-camber "
-                                         "band share", "outside solved envelope %", "travel "
-                                         "range mm"])
+        self.replay_table = SimpleTable(["corner", "mean road camber, outer",
+                                         "mean road camber, inner", "outer-camber band share",
+                                         "outside solved envelope %", "travel range mm"])
         g.addWidget(self.replay_table, 1, 1)
         lay.addLayout(g, 1)
         self.tabs.addTab(w, "Kinematic replay")
@@ -333,10 +340,13 @@ class TelemetryPage(Page):
         if self.session is None:
             return
         s = self.session
-        cm = M.auto_map(s.names())
+        alts: dict[str, list[str]] = {}
+        cm = M.auto_map(s.names(), alts)
         scale, why = {}, {}
         for role, ch in cm.items():
             scale[role], why[role] = M.guess_scale(role, s.units.get(ch, ""), s.get(ch))
+            if role in alts:
+                why[role] += f"; REVIEW: also matches {', '.join(alts[role][:3])}"
 
         def edit(p: Project) -> None:
             p.telemetry = replace(p.telemetry, channel_map=cm, scale=scale, flip_sign={})
@@ -358,21 +368,41 @@ class TelemetryPage(Page):
         tel = self._tel()
         self.sig = M.signals(s, tel.channel_map, tel.scale, tel.flip_sign)
         geo = self.ctrl.geometry
-        zero = A.straight_line_zero(self.sig, tel) if self.zero_mode.currentIndex() == 0 \
-            and self.sig else {}
+        zero_on = self.zero_mode.currentIndex() == 0 and bool(self.sig)
+        zero = A.straight_line_zero(self.sig, tel) if zero_on else {}
         self.travel = A.wheel_travel(self.sig, tel, zero) if self.sig else {}
+        # the same combo zeroes the steering (replay, understeer, checks see it)
+        self.steer_zero = A.straight_line_steer_zero(self.sig, tel) if zero_on else {}
+        for role, z in self.steer_zero.items():
+            self.sig[role] = self.sig[role] - z
         rate = s.rate_hz
-        q = A.channel_quality(s)
-        self.quality.set_rows([[c.name, c.unit, f"{c.rate_hz:.1f}", f"{c.nan_pct:.1f}",
-                                f"{c.vmin:.4g}", f"{c.vmax:.4g}", f"{c.longest_flat_s:.1f}",
-                                str(c.spikes), f"{c.saturated_pct:.1f}", "; ".join(c.issues)]
-                               for c in q], right_cols=range(2, 9))
-        for i, c in enumerate(q):
-            if c.issues:
+        q = A.channel_quality(s, self.sig.get("speed"))
+        rows = [[c.name, c.unit, f"{c.rate_hz:.1f}", f"{c.nan_pct:.1f}", f"{c.vmin:.4g}",
+                 f"{c.vmax:.4g}", f"{c.longest_flat_s:.1f}", str(c.spikes),
+                 f"{c.saturated_pct:.1f}", "; ".join(c.issues)] for c in q]
+        rows += [[n, "", "", "", "", "", "", "", "", f"not read: {why}"]
+                 for n, why in s.skipped]
+        self.quality.set_rows(rows, right_cols=range(2, 9))
+        for i, r in enumerate(rows):
+            if r[9]:
                 it = self.quality.item(i, 9)
                 it.setForeground(pg.mkColor(theme.current().warn))
         if self.sig:
-            checks = A.consistency_checks(self.sig, tel, rate, geo, self.travel)
+            ratio = self._ratio()
+            checks = A.consistency_checks(self.sig, tel, rate, geo, self.travel, ratio)
+            if zero_on and ("steer_sw" in self.sig or "steer_road" in self.sig):
+                for role in ("steer_sw", "steer_road"):
+                    if role not in self.sig:
+                        continue
+                    z = self.steer_zero.get(role)
+                    rw = f" (≈ {z / ratio:+.3f} deg road wheel)" if z is not None \
+                        and role == "steer_sw" and math.isfinite(ratio) and ratio > 0 else ""
+                    checks.append(A.Check(
+                        f"{role} zero (straight running)", "n/a" if z is None else "ok",
+                        "—" if z is None else f"{z:+.3f} deg{rw}", "—",
+                        "no straight running found: steering used as logged" if z is None
+                        else "subtracted from the channel; choose 'as logged' to see the raw "
+                        "offset"))
             self.checks.set_rows([[c.name, c.status, c.value, c.expected, c.detail]
                                   for c in checks], status_col=1)
         self._draw_vehicle()
@@ -424,6 +454,16 @@ class TelemetryPage(Page):
             return float(tel.steering_ratio_override)
         return self.ctrl.kpis.value("steering.ratio")
 
+    def _sw_to_delta(self, geo):
+        """Solved SW -> road-wheel table for ``geo`` (None + ``_steer_err`` if it failed)."""
+        if self._steer_geo is not geo:
+            self._steer_geo = geo
+            try:
+                self._steer_fn, self._steer_err = A.steer_table(geo), ""
+            except (RuntimeError, ValueError) as exc:
+                self._steer_fn, self._steer_err = None, str(exc)
+        return self._steer_fn
+
     def _draw_model(self) -> None:
         s, geo = self.session, self.ctrl.geometry
         for p in (self.p_roll, self.p_pitch, self.p_us, self.p_lltd):
@@ -453,22 +493,35 @@ class TelemetryPage(Page):
             xx = np.array([-2.5, 2.5])
             self.p_roll.plot(xx, target * xx, pen=pen(7, 1.5, QtCore.Qt.DashLine),
                              name="design-intent gradient")
-            pg_ = A.pitch_gradient(self.sig, self.travel, geo, tel, rate)
-            if pg_ is not None:
-                scatter(self.p_pitch, pg_, 2)
+            for k, pg_ in enumerate(A.pitch_gradient(self.sig, self.travel, geo, tel, rate)):
+                scatter(self.p_pitch, pg_, 2 + 3 * k)
                 rows.append([pg_.name, f"{pg_.fit.slope:.3f} {pg_.unit}",
                              f"{pg_.fit.r2:.3f} / {pg_.fit.n}", "—", pg_.note])
-        us = A.understeer_gradient(self.sig, tel, rate, self._ratio(), geo.wheelbase_mm)
-        if us is not None:
-            scatter(self.p_us, us, 3)
-            rows.append([us.name, f"{us.fit.slope:+.3f} {us.unit}",
-                         f"{us.fit.r2:.3f} / {us.fit.n}", "—", us.note])
-        lt = A.measured_lltd(self.sig, tel, rate)
+        # δ from the solved linkage unless the user overrides the ratio (then linear)
+        table = None
+        if "steer_sw" in self.sig and "steer_road" not in self.sig \
+                and not tel.steering_ratio_override:
+            table = self._sw_to_delta(geo)
+            if table is None:
+                rows.append(["Understeer gradient", "failed", "", "—",
+                             f"SW -> road-wheel table: {self._steer_err}"])
+        if table is not None or "steer_road" in self.sig or tel.steering_ratio_override:
+            us = A.understeer_gradient(self.sig, tel, rate, self._ratio(), geo.wheelbase_mm,
+                                       sw_to_delta=table, steer_zero=self.steer_zero)
+            if us is not None:
+                scatter(self.p_us, us, 3)
+                rows.append([us.name, f"{us.fit.slope:+.3f} {us.unit} (intercept "
+                             f"{us.fit.intercept:+.2f} deg)", f"{us.fit.r2:.3f} / {us.fit.n}",
+                             "—", us.note])
+        lt = A.measured_lltd(self.sig, tel, rate, (geo.track_mm("front"), geo.track_mm("rear")))
         if lt is not None:
             scatter(self.p_lltd, lt, 4)
-            rows.append([lt.name, f"{np.nanmean(lt.y):.3f}", f"n {lt.fit.n}",
-                         f"{self.ctrl.project.vehicle.lltd_front:.2f} (load-case assumption)",
-                         lt.note])
+            s_m = self.ctrl.project.vehicle.lltd_front
+            tf, tr = geo.track_mm("front"), geo.track_mm("rear")
+            s_f = (s_m / tf) / (s_m / tf + (1.0 - s_m) / tr)
+            rows.append([lt.name, f"{lt.force_share:.3f} force / {lt.moment_share:.3f} moment",
+                         f"n {lt.fit.n}", f"{s_f:.3f} force / {s_m:.2f} moment (load-case "
+                         "assumption; sla_geometry uses it as a moment share)", lt.note])
         if not rows:
             rows = [["Map ay, speed, dampers (and steering) to compare the car with the model",
                      "", "", "", ""]]
@@ -505,8 +558,10 @@ class TelemetryPage(Page):
         for p in (self.p_cam_t, self.p_hist, self.p_toe_t):
             p.clear()
         rows = []
-        band = geo.front_inputs.limits.outer_camber_in_roll_deg
+        bands = {ax: geo.axle_inputs(ax).limits.outer_camber_in_roll_deg
+                 for ax in ("front", "rear")}
         corner_mask = r.cornering
+        ay_sign = np.sign(self.sig.get("ay", np.zeros(len(r.time_s))))
         for i, cid in enumerate(("FL", "FR", "RL", "RR")):
             if cid not in r.camber_road:
                 continue
@@ -518,22 +573,30 @@ class TelemetryPage(Page):
                 h, edges = np.histogram(sel, bins=30)
                 self.p_hist.plot(edges, 100.0 * h / sel.size, stepMode="center",
                                  pen=pen(i, 1.5), name=cid)
-            # "outer" while cornering: the side the load moved to (ay > 0 -> right wheels)
+            # "outer" while cornering: the side the load moved to (ay > 0 -> right wheels);
+            # a wheel's outer and inner samples are reported apart, never blended
             side = 1.0 if cid in ("FL", "RL") else -1.0
-            outer = corner_mask & (np.sign(self.sig.get("ay", np.zeros_like(cr))) == -side)
-            oc = cr[outer & np.isfinite(cr)]
+            fin = corner_mask & np.isfinite(cr)
+            oc = cr[fin & (ay_sign == -side)]
+            ic = cr[fin & (ay_sign == side)]
+            band = bands["front" if cid[0] == "F" else "rear"]
             share = 100.0 * np.mean((oc >= band[0]) & (oc <= band[1])) if oc.size else math.nan
             tr = r.travel[cid]
-            rows.append([cid, f"{np.nanmean(sel):+.2f} deg" if sel.size else "—",
+            rows.append([cid, f"{np.mean(oc):+.2f} deg" if oc.size else "—",
+                         f"{np.mean(ic):+.2f} deg" if ic.size else "—",
                          f"{share:.0f} %" if math.isfinite(share) else "—",
                          f"{r.outside_pct[cid]:.1f}",
                          f"{np.nanmin(tr):+.1f} … {np.nanmax(tr):+.1f}"])
         self.replay_table.set_rows(rows)
+        bf, br = bands["front"], bands["rear"]
+        failed = (f" {maps.failed} grid solves did not converge; samples near them are NaN "
+                  "(counted as outside the envelope)." if maps.failed else "")
         self.replay_status.setText(
             f"Replayed {len(r.time_s)} samples. 'Outer-camber band share' = share of the time "
             f"that wheel was the outer one while cornering with road camber inside "
-            f"{band[0]:g} … {band[1]:g} deg (design intent). Samples outside the solved travel "
-            "envelope are excluded, never clamped.")
+            f"{bf[0]:g} … {bf[1]:g} deg front, {br[0]:g} … {br[1]:g} deg rear (design intent). "
+            "Front camber is the wheel inclination to the vertical (the wheels are steered). "
+            "Samples outside the solved travel envelope are excluded, never clamped." + failed)
 
     def on_geometry(self, geo) -> None:
         if self.session is not None:

@@ -22,7 +22,6 @@ from apps.vdstudio.engine.telemetry import analysis as A
 from apps.vdstudio.engine.telemetry import mapping as M
 from apps.vdstudio.engine.telemetry.ld import LdChannel, read_ld, write_ld
 from apps.vdstudio.engine.telemetry.session import load_session
-
 from vdcore.geometry.solver import DWSolver  # noqa: E402
 
 G0 = 9.80665
@@ -116,7 +115,8 @@ def test_consistency_checks_pass_on_consistent_data(session, settings, geo) -> N
                                                        travel)}
     assert checks["Yaw rate vs ay·g/V"].status == "ok"
     assert checks["Steering rises with ay"].status == "ok"
-    assert checks["Roll (dampers) rises with ay"].status == "ok"
+    assert checks["Roll (front dampers) rises with ay"].status == "ok"
+    assert checks["Roll (rear dampers) rises with ay"].status == "ok"
 
 
 def test_a_flipped_yaw_sign_is_caught(session, settings, geo) -> None:
@@ -167,7 +167,9 @@ def test_kinematic_replay_matches_a_direct_solve(session, settings, geo) -> None
     t_fl = travel["FL"][i]
     rack = sig["steer_sw"][i] / 360.0 * 2 * math.pi * geo.steering_inputs.pinion_radius_mm
     direct = DWSolver(geo.corner("FL")).solve(wheel_travel_mm=float(t_fl), rack_mm=float(rack))
-    assert r.camber_chassis["FL"][i] == pytest.approx(direct.camber_deg, abs=0.002)
+    # front maps carry the wheel inclination (the wheel is steered here)
+    incl = A.inclination_deg(direct.camber_deg, direct.toe_deg_per_side)
+    assert r.camber_chassis["FL"][i] == pytest.approx(incl, abs=0.002)
     assert r.toe["FL"][i] == pytest.approx(direct.toe_deg_per_side, abs=0.005)
     assert r.outside_pct["FL"] == 0.0
 
