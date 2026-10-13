@@ -170,7 +170,13 @@ def _toe_link_params() -> list[Param]:
 
 def hardpoint_params() -> list[Param]:
     """Hardpoint-mode inputs: left-side points mirrored to the right, and each axle's
-    alignment and tyre radius (the inputs a hardpoint file cannot carry)."""
+    static alignment (an input a hardpoint file cannot carry).
+
+    The loaded radius is not sweepable here: with the points fixed it must equal
+    the wheel-centre height (the ISO origin is on the ground, checked by
+    ``geometry.from_hardpoints``), so changing it alone describes a car that no
+    longer touches the road.
+    """
     out = []
     for corner in ("FL", "RL"):
         axle = "Front" if corner == "FL" else "Rear"
@@ -188,8 +194,6 @@ def hardpoint_params() -> list[Param]:
                   "hardpoints"),
             Param(f"hardpoints.{axle}.static_toe_deg_per_side", f"{a} static toe per side",
                   "deg", g, 0.05, "hardpoints"),
-            Param(f"hardpoints.{axle}.loaded_radius_mm", f"{a} tyre loaded radius", "mm", g,
-                  2.0, "hardpoints"),
         ]
     return out
 

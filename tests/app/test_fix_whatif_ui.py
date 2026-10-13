@@ -145,7 +145,6 @@ def test_registry_labels_the_wheelbase_and_adds_the_rear_toe() -> None:
 @pytest.mark.parametrize(("field", "step", "value"), [
     ("static_camber_deg", 0.25, -2.0),
     ("static_toe_deg_per_side", 0.05, 0.1),
-    ("loaded_radius_mm", 2.0, 240.0),
 ])
 def test_hardpoint_mode_sweeps_alignment_and_tyre_radius(field: str, step: float,
                                                         value: float) -> None:
@@ -162,6 +161,15 @@ def test_hardpoint_mode_sweeps_alignment_and_tyre_radius(field: str, step: float
         assert par.get(p) == before                    # the queried project is a copy
         assert getattr(resolve(q).axles[axle], field) == pytest.approx(value)
     assert "vehicle.wheelbase_mm" not in params       # the hardpoints carry the wheelbase
+
+
+def test_hardpoint_mode_does_not_sweep_the_loaded_radius_alone() -> None:
+    """With fixed points the loaded radius is pinned to the wheel-centre height."""
+    p = Project()
+    p.hardpoints = freeze_to_hardpoints(p)
+    p.geometry_mode = "hardpoints"
+    paths = {x.path for x in W.params_for(p)}
+    assert not any(x.endswith("loaded_radius_mm") for x in paths if x.startswith("hardpoints."))
 
 
 def test_sensitivity_keeps_both_one_sided_values(monkeypatch) -> None:
