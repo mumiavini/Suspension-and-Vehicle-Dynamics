@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import APP_NAME, __version__
+from ..engine import recent as R
 from ..engine.project import PROJECT_SUFFIX
 from . import theme
 from .controller import ProjectController
@@ -30,9 +31,11 @@ NAV: tuple[tuple[str, str, str, str, str], ...] = (
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, ctrl: ProjectController) -> None:
+    def __init__(self, ctrl: ProjectController,
+                 settings: QtCore.QSettings | None = None) -> None:
         super().__init__()
         self.ctrl = ctrl
+        self.settings = settings or QtCore.QSettings("PUCPR Racing", APP_NAME)
         # 1500x920 where the screen allows; pages scroll, so the window also fits 1366x768
         screen = QtGui.QGuiApplication.primaryScreen()
         avail = screen.availableGeometry() if screen is not None else QtCore.QRect(0, 0, 1500, 920)
@@ -106,6 +109,14 @@ class MainWindow(QtWidgets.QMainWindow):
         tb.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
         self.act_new = tb.addAction("New", self.new_project)
         self.act_open = tb.addAction("Open…", self.open_project)
+        self.recent_menu = QtWidgets.QMenu(self)
+        self.recent_button = QtWidgets.QToolButton()
+        self.recent_button.setText("Recent")
+        self.recent_button.setToolTip("Recently opened or saved projects")
+        self.recent_button.setMenu(self.recent_menu)
+        self.recent_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        tb.addWidget(self.recent_button)
+        self._rebuild_recent()
         self.act_save = tb.addAction("Save", self.save_project)
         self.act_saveas = tb.addAction("Save as…", lambda: self.save_project(True))
         tb.addSeparator()
@@ -206,54 +217,117 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -- files -------------------------------------------------------------------------
     def _confirm_discard(self) -> bool:
+        """True when it is fine to replace or close the project (saved, discarded or clean)."""
         if not self.ctrl.dirty:
             return True
+        name = self.ctrl.path.name if self.ctrl.path else "the untitled project"
         r = QtWidgets.QMessageBox.question(
-            self, APP_NAME, "Discard unsaved changes?",
-            QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel)
+            self, APP_NAME, f"Save the changes to {name}?",
+            QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard
+            | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Save)
+        if r == QtWidgets.QMessageBox.Save:
+            return self.save_project()
         return r == QtWidgets.QMessageBox.Discard
 
     def new_project(self) -> None:
         if self._confirm_discard():
             self.ctrl.new()
 
-    def open_project(self, path: str | None = None) -> None:
+    def open_project(self, path: str | Path | None = None) -> bool:
         if not self._confirm_discard():
-            return
+            return False
         if path is None:
             path, _ = QtWidgets.QFileDialog.getOpenFileName(
-                self, "Open project", str(Path.cwd()),
+                self, "Open project", str(R.dialog_dir(self.ctrl.path)),
                 f"VD Studio project (*{PROJECT_SUFFIX} *.json)")
         if not path:
-            return
+            return False
+        path = Path(path)
+        if not path.is_file():
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"{path} no longer exists.")
+            self._set_recent(R.drop_recent(self._recent(), path))
+            return False
         try:
             self.ctrl.open(path)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             QtWidgets.QMessageBox.critical(self, APP_NAME, f"Could not open {path}:\n{exc}")
+            return False
+        self._remember(path)
+        return True
 
-    def save_project(self, save_as: bool = False) -> None:
+    def open_startup_project(self, argv_path: str | None = None) -> Path | None:
+        """Open the file the app starts with (see engine/recent.py); None = built-in car."""
+        last = self.settings.value("last_project", "")
+        path, why = R.startup_path(argv_path, str(last) if last else None)
+        if path is not None:
+            if self.open_project(path):
+                self.statusBar().showMessage(f"Opened {path} ({why})", 10000)
+                return path
+            if why == "last project":       # unreadable: do not fail on every start
+                self.settings.remove("last_project")
+        self.statusBar().showMessage(
+            "Built-in 2027 car from sla_geometry.py / steering_geometry.py", 10000)
+        return None
+
+    def save_project(self, save_as: bool = False) -> bool:
         path = self.ctrl.path
         if save_as or path is None:
             default = (self.ctrl.project.name.split("--")[0].strip().replace(" ", "_")
                        or "project") + PROJECT_SUFFIX
             p, _ = QtWidgets.QFileDialog.getSaveFileName(
-                self, "Save project", default, f"VD Studio project (*{PROJECT_SUFFIX})")
+                self, "Save project", str(R.dialog_dir(self.ctrl.path) / default),
+                f"VD Studio project (*{PROJECT_SUFFIX})")
             if not p:
-                return
+                return False
             if not p.endswith(PROJECT_SUFFIX):
                 p += PROJECT_SUFFIX
             path = Path(p)
         try:
             self.ctrl.save(path)
-            self.statusBar().showMessage(f"Saved {path}", 5000)
         except OSError as exc:
             QtWidgets.QMessageBox.critical(self, APP_NAME, f"Could not save:\n{exc}")
+            return False
+        self._remember(path)
+        self.statusBar().showMessage(f"Saved {path}", 5000)
+        return True
+
+    # -- recent projects -----------------------------------------------------------------
+    def _recent(self) -> list[str]:
+        return R.as_list(self.settings.value("recent_projects", []))
+
+    def _set_recent(self, paths: list[str]) -> None:
+        self.settings.setValue("recent_projects", paths)
+        self._rebuild_recent()
+
+    def _remember(self, path: Path) -> None:
+        """The file opened or saved last is the one the next start opens."""
+        self.settings.setValue("last_project", str(path.resolve()))
+        self._set_recent(R.push_recent(self._recent(), path.resolve()))
+
+    def _rebuild_recent(self) -> None:
+        m = self.recent_menu
+        m.clear()
+        paths = self._recent()
+        for i, p in enumerate(paths, 1):
+            act = m.addAction(f"&{i}  {Path(p).name}", lambda p=p: self.open_project(p))
+            act.setToolTip(p)
+            act.setStatusTip(p)
+        if not paths:
+            m.addAction("No recent projects").setEnabled(False)
+        m.addSeparator()
+        team = m.addAction(f"Team project ({R.TEAM_PROJECT.name})",
+                           lambda: self.open_project(R.TEAM_PROJECT))
+        team.setEnabled(R.TEAM_PROJECT.is_file())
+        team.setStatusTip(str(R.TEAM_PROJECT))
+        clear = m.addAction("Clear list", lambda: self._set_recent([]))
+        clear.setEnabled(bool(paths))
+        m.setToolTipsVisible(True)
 
     def toggle_theme(self) -> None:
         app = QtWidgets.QApplication.instance()
         new = theme.LIGHT if theme.current().name == "dark" else theme.DARK
         theme.apply(app, new)
-        QtCore.QSettings("PUCPR Racing", APP_NAME).setValue("theme", new.name)
+        self.settings.setValue("theme", new.name)
         from .widgets import restyle_plots
 
         restyle_plots(self)

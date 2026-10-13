@@ -61,6 +61,41 @@ else works).
 
 The icon is drawn by `scripts/make_icon.py` into `apps/vdstudio/resources/`.
 
+## Project files
+
+A project is one JSON file, `*.vdproj.json`, holding everything the designer
+owns: concept numbers, geometry inputs, hardpoints, targets, stage status, the
+design log and the telemetry settings. Derived values are never stored. The
+team's shared car is **`projects/FSAE_2027.vdproj.json`**, versioned in git.
+
+**What opens on start:**
+
+1. a file given on the command line, or dropped onto the Desktop icon or
+   `VD Studio.bat`;
+2. otherwise the **last project you opened or saved**;
+3. otherwise the team project, `projects/FSAE_2027.vdproj.json`;
+4. otherwise the built-in 2027 car, read from `sla_geometry.py` /
+   `steering_geometry.py`.
+
+The status bar says which file was opened and why.
+
+**Saving:**
+
+- **Save** (`Ctrl+S`) writes back to the open file; **Save as…** starts in the
+  same folder.
+- The write is atomic (a temporary file, then a rename), so a crash mid-save
+  leaves the previous version intact.
+- Closing, **New** or **Open** with unsaved changes asks **Save / Discard /
+  Cancel**.
+
+**Recent** (toolbar) lists the last eight projects and the team project.
+
+Files saved by older versions open with defaults for any field added since.
+
+**New** returns the built-in car from the scripts. Use it to pick up changes
+made to `sla_geometry.py` / `steering_geometry.py`. A saved project keeps its
+own values and does not follow the scripts.
+
 ## The workflow, stage by stage
 
 The Dashboard tracks nine FSAE stages (status + notes, saved in the project).
@@ -217,6 +252,7 @@ apps/vdstudio/engine/   Qt-free logic (testable from a REPL)
   telemetry/            ld.py, session.py, mapping.py, analysis.py
 apps/vdstudio/ui/       PySide6 + pyqtgraph presentation
 apps/vdstudio/app.py    entry point; log file + error dialog when started without a console
+apps/vdstudio/engine/recent.py  start-up file choice, recent list (no Qt)
 apps/vdstudio/shortcut.py  Desktop / Start-menu / app-menu shortcuts (no Qt)
 apps/vdstudio/resources/   icon (.ico for shortcuts, .png for the window), from scripts/make_icon.py
 ```

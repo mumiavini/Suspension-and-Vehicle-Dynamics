@@ -121,9 +121,8 @@ def main(argv: list[str] | None = None) -> int:
 
     ctrl = ProjectController()
     win = MainWindow(ctrl)
-    if len(argv) > 1 and os.path.isfile(argv[1]):
-        win.open_project(argv[1])
     win.show()
+    win.open_startup_project(argv[1] if len(argv) > 1 else None)
     return app.exec()
 
 

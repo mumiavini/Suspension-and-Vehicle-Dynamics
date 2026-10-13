@@ -24,6 +24,7 @@ from __future__ import annotations
 import copy
 import datetime as _dt
 import json
+import os
 from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Literal
@@ -577,8 +578,12 @@ def project_from_dict(data: dict[str, Any]) -> Project:
 
 
 def save_project(project: Project, path: Path) -> None:
-    text = json.dumps(project_to_dict(project), indent=2, ensure_ascii=False)
-    Path(path).write_text(text, encoding="utf-8")
+    """Write the project as JSON. Atomic: a crash mid-write leaves the old file intact."""
+    path = Path(path)
+    text = json.dumps(project_to_dict(project), indent=2, ensure_ascii=False) + "\n"
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def load_project(path: Path) -> Project:
