@@ -42,6 +42,10 @@ class HardpointsPage(Page):
         bar.addWidget(button("Export CSV…", self._export))
         bar.addWidget(button("Compare with file…", self._compare,
                              tip="Diff against a CAD read-back or measured set."))
+        bar.addStretch(1)
+        self.root.addLayout(bar)
+        # second row: the editing options, so the toolbar fits a 1366 px screen
+        bar = QtWidgets.QHBoxLayout()
         self.sym = QtWidgets.QCheckBox("Symmetric edit (mirror L↔R)")
         self.sym.setChecked(True)
         bar.addWidget(self.sym)
@@ -59,8 +63,9 @@ class HardpointsPage(Page):
         self.table.setHorizontalHeaderLabels(["Corner", "Point", "X [mm]", "Y [mm]", "Z [mm]",
                                               "Source", "Tol [mm]"])
         self.table.verticalHeader().setVisible(False)
+        # numbers sized to their contents; no column stretched across the page
         self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setStretchLastSection(False)
         self.table.itemChanged.connect(self._cell_edited)
         split.addWidget(self.table)
 
@@ -100,7 +105,7 @@ class HardpointsPage(Page):
         self.diff = SimpleTable(["Corner", "Point", "|Δ| [mm]", "this project", "file"])
         rl.addWidget(self.diff, 1)
         split.addWidget(scroll(right))
-        split.setSizes([900, 520])
+        split.setSizes([720, 700])
         self.root.addWidget(split, 1)
         self._filling = False
 

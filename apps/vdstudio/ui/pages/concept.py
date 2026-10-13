@@ -36,7 +36,9 @@ class ConceptPage(Page):
         self.mass.setHorizontalHeaderLabels(["Subsystem", "Mass [kg]", "CG z [mm]",
                                              "CG x behind front axle [mm]", "Source"])
         self.mass.verticalHeader().setVisible(False)
-        self.mass.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        mh = self.mass.horizontalHeader()
+        mh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        mh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)     # the subsystem name
         self.mass.itemChanged.connect(self._mass_edited)
         cl.addWidget(self.mass)
         row = QtWidgets.QHBoxLayout()
@@ -51,8 +53,11 @@ class ConceptPage(Page):
         self.cg_label.setWordWrap(True)
         cl.addWidget(self.cg_label)
         ll.addWidget(cg)
-        left.setMinimumWidth(520)
-        split.addWidget(scroll(left))
+        left_scroll = scroll(left)
+        # the scroll area, not its content, sets the splitter's minimum: spin boxes keep
+        # their value and unit suffix readable instead of being cut by the viewport
+        left_scroll.setMinimumWidth(620)
+        split.addWidget(left_scroll)
 
         right = QtWidgets.QWidget()
         rl = QtWidgets.QVBoxLayout(right)
@@ -62,7 +67,7 @@ class ConceptPage(Page):
         self.table = KpiTable()
         rl.addWidget(self.table, 1)
         split.addWidget(right)
-        split.setSizes([600, 900])
+        split.setSizes([660, 840])
         self._filling = False
 
     def on_project(self) -> None:

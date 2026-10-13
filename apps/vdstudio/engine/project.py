@@ -110,6 +110,26 @@ class RodEndBolts:
     source: Source = "estimate"
 
 
+@dataclass(frozen=True)
+class TurningEnvelope:
+    """What lies outboard of the outer front contact-patch centre, for the hairpin check.
+
+    The kinematic turning radius L / sin(δo) is the path of the outer front
+    patch centre. The car's outermost point lies outboard of it: the outer
+    front tyre (half its section width along the axle, its loaded radius ahead
+    and behind in plan view) and possibly a body point (front wing endplate,
+    bodywork) given as an offset from the outer front patch centre in the body
+    frame. Default: a 190 mm section width (a 7.5 in FSAE 10 in tyre) and no
+    body point beyond it -- an ``estimate`` until the tyre and the aero package
+    are fixed.
+    """
+
+    tyre_section_width_mm: float = 190.0
+    body_outboard_of_patch_mm: float = 0.0     # + = further outboard, outer side
+    body_ahead_of_front_axle_mm: float = 0.0   # + = forward of the front axle
+    source: Source = "estimate"
+
+
 # --------------------------------------------------------------------------- #
 # Hardpoint-mode geometry
 # --------------------------------------------------------------------------- #
@@ -374,6 +394,7 @@ class Project:
     pushrod_front: Pushrod = field(default_factory=Pushrod)
     pushrod_rear: Pushrod = field(default_factory=Pushrod)
     rod_end_bolts: RodEndBolts = field(default_factory=RodEndBolts)
+    turning_envelope: TurningEnvelope = field(default_factory=TurningEnvelope)
 
     geometry_mode: GeometryMode = "synthesis"
     hardpoints: HardpointSet | None = None
@@ -516,7 +537,7 @@ def project_from_dict(data: dict[str, Any]) -> Project:
     p.synthesis_tol_mm = float(data.get("synthesis_tol_mm", base.synthesis_tol_mm))
     if isinstance(data.get("layout"), dict):
         p.layout = _merge_frozen(base.layout, data["layout"])
-    for key in ("pushrod_front", "pushrod_rear", "rod_end_bolts"):
+    for key in ("pushrod_front", "pushrod_rear", "rod_end_bolts", "turning_envelope"):
         if isinstance(data.get(key), dict):
             setattr(p, key, _merge_frozen(getattr(base, key), data[key]))
     for key in ("tire_source", "mass_source"):

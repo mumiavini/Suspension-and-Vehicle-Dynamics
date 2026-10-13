@@ -50,6 +50,8 @@ class SteeringPage(Page):
         tabs.addTab(scroll(self.form), "Inputs")
         tabs.addTab(scroll(self.bands), "Bands")
         tabs.addTab(scroll(ParamForm(ctrl, fields.rod_end_bolt_fields())), "Rod-end bolts")
+        tabs.addTab(scroll(ParamForm(ctrl, fields.turning_envelope_fields())),
+                    "Turning envelope")
         ll.addWidget(tabs, 1)
         q = QtWidgets.QGroupBox("Target queries (the answer is shown, nothing is applied)")
         ql = QtWidgets.QVBoxLayout(q)
@@ -94,7 +96,7 @@ class SteeringPage(Page):
         self.p_cam = plot("Inclination (wheel plane to vertical) and caster vs steer (FL)",
                           "FL steer [deg]", "[deg]")
         self.p_rad = plot("Kinematic turning radius", "outer wheel steer [deg]",
-                          "outer front patch path radius [m]")
+                          "path radius [m]")
         for w, name in ((self.p_ack, "Ackermann"), (self.p_pct, "Ackermann %"),
                         (self.p_rack, "Steer vs rack"), (self.p_ratio, "Ratio vs rack"),
                         (self.p_bump, "Bump steer"), (self.p_cam, "Inclination / caster"),
@@ -166,6 +168,14 @@ class SteeringPage(Page):
         m = np.isfinite(s.turn_radius_m) & (o > 2.0)
         self.p_rad.plot(o[m], s.turn_radius_m[m], pen=pen(0, 2.5),
                         name="patch-centre path (L / sin δo)")
+        self.p_rad.plot(o[m], s.turn_radius_tyre_m[m], pen=pen(1, 2),
+                        name="outer front tyre, farthest corner")
+        env = self.ctrl.project.turning_envelope
+        if env.body_outboard_of_patch_mm or env.body_ahead_of_front_axle_mm:
+            self.p_rad.plot(o[m], s.turn_radius_body_m[m], pen=pen(3, 2),
+                            name="body point (Turning envelope)")
+        # the question is the margin to the hairpin line, not the near-straight-ahead tail
+        self.p_rad.setYRange(0.0, 2.0 * 4.5, padding=0.0)
         self.p_rad.addItem(pg.InfiniteLine(
             4.5, angle=0, label="FSAE hairpin outside edge (9 m Ø): the car's OUTERMOST point "
             "must stay inside", labelOpts={"color": t.warn},

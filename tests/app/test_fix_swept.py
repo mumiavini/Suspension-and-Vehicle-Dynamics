@@ -390,7 +390,8 @@ def test_steering_page_labels(ctrl, geo, rear_arms) -> None:
     lines = [i for i in page.p_rad.getPlotItem().items if isinstance(i, pg.InfiniteLine)]
     assert "the car's OUTERMOST point must stay inside" in lines[0].label.format
     names = [it.name() for it in page.p_rad.getPlotItem().listDataItems()]
-    assert names == ["patch-centre path (L / sin δo)"]
+    # the outer front tyre's outline joins the patch path (no body point by default)
+    assert names == ["patch-centre path (L / sin δo)", "outer front tyre, farthest corner"]
     assert page.p_ratio.getPlotItem().listDataItems()            # Ratio vs rack plot
     page._draw((C.steer_curves(rear_arms, 5), C.heave_curves(geo, -25.0, 25.0, 5)))
     assert "right turn" in page.p_rack.getPlotItem().getAxis("bottom").labelText

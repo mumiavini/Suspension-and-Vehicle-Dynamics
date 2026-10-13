@@ -254,6 +254,9 @@ class MainWindow(QtWidgets.QMainWindow):
         new = theme.LIGHT if theme.current().name == "dark" else theme.DARK
         theme.apply(app, new)
         QtCore.QSettings("PUCPR Racing", APP_NAME).setValue("theme", new.name)
+        from .widgets import restyle_plots
+
+        restyle_plots(self)
         self.ctrl.recompute()
 
     def guide(self) -> None:

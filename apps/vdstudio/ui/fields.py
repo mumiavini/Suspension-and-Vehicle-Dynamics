@@ -207,6 +207,24 @@ def layout_fields(axle: str) -> list[tuple[str, list[Field]]]:
     return [("Anti-geometry reference: brake / drive layout" + DI, rows)]
 
 
+def turning_envelope_fields() -> list[tuple[str, list[Field]]]:
+    """What lies outboard of the outer front patch, for the FSAE hairpin check."""
+    e = "turning_envelope."
+    return [("Outermost point for the hairpin check (estimate)", [
+        Field(e + "tyre_section_width_mm", "Front tyre section width", "mm", 50, 400, 5, 0,
+              tip="The outer front tyre's plan-view outline: half this width outboard of the "
+                  "patch centre along the axle, the loaded radius ahead and behind."),
+        Field(e + "body_outboard_of_patch_mm", "Body point outboard of the patch", "mm",
+              -500, 500, 5, 0,
+              tip="A body-fixed point (front wing endplate, bodywork), lateral offset from the "
+                  "outer front contact-patch centre, + = further out. 0 and 0 = no body point "
+                  "beyond the patch."),
+        Field(e + "body_ahead_of_front_axle_mm", "Body point ahead of the front axle", "mm",
+              -2000, 2000, 10, 0, tip="Longitudinal offset of that point, + = forward."),
+        Field(e + "source", "Provenance", kind="choice", choices=SOURCES),
+    ])]
+
+
 def rod_end_bolt_fields() -> list[tuple[str, list[Field]]]:
     """Bolt axis of each tie-rod / toe-link rod end (direction only; estimate by default)."""
     tip = ("Direction of the rod end's bolt (normalised), ISO 8855 (X fwd, Y LEFT, Z up), "

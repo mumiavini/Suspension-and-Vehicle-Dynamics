@@ -32,7 +32,7 @@ from vdcore.geometry.solver import DWSolver, SolverResult
 from vdcore.models.hardpoint import DerivedPoint
 
 from .geometry import CarGeometry
-from .kpis import turn_roll
+from .kpis import turn_roll, turning_radii_m
 from .pose import inclination_deg
 
 Arr = np.ndarray
@@ -182,6 +182,9 @@ class SteerCurves:
     ack_ideal: Arr
     ack_pct: Arr
     turn_radius_m: Arr
+    # outermost-point paths for the hairpin check (kpis.turning_radii_m), m
+    turn_radius_tyre_m: Arr
+    turn_radius_body_m: Arr
     # local steering ratio along the stroke, SW deg per road-wheel deg (NaN if unsolved)
     ratio_fl: Arr
     ratio_fr: Arr
@@ -251,6 +254,10 @@ def steer_curves(geo: CarGeometry, n: int = 41, cancelled: Cancelled | None = No
         ideal = np.degrees(np.arctan(1.0 / cot_i))
         pct = 100.0 * (inner - outer) / (ideal - outer)
         radius = wb / np.sin(np.radians(outer)) / 1000.0
+    env = geo.turning_envelope
+    radii = turning_radii_m(wb, outer, geo.axles["front"].loaded_radius_mm,
+                            env.tyre_section_width_mm, env.body_outboard_of_patch_mm,
+                            env.body_ahead_of_front_axle_mm)
     # local ratio: steering-wheel deg per mm of rack over |d(steer)/d(rack)|
     sw_per_mm = 360.0 / (2.0 * math.pi * steer.pinion_radius_mm) \
         if steer.pinion_radius_mm > 0 else math.nan
@@ -263,7 +270,9 @@ def steer_curves(geo: CarGeometry, n: int = 41, cancelled: Cancelled | None = No
         rack=rack, steer_fl=arrs["sfl"], steer_fr=arrs["sfr"], camber_fl=arrs["cfl"],
         camber_fr=arrs["cfr"], caster_fl=arrs["cas"], kpi_fl=arrs["kpi"],
         scrub_fl=arrs["scr"], trail_fl=arrs["trl"], ack_outer=outer, ack_inner=inner,
-        ack_ideal=ideal, ack_pct=pct, turn_radius_m=radius, ratio_fl=ratio["sfl"],
+        ack_ideal=ideal, ack_pct=pct, turn_radius_m=radius,
+        turn_radius_tyre_m=radii["tyre"], turn_radius_body_m=radii["body"],
+        ratio_fl=ratio["sfl"],
         ratio_fr=ratio["sfr"],
         left_turn_for_positive_rack=_positive_rack_turns_left(fl, fr, l0, r0),
     )

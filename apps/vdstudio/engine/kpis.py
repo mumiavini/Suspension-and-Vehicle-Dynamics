@@ -938,6 +938,36 @@ def _in_chassis(p: DerivedPoint, travel: float) -> np.ndarray:
     return np.array([p.x_mm, p.y_mm, p.z_mm + travel])
 
 
+HAIRPIN_OUTSIDE_RADIUS_M = 4.5      # FSAE autocross hairpin: minimum 9 m outside diameter
+
+
+def turning_radii_m(wheelbase_mm: float, outer_deg: np.ndarray | float, loaded_radius_mm: float,
+                    tyre_section_width_mm: float, body_outboard_mm: float,
+                    body_ahead_mm: float) -> dict[str, np.ndarray]:
+    """Kinematic (no-slip) path radii about a turn centre on the rear-axle line, m.
+
+    ``patch``: the outer front contact-patch centre, L / sin(δo). The outer
+    wheel's axle points at the turn centre, so in plan view the tyre is a
+    rectangle (half the section width along the axle, the loaded radius ahead
+    and behind) whose farthest corner is at sqrt((R + w/2)² + r²): ``tyre``.
+    ``body``: a body-fixed point at (ahead of the front axle, outboard of the
+    outer front patch) -- in the body frame the turn centre sits L behind the
+    front axle and L / tan(δo) inboard of the patch, so the radius is
+    sqrt((ahead + L)² + (outboard + L / tan δo)²). ``outermost`` is the largest.
+    NaN where δo <= 0.
+    """
+    d = np.radians(np.asarray(outer_deg, dtype=float))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ok = d > 1e-9
+        patch = np.where(ok, wheelbase_mm / np.sin(d), np.nan)
+        tyre = np.hypot(patch + 0.5 * tyre_section_width_mm, loaded_radius_mm)
+        body = np.where(ok, np.hypot(body_ahead_mm + wheelbase_mm,
+                                     body_outboard_mm + wheelbase_mm / np.tan(d)), np.nan)
+    out = {"patch": patch, "tyre": tyre, "body": body}
+    out["outermost"] = np.fmax(np.fmax(patch, tyre), body)
+    return {k: v / 1000.0 for k, v in out.items()}
+
+
 def _steer_pair(fl: DWSolver, fr: DWSolver, rack: float) -> tuple[SolverResult, SolverResult]:
     a, c = fl.solve(rack_mm=rack), fr.solve(rack_mm=rack)
     if not (a.converged and c.converged):
@@ -1226,11 +1256,26 @@ def _steering_dynamic(b: _Builder, geo: CarGeometry, want: set[str],
             b.add("steering.max_steer_outer", "Max steer, outer wheel", g, "steering", outer,
                   "deg", ".2f", _DW + f" at ±{steer.max_rack_travel_mm:g} mm rack")
             wb = geo.wheelbase_mm
+            env = geo.turning_envelope
+            radii = turning_radii_m(wb, outer, geo.axles["front"].loaded_radius_mm,
+                                    env.tyre_section_width_mm, env.body_outboard_of_patch_mm,
+                                    env.body_ahead_of_front_axle_mm)
             b.add("steering.turn_radius_outer", "Outer front wheel path radius at lock", g,
-                  "steering", wb / math.sin(math.radians(outer)) / 1000.0 if outer > 1e-6
-                  else float("nan"), "m", ".2f", "L / sin(δ_outer), kinematic (no slip)",
-                  note="patch-centre path; the FSAE hairpin (9 m outside Ø) bounds the car's "
-                       "OUTERMOST point, which lies outboard of the patch")
+                  "steering", float(radii["patch"]), "m", ".2f",
+                  "L / sin(δ_outer), kinematic (no slip)",
+                  note="patch-centre path; the outermost-point row below is the one the "
+                       "hairpin bounds")
+            which = max(("tyre", "body"), key=lambda k: float(radii[k]))
+            b.add("steering.turn_radius_outermost", "Outermost point path radius at lock", g,
+                  "steering", float(radii["outermost"]), "m", ".2f",
+                  "kinematic (no slip), turn centre on the rear-axle line",
+                  (0.0, HAIRPIN_OUTSIDE_RADIUS_M),
+                  "FSAE rules: hairpin minimum outside diameter 9 m",
+                  note=f"set by the {'outer front tyre' if which == 'tyre' else 'body point'}: "
+                       f"tyre {float(radii['tyre']):.2f} m (section "
+                       f"{env.tyre_section_width_mm:g} mm), body point "
+                       f"{float(radii['body']):.2f} m; inputs are '{env.source}' "
+                       "(Steering page, Turning envelope)")
             sw_lock = 360.0 * steer.max_rack_travel_mm / (2.0 * math.pi * steer.pinion_radius_mm)
             b.add("steering.sw_lock", "Steering-wheel angle lock-to-centre", g, "steering",
                   sw_lock, "deg", ".0f", "rack stroke ÷ pinion")

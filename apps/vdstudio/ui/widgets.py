@@ -460,8 +460,13 @@ class SimpleTable(QtWidgets.QTableWidget):
         self.setHorizontalHeaderLabels(list(headers))
         self.verticalHeader().setVisible(False)
         self.setAlternatingRowColors(True)
-        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-        self.horizontalHeader().setStretchLastSection(True)
+        hh = self.horizontalHeader()
+        hh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        # the last column takes what is left and elides: long source / meaning text
+        # used to wrap and turn every row into a paragraph (full text in the tooltip)
+        hh.setSectionResizeMode(len(headers) - 1, QtWidgets.QHeaderView.Stretch)
+        self.setWordWrap(False)
+        self.setTextElideMode(QtCore.Qt.ElideRight)
 
     def set_rows(self, rows: Sequence[Sequence[Any]], status_col: int | None = None,
                  right_cols: Iterable[int] = ()) -> None:
@@ -473,7 +478,10 @@ class SimpleTable(QtWidgets.QTableWidget):
                 txt = v if isinstance(v, str) else (
                     "—" if isinstance(v, float) and not math.isfinite(v) else
                     (f"{v:.4g}" if isinstance(v, float) else str(v)))
-                self.setItem(i, j, _item(txt, st if j == status_col else None, j in right))
+                it = _item(txt, st if j == status_col else None, j in right)
+                if len(txt) > 40:
+                    it.setToolTip(txt)
+                self.setItem(i, j, it)
         self.resizeRowsToContents()
 
 
@@ -495,6 +503,42 @@ def plot(title: str = "", x: str = "", y: str = "", legend: bool = True) -> pg.P
         pi.addLegend(offset=(8, 8), labelTextSize="8pt")
     pw.setMinimumHeight(220)
     return pw
+
+
+def restyle_plots(root: QtWidgets.QWidget) -> int:
+    """Re-apply the current theme to every plot already built under ``root``.
+
+    ``pg.setConfigOptions`` only reaches plots created afterwards, so a theme
+    toggle left the existing ones on the old background. The series are
+    redrawn (with the new palette) by the recompute that follows the toggle.
+    Returns the number of plots restyled.
+    """
+    t = theme.current()
+    fg = QtGui.QColor(t.plot_fg)
+    n = 0
+    for pw in root.findChildren(pg.PlotWidget):
+        pw.setBackground(t.plot_bg)
+        pi = pw.getPlotItem()
+        for name in ("left", "bottom", "right", "top"):
+            ax = pi.getAxis(name)
+            ax.setPen(fg)
+            ax.setTextPen(fg)
+            if ax.label is not None:
+                ax.label.setDefaultTextColor(fg)
+        if pi.titleLabel is not None and pi.titleLabel.text:
+            pi.setTitle(pi.titleLabel.text, size="10pt", color=t.plot_fg)
+        if pi.legend is not None:
+            pi.legend.setLabelTextColor(fg)
+        n += 1
+    try:
+        import pyqtgraph.opengl as gl
+
+        for gv in root.findChildren(gl.GLViewWidget):
+            gv.setBackgroundColor(t.plot_bg)
+            n += 1
+    except ImportError:          # no OpenGL: the 3D view is a notice
+        pass
+    return n
 
 
 def pen(i: int, width: float = 2.0, style: QtCore.Qt.PenStyle = QtCore.Qt.SolidLine) -> QtGui.QPen:
