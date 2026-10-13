@@ -295,6 +295,37 @@ No tyre data is used anywhere — PUCPR Racing has no TTC data yet.
 
 ![Telemetry: kinematic replay of a log through the current geometry](images/vdstudio_telemetry.jpg)
 
+## Tilt table
+
+**Simulation & analysis › Tilt table** shows the car on the tilt table,
+downhill on its right.
+
+**Results:**
+- the angle at which it tips, with body roll and for a rigid car, and the
+  margin to the test angle;
+- the first uphill wheel to lift and at what angle;
+- the wheel loads at the test angle;
+- the CG height at which the car tips exactly at the test angle.
+
+**Plots:**
+- a rear view of the car on the table: the CG's vertical against the tipping
+  point;
+- wheel loads vs table angle;
+- tip angle vs CG height.
+
+**Inputs:**
+- Saved in the project, shared with Concept & targets: the table angle, CG
+  height, mass and roll gradient.
+- Not saved (what-if only):
+  - the roll-stiffness front share, which decides which wheel lifts first but
+    not the tip angle;
+  - the CG rise from the springs extending under the cos θ load;
+  - an extra downhill CG shift (tyre side deflection).
+
+  These last two are not modelled (no wheel rates, no tyre data), so the page
+  shows their effect instead of inventing them. The dashboard KPI
+  `vehicle.tilt_angle` is the same calculation (`engine/tilt.py`).
+
 ## Trade-offs
 
 * **Grid sweep** — 1 or 2 inputs, any outputs; the table is the result (not
@@ -328,6 +359,7 @@ apps/vdstudio/ui/       PySide6 + pyqtgraph presentation
 apps/vdstudio/app.py    entry point; log file + error dialog when started without a console
 apps/vdstudio/engine/recent.py  start-up file choice, recent list (no Qt)
 apps/vdstudio/engine/chassis.py chassis CAD survey vs pick-ups (scripts/compare_chassis.py)
+apps/vdstudio/engine/tilt.py    tilt table: tip angle, wheel loads, first lift
 apps/vdstudio/shortcut.py  Desktop / Start-menu / app-menu shortcuts (no Qt)
 apps/vdstudio/resources/   icon (.ico for shortcuts, .png for the window), from scripts/make_icon.py
 ```

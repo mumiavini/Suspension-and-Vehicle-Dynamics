@@ -93,3 +93,65 @@ def test_kpi(setup) -> None:
     taller = replace(Project(), vehicle=replace(Project().vehicle, cg_height_mm=360.0))
     assert K.compute_static(G.resolve(taller)).get("vehicle.tilt_angle").value < 60.0
     assert np.isfinite(k.value)
+
+
+def test_cg_rise_moves_loads_and_tip_consistently(setup) -> None:
+    """The rise lifts the body: Σ ΔFz·T follows the risen CG, and the tip condition with it."""
+    geo, rc = setup
+    veh = geo.vehicle_data
+    th = math.radians(60.0)
+    r0 = tilt_table(geo, rc, TiltInputs())
+    r = tilt_table(geo, rc, TiltInputs(cg_rise_mm=25.0))
+    assert r.cg_height_mm == pytest.approx(veh.cg_height_mm + 25.0)
+    assert r.wheel_fz_N["FL"] < r0.wheel_fz_N["FL"]                     # more transfer
+    W = veh.total_mass_kg * K.GRAVITY
+    moment = sum((r.wheel_fz_N[o] - r.wheel_fz_N[i]) / 2 * geo.track_mm(ax)
+                 for ax, o, i in (("front", "FR", "FL"), ("rear", "RR", "RL")))
+    want = W * math.sin(th) * r.cg_height_mm + r.sprung_fraction * W * math.cos(th) * \
+        r.roll_arm_mm * math.radians(r.roll_deg)
+    assert moment == pytest.approx(want, rel=1e-9)
+    assert r.tip_angle_rigid_deg == pytest.approx(r0.tip_angle_rigid_deg)  # rigid: no rise
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    pytest.importorskip("PySide6")
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("VDSTUDIO_NO_GL", "1")
+    from PySide6 import QtWidgets
+
+    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+
+def test_tilt_page(qapp) -> None:
+    from apps.vdstudio.ui.controller import ProjectController
+    from apps.vdstudio.ui.main_window import NAV
+    from apps.vdstudio.ui.pages.tilt import TiltPage
+
+    assert ("Simulation & analysis", "tilt", "Tilt table", "tilt", "TiltPage") in NAV
+    ctrl = ProjectController()
+    ctrl.recompute()
+    page = TiltPage(ctrl)
+    try:
+        page.show()
+        page._run()
+        assert "stays on its wheels at 60°" in page.verdict.text()
+        rows = {page.summary.item(i, 0).text(): page.summary.item(i, 1).text()
+                for i in range(page.summary.rowCount())}
+        assert rows["Tip angle (with body roll)"] == "62.13°"
+        assert rows["First uphill wheel lift"].startswith("FL at 61.0")
+        assert page.wheels.rowCount() == 4
+        page.inp["cg_rise_mm"].setValue(40.0)               # what-if: tips before 60°
+        assert "tips before 60°" in page.verdict.text()
+        # the table angle and CG height are project fields (saved, undoable)
+        ctrl.set_value("vehicle.tilt_test_angle_deg", 55.0)
+        page.on_project()
+        page._run()
+        assert "at 55°" in page.verdict.text()
+        ctrl.undo()
+        assert ctrl.project.vehicle.tilt_test_angle_deg == 60.0
+    finally:
+        ctrl.shutdown()
+        page.close()

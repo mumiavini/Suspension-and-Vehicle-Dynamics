@@ -207,6 +207,20 @@ def layout_fields(axle: str) -> list[tuple[str, list[Field]]]:
     return [("Anti-geometry reference: brake / drive layout" + DI, rows)]
 
 
+def tilt_fields() -> list[tuple[str, list[Field]]]:
+    """The project inputs the tilt-table page reads (shared with Concept & targets)."""
+    v = "vehicle."
+    return [("Car and test (saved in the project)", [
+        Field(v + "tilt_test_angle_deg", "Table angle (rules: 60°)", "deg", 30, 80, 1, 0),
+        Field(v + "cg_height_mm", "CG height (with driver)", "mm", 50, 1000, 5, 1,
+              tip="The test is run with the tallest driver seated: use that CG."),
+        Field(v + "total_mass_kg", "Total mass (with driver)", "kg", 50, 1000, 1, 1),
+        Field(v + "target_roll_gradient_deg_per_g", "Roll gradient (design_intent)", "deg/g",
+              0.0, 5, 0.05, 2),
+        Field("mass_source", "Mass / CG provenance", kind="choice", choices=SOURCES),
+    ])]
+
+
 def turning_envelope_fields() -> list[tuple[str, list[Field]]]:
     """What lies outboard of the outer front patch, for the FSAE hairpin check."""
     e = "turning_envelope."

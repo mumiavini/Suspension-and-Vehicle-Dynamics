@@ -23,6 +23,7 @@ NAV: tuple[tuple[str, str, str, str, str], ...] = (
     ("Simulation & analysis", "motion", "3D motion", "motion", "MotionPage"),
     ("Simulation & analysis", "tradeoff", "Trade-offs (what-if)", "tradeoff", "TradeoffPage"),
     ("Simulation & analysis", "maneuver", "Quasi-static maneuver", "maneuver", "ManeuverPage"),
+    ("Simulation & analysis", "tilt", "Tilt table", "tilt", "TiltPage"),
     ("Validation", "telemetry", "Telemetry", "telemetry", "TelemetryPage"),
     ("Validation", "integrations", "CAD & cross-checks", "integrations", "IntegrationsPage"),
     ("Documentation", "reports", "Results & reports", "reports", "ReportsPage"),

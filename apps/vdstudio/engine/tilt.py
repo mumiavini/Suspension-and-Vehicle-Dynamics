@@ -50,6 +50,7 @@ class TiltInputs:
     roll_stiffness_front_share: float = 0.50  # design_intent
     cg_rise_mm: float = 0.0                   # springs extending, not modelled
     lateral_shift_mm: float = 0.0             # tyre lateral deflection etc., not modelled
+    cg_height_mm: float | None = None         # override the vehicle data's (sensitivity)
 
 
 @dataclass
@@ -79,9 +80,14 @@ def tilt_table(geo: CarGeometry, rc_static: dict[str, float], inp: TiltInputs) -
     veh = geo.vehicle_data
     L = geo.wheelbase_mm
     a = veh.cg_from_front_axle_mm * L / veh.wheelbase_mm
-    h = veh.cg_height_mm
+    h = veh.cg_height_mm if inp.cg_height_mm is None else inp.cg_height_mm
+    if not h > 0:
+        raise ValueError(f"CG height must be > 0 mm, got {h:g}")
     h_u = {ax: geo.axles[ax].loaded_radius_mm for ax in ("front", "rear")}
-    sm = mass.sprung_mass(veh.total_mass_kg, veh.unsprung_mass_kg, h, a, L,
+    # the rise is the body lifting on its springs: it moves the CG (and so the roll arm
+    # d and the load transfer) as well as the tip condition
+    h_eff = h + inp.cg_rise_mm
+    sm = mass.sprung_mass(veh.total_mass_kg, veh.unsprung_mass_kg, h_eff, a, L,
                           h_u["front"], h_u["rear"])
     W = veh.total_mass_kg * GRAVITY
     W_s = sm.mass_kg * GRAVITY
@@ -116,7 +122,6 @@ def tilt_table(geo: CarGeometry, rc_static: dict[str, float], inp: TiltInputs) -
     x_cg = -a
     f = (x_cg - pf[0]) / (pr[0] - pf[0])
     y_line = -(pf[1] + f * (pr[1] - pf[1]))          # distance from the centreline, mm
-    h_eff = h + inp.cg_rise_mm
 
     def shift(theta: float) -> float:
         return sm.mass_kg / veh.total_mass_kg * d * phi_rad(theta) + inp.lateral_shift_mm
