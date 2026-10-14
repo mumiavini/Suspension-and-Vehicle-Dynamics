@@ -66,14 +66,39 @@ def test_equal_damper_margins_and_seed_metrics(rc, ctx) -> None:
     f = res["front"]
     assert f["droop_margin_mm"] == pytest.approx(f["bump_margin_mm"], abs=0.05)
     assert f["rod_type"] == "pullrod"
+    assert f["rod_in_tension"] is True
     assert np.isnan(f["wheel_load_to_buckle_N"])            # tension member
+    assert abs(f["rocker_moment_check_Nmm"]) < 1e-6 * f["rod_force_ride_N"] * 50.0
     assert res["cg"]["delta_cg_mm"] < 0.0                   # a low front rocker lowers the CG
+    # the physical range reaches past the +-25 mm design travel to the damper end stops
+    z_ext, z_comp = f["end_stops_mm"]
+    assert z_ext < -25.0 < 25.0 < z_comp
+    # the seed's pushrod is in compression
+    assert res["rear"]["rod_in_tension"] is False
+
+
+def test_frame_model_flags_sketch_only_lines(rc, ctx) -> None:
+    """The front box's top side tubes are sketch lines with no weldment body in Xasis 33.3;
+    the front bulkhead tubes are bodies with no 3D-sketch line."""
+    top = [m for m in ctx.members if m.name == "Tri_Frente"
+           and {round(float(m.a[0]), 1), round(float(m.b[0]), 1)} == {559.6, -88.3}
+           and abs(float(m.a[1])) == 175.0]
+    assert len(top) == 2 and not any(m.bodied for m in top)
+    fbh = [m for m in ctx.members if m.name.startswith("body 2027 25X25")]
+    assert fbh and all(m.bodied and abs(float(m.a[0]) - 559.6) < 1.0 for m in fbh)
+
+
+def test_rack_is_at_its_tie_rod_inner_x(rc, ctx) -> None:
+    """steering.rack_x_mm is rearward-positive: the rack sits at ISO x = -rack_x_mm."""
+    assert -ctx.project.steering.rack_x_mm == pytest.approx(
+        float(ctx.geo.p("FL", "TIE_ROD_IN")[0]), abs=0.5)
 
 
 def test_clearance_helpers(rc) -> None:
-    box = ((0.0, 10.0), 5.0, (0.0, 10.0))
-    assert rc.seg_box((5, 0, 5), (5, 1, 5), box) == 0.0
-    assert rc.seg_box((20, 0, 5), (30, 0, 5), box) == pytest.approx(10.0)
+    boxes = (((0.0, 10.0), 0.0, 5.0, (0.0, 10.0)), ((100.0, 110.0), 50.0, 5.0, (0.0, 10.0)))
+    assert rc.seg_box((5, 0, 5), (5, 1, 5), boxes) == 0.0
+    assert rc.seg_box((20, 0, 5), (30, 0, 5), boxes) == pytest.approx(10.0)
+    assert rc.seg_box((105, 60, 5), (105, 70, 5), boxes) == pytest.approx(5.0)
     assert rc.pt_seg((0, 1, 0), (-1, 0, 0), (1, 0, 0)) == pytest.approx(1.0)
     a, b = rc.trim((0, 0, 0), (100, 0, 0), 10.0, 35.0)
     assert a[0] == pytest.approx(10.0) and b[0] == pytest.approx(65.0)
