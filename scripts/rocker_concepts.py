@@ -391,7 +391,8 @@ def bracket(ctx: Ctx, p) -> dict:
                key=lambda x: x[0])
     sk = min(((*_foot(p, m.a, m.b), m) for m in ctx.members if not m.bodied),
              key=lambda x: x[0], default=None)
-    out = {"mm": best[0], "tube": best[2].name, "from_tube_end_mm": best[1]}
+    out = {"mm": best[0], "from_tube_end_mm": best[1],
+           "tube": f"{best[2].name} {_pt(best[2].a, '.0f')}->{_pt(best[2].b, '.0f')}"}
     if sk is not None and sk[0] < best[0]:
         out["closer_sketch_only"] = f"{sk[2].name} at {sk[0]:.1f} mm (no body in the CAD)"
     return out
@@ -493,8 +494,9 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                 for m in ctx.members:
                     g = seg_seg(p, q, m.a, m.b) - rad - tube_r
                     if g < worst.get(key, (math.inf, ""))[0]:
-                        keep(key, g, f"{m.name}{'' if m.bodied else ' (sketch only)'}, "
-                                     f"{side} at {st.z:+.0f} mm")
+                        keep(key, g, f"{m.name} {_pt(m.a, '.0f')}->{_pt(m.b, '.0f')}"
+                                     f"{'' if m.bodied else ' (sketch only)'}, {side} at "
+                                     f"{st.z:+.0f} mm")
                 for bx in ctx.boxes:
                     g = seg_aabb(p, q, bx.lo, bx.hi) - rad
                     keep("gap_solid_bodies", g, f"{name} vs '{bx.name}' box, {side} at "
@@ -859,14 +861,14 @@ ROWS = (  # (label, key, format)
     ("Rod force at ride [N]", "rod_force_ride_N", ".0f"),
     ("Wheel load to buckle the rod [N] (16×1 steel)", "wheel_load_to_buckle_N", ".0f"),
     ("Rocker pivot reaction at ride [N]", "pivot_reaction_ride_N", ".0f"),
-    ("Bracket couple at ride, pivot / coil-over end [N·m]",
+    ("Bracket couple at ride, pivot / coil-over end [N·m] (upper bound: force × stand-off)",
      ("pivot_bracket_couple_Nm", "damper_bracket_couple_Nm"), ".0f"),
     ("Gap: rod vs frame [mm]", "gap_rod_frame", ".1f"),
     ("Gap: rocker vs frame [mm]", "gap_rocker_frame", ".1f"),
     ("Gap: coil-over body vs frame [mm]", "gap_coilover_frame", ".1f"),
     ("Gap: coil-over eyes vs frame [mm]", "gap_eyes_frame", ".1f"),
     ("Gap: rod vs wishbones / tie rod / toe link, with steer [mm]", "gap_rod_members", ".1f"),
-    ("Gap: rod vs rim (13\"), with steer [mm]", "gap_rod_rim", ".1f"),
+    ("Gap: rod vs rim, with steer [mm] (to the 13\" bead-seat radius)", "gap_rod_rim", ".1f"),
     ("Gap: left vs right, heave and roll [mm]", "gap_left_right", ".1f"),
     ("Gap: linkage vs rack [mm]", "gap_rack", ".1f"),
     ("Gap: linkage vs steering column [mm] (estimate)", "gap_column", ".1f"),
@@ -875,7 +877,7 @@ ROWS = (  # (label, key, format)
     ("Gap: linkage vs solid bodies' bounding boxes [mm]", "gap_solid_bodies", ".1f"),
     ("Rocker pivot to nearest bodied tube [mm]", "pivot_bracket_mm", ".1f"),
     ("Coil-over chassis end to nearest bodied tube [mm]", "damper_bracket_mm", ".1f"),
-    ("Rocker / coil-over height range z [mm]", "rocker_z_range_mm", ".0f"),
+    ("Rocker / coil-over centreline height range z [mm]", "rocker_z_range_mm", ".0f"),
     ("Coil-over + rocker mass height z [mm]", "moving_mass_z_mm", ".0f"),
 )
 

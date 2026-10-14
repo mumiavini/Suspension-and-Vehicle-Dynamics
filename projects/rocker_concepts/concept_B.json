@@ -1,6 +1,74 @@
 {
  "concept_id": "B",
  "name": "Pushrod, coil-overs transverse/V across the top",
- "front": {"rod_type": "pushrod", "mount_body": "lca", "rod_mount": [8.0, 545.0, 145.0], "pivot": [37.9, 212.4, 560.9], "damper_toward": [294.7, -89.6, 507.5], "rod_arm_mm": 55.0, "target_mr": 0.80},
- "rear":  {"rod_type": "pushrod", "mount_body": "lca", "rod_mount": [-1490.0, 495.0, 145.0], "pivot": [-1426.3, 240.4, 442.4], "damper_toward": [-1315.4, -142.4, 475.8], "rod_arm_mm": 55.0, "target_mr": 0.80}
+ "summary": "Pushrods from the lower wishbones drive rockers mounted high on the frame, and the coil-overs lie across the top of the car. Front: rockers beside the side diagonals just ahead of the front-hoop top node, coil-overs running straight across the top of the front box about 55 mm ahead of the front hoop's top crossbar (centreline to centreline), with both chassis ends 65 mm apart on a bracket to that crossbar; rear: rockers on the main-hoop braces, coil-overs lying level in a forward-pointing shallow V (30.5 deg from transverse) over the estimated engine envelope, with the chassis ends 132 mm apart above the engine. The trade-off: steep, shorter pushrods with lower rod loads than the seed and front coil-over forces that can cancel in a shared bracket, against the highest moving-mass height (604 mm front, 525 mm rear; CG +1.06 mm), a raised and widened nose, a rear rocker on the main-hoop brace, and rear chassis ends that no existing tube carries (69.9 mm, the one evaluator fail).",
+ "front": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -10.0,
+   525.0,
+   148.0
+  ],
+  "pivot": [
+   -28.0,
+   220.0,
+   540.0
+  ],
+  "damper_toward": [
+   -26.0,
+   -179.0,
+   562.0
+  ],
+  "rod_arm_mm": 70.0,
+  "target_mr": 0.8
+ },
+ "rear": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -1490.0,
+   495.0,
+   145.0
+  ],
+  "pivot": [
+   -1411.0,
+   238.0,
+   470.0
+  ],
+  "damper_toward": [
+   -1208.0,
+   -107.0,
+   470.0
+  ],
+  "rod_arm_mm": 60.0,
+  "target_mr": 0.8
+ },
+ "pros": [
+  "Front: zero evaluator fails, swept to the damper end stops (-36.0 / +35.6 mm) and over the full rack travel of +-38 mm. The three round-1 front fails are gone. Rod to wishbones and tie rod: 15.9 mm air gap (round 1: 0.7 mm to the tie rod at rack +38), with the rod mount moved onto the LCA rear leg. Rocker pivot: 54.8 mm from a bodied tube, the side diagonal running down from the front-hoop top node, foot 76 mm from that node (round 1: 100.2 mm, because its 55.7 mm tube is a sketch line with no body). Coil-over transmission angle: 25.1 deg (round 1: 33.2) with a 70 mm rod arm. Other front air gaps, with the evaluator's estimated part sizes: rocker 31.8, coil-over body 9.9, eyes 24.6, rod to frame 92.6, rod to 13-inch rim (steered) 51.1, rack 178.1, steering column (estimate) 215.0, left to right 65.0 mm.",
+  "Rear: the coil-over now clears the estimated engine envelope with a 13.7 mm air gap (limit 10; round 1: -9.7 mm, inside it). The tightest point is the right rear at the bump stop. The gap comes from raising the rockers so that the coil-overs lie level at z = 538 mm. Every other rear threshold except the chassis-end bracket passes: drive shaft (estimate) 24.8, rod to wishbones and toe link 13.7, rocker 33.1, coil-over body 9.4, eyes 28.3, rod to frame 88.6, left to right 124.1 mm.",
+  "Steep, shorter rods with lower loads than the seed, both in compression. Front: 492.0 mm long at 60.1 deg from horizontal, rod force 1.314 times the wheel load (768 N at ride; seed 1.445, 845 N), and it takes 8.47 kN of wheel load to buckle the 16x1 steel reference tube (round 1: 7.38 kN). Rear: 417.5 mm at 58.1 deg, 1.437 times the wheel load (1063 N; seed 1.765, 1305 N), 10.75 kN of wheel load to buckle.",
+  "Moderate linkage angles out to the end stops. Rod and coil-over transmission angles are 21.6 / 25.1 deg front and 23.0 / 26.9 deg rear. Rocker rotation is -23.0 / +22.6 deg front and -24.7 / +24.2 deg rear. Over the +-25 mm design travel (not to the end stops), MR is 0.781 / 0.800 / 0.808 front (+3.4 %) and 0.781 / 0.800 / 0.806 rear (+3.1 %), with equal 8.5 mm damper margins at -25 and +25 mm on both axles.",
+  "Front load path. The front coil-overs lie straight across the car (0.3 deg from transverse, rising 3.2 deg toward the centre), so at ride each one pushes its chassis end inboard with 730 N and vertically with only 40 N. If both eyes share one bracket (their centres are 65 mm apart), the two transverse forces cancel inside that bracket in heave, and the front-hoop top crossbar carries only about 80 N vertical at ride. In roll, the difference between the two spring forces reaches the crossbar. The front rocker axis runs fore-aft (-0.999, -0.008, -0.052), so its bracket is a simple stand-off from the side diagonal.",
+  "Front service access. Both front coil-overs sit under the nose top just ahead of the front hoop (centreline z 613-624 mm), with their chassis ends side by side at the centreline. Both can be reached through one opening in the nose top, away from the pedal box, the rack (178.1 mm) and the estimated steering column (215.0 mm). Which end carries the clickers depends on the damper model."
+ ],
+ "cons": [
+  "The one evaluator fail is 'coil-over chassis end to nearest bodied tube: 69.9 (limit <= 60)' at the right rear. The rear chassis ends sit above the engine, 132 mm apart. The nearest tubes are the engine-mount stubs, which are not symmetric in the CAD (left 3DSketch7 stub at y +59.7..+109.7, right at -100.3..-150.3): 61.0 mm away on the left, 69.9 mm on the right. This concept therefore needs an added frame member above the engine to carry the chassis ends, for example tubes from the two main-hoop braces. That member is not in the CAD and was not evaluated, and it has to clear the coil-over bodies, the real engine top and the intake. Tabbing the ends to the stubs instead (61-70 mm brackets) would run the spring load (469 N forward and 797 N inboard per side at ride) through the cantilevered engine mounts, making the engine part of the suspension load path. With one shared bracket, the inboard components cancel in heave and the forward ones add up to 938 N at ride.",
+  "Moving the rear chassis ends closer to the stubs costs engine clearance. One version had the chassis ends above the stubs (y = 84 mm): the bracket was 60.4 mm, but the coil-over went 3.6 mm into the estimated engine envelope (air gap -3.6 mm, limit 10) and the rod 3.3 mm into the UCA rear leg. Moving this version's rear rod mount about 30 mm toward the ball joint, to (-1510, 520, 145), shortens the bracket to 67.2 mm but leaves only 10.2 mm to the estimated drive shaft and 10.4 mm to the engine envelope. In my searches, no chassis-end position kept the coil-over 10 mm off the estimated engine envelope and within 60 mm of a bodied tube on both corners.",
+  "The rear rocker stays on the main-hoop brace, now higher: the pivot is 55.8 mm off the brace, with its foot 143 mm above the brace's lower node (round 1: 111 mm). Moving it down to the upper-rail node (pivot at z = 390 mm, 47.4 mm from the brace) put the coil-over 24.5 mm into the estimated engine envelope and the rod 14.3 mm into the UCA rear leg, because the coil-over has to climb over the engine. The pivot reaction is 999 N at ride, 841 N of it normal to the brace. At 3x the static load that is about 260-305 Nm of bending in the 936 mm brace (hand estimate, fixed-fixed to pinned-pinned), or about 340-400 MPa nominal on its 25.4 x 1.9 mm section (the CAD part material is AISI 1020). On top of that comes the 55.7 Nm bracket couple (167 Nm at 3x). That is at or above yield, so added bracing at the brace is likely to be part of this layout, and the FSAE rule on items attached to main-hoop braces needs a rulebook check.",
+  "Height, CG and bodywork. Moving-mass height is 604 mm front and 525 mm rear (seed 564 / 461 mm). With the estimated masses (1.3 kg coil-over and 0.3 kg rocker per corner), the CG rises 1.06 mm and the tilt-table angle drops from 62.13 to 62.05 deg. The front coil-over bodies reach about z = 654 mm, about 35 mm above the front hoop's top surface (z 619) and about 55 mm ahead of its top crossbar (centreline to centreline). The front rocker's rod pickup sits at y = 281 mm, about 24 mm outboard of the front hoop's outer surface (y 257) at z = 575 mm. The nose top has to rise and widen there; drag and the driver's forward view are not checked. The rear coil-overs (centreline z = 538, top about 568 mm) sit directly over the estimated engine envelope, where an intake or airbox usually goes, so lifting the engine out means removing them and the added member.",
+  "The front brackets are close to their limits and carry offset loads. The pivot bracket is 54.8 mm and the chassis-end bracket 57.3 mm (limit 60), so a few millimetres of CAD change at the front-hoop node can break either one. The pivot reaction is 717 N at ride, 613 N of it normal to the 319 mm side diagonal. That gives a 39.3 Nm bracket couple (118 Nm at 3x) and about 80-105 Nm of tube bending at 3x (hand estimate; about 150-200 MPa if it is a 25.4 x 1.2 mm tube, the size is not named in the CAD). With separate chassis-end tabs, each one puts a 41.9 Nm couple into the front-hoop top crossbar at ride. The coil-over body is 9.9 mm from the sketch-only top side line and 11.1 mm from the front hoop's upper bend (a solid body, not an evaluator threshold).",
+  "Wishbone bending at the rod mounts. The front rod sits on the LCA rear leg 63 mm in from the ball joint and 20 mm off the leg centreline, the position that clears the tie rod at full lock. The rear rod sits on the LCA front leg 82 mm in from the ball joint and 15 mm off the leg, kept there for the estimated drive shaft. At ride the rod pushes 684 N (front) and 936 N (rear) normal to the leg. At 3x the static load that is about 104 Nm and 185 Nm of leg bending (pinned-pinned hand estimate). Whether the legs carry that as drawn depends on their size, material and weld allowables, which were not checked; if not, a plate to the other leg or the ball-joint housing is part of this layout's cost.",
+  "Anti-roll bar integration. The front rocker axes run fore-aft at y = +-220 mm and the rear axes are compound (-0.847, -0.498, -0.188), so no bar can be coaxial with the rockers; each rocker needs a third arm and a drop link. The space between the rockers is already taken by the coil-overs (across the top of the front box, and above the engine at the rear), so a bar has to go ahead of or behind them. None is packaged. The roll budget asks for 56.7 Nm/deg front and 77.7 Nm/deg rear of ARB at the 1.0 deg/g query target."
+ ],
+ "not_checked": [
+  "Real part envelopes. The evaluator uses estimated sizes: frame tube 25.4 mm, rod 16 mm (16x1 steel), coil-over 60 mm starting 30 mm from each eye, eye bearing 40 mm, rocker plate half-envelope 10 mm, pickup bolts 20 mm each side, wishbones 20 mm, tie rod 16 mm. Rocker plates, bearings, rod ends, clevises, bracket bodies, spring collars, reservoirs and adjusters are not modelled. The 9.4-9.9 mm coil-over gaps and the 54.8 / 57.3 mm front brackets depend on them.",
+  "Powertrain and other parts that are not in the CAD. The engine envelope (two estimated boxes centred on the mount tabs at y = -27 mm, top at z = 490 mm) and the drive shafts (straight, to joints at |y| = 120 mm) are evaluator estimates. The intake, airbox, throttle body and fuel tank, which would sit near the rear coil-overs above the engine, are not modelled, and neither are the exhaust, chain, differential, radiator and battery.",
+  "The added rear member that the chassis ends need was not designed or evaluated: its layout, size, and fit against the coil-over bodies, the engine and the intake. The search for an existing tube within 60 mm was my own static proxy at ride height (pivot grid 5-10 mm, coil-over direction 5-10 deg, plus local optimisation), followed by full evaluator runs. It is not exhaustive.",
+  "Bodywork, the nose height and width over the front coil-overs and rockers, the driver's forward view and aerodynamics. FSAE rules: items attached to the main-hoop braces (rear rockers), brackets on the front-hoop top crossbar and on the side diagonal at the front-hoop node (and whether that diagonal counts as front-hoop bracing), and leg protection.",
+  "Structure: no load cases, stress, fatigue, or sizing of brackets, tubes, rockers, rods or wishbones. The bending figures are hand estimates at 3x the static ride load, and the side-diagonal and wishbone tube sizes are not named in the CAD. Bracket compliance, which changes the effective motion ratio, is not modelled. Buckling is pinned-pinned Euler on the 16x1 steel reference tube only.",
+  "The upright, hub, brake caliper and steering arm against the front rod near its LCA mount. Only the 13-inch rim (steered) is checked: 51.1 mm at the front. The evaluator gives no rear value because the rear rod never passes within the tyre width of the wheel plane.",
+  "Travel limits. Bump rubbers are zero, so the linkage runs to the damper's own end stops (front -36.0 / +35.6 mm, rear -36.0 / +35.7 mm). Droop limiters, bump rubbers, the ARB and drop links are not designed or packaged. With the 220 lb/in spring and no preload, the springs unseat at -23.7 mm (front) and -30.0 mm (rear) of droop, the same for every concept at MR 0.80.",
+  "The MR 0.80 target, the 1.0 deg/g roll-gradient query, the 50 % front roll share and the 220 lb/in springs are design_intent / query arguments, not derived targets. The coil-over and rocker masses (1.3 / 0.3 kg) are estimates used for the CG effect only, and the steering column is an estimated line."
+ ]
 }
