@@ -275,10 +275,11 @@ def _render_rc_migration_plot(vd: VdcoreKPIs) -> None:
     """RC height vs parallel wheel travel, front and rear.
 
     Plots the CHASSIS-referenced ``rc_height_sweep`` (built from ``sample_corner``
-    / ``axle_rates``), not ``roll_centre_migration``. The latter constructs the
-    instant centre from world-frame ball joints against chassis-fixed pivots, so
-    its RC barely moves (~1 mm) — the same artefact the legacy solver produced —
-    and would visually contradict the migration range in the delta table.
+    / ``axle_rates``, instant-axis FVIC at the contact-patch station), the same
+    construction as the migration range in the delta table.
+    ``roll_centre_migration`` once mixed world-frame ball joints with
+    chassis-fixed pivots (an RC that barely moved, the legacy artefact); it is
+    chassis-framed since 2026-10-12 but is not what this plot draws.
     """
     fig = go.Figure()
     for axle in (vd.front, vd.rear):

@@ -1,6 +1,13 @@
 """Tests for vdcore.analysis.roll_centre -- FVIC and roll centre construction.
 
 Coordinate system: ISO 8855 -- X+ forward, Y+ LEFT, Z+ up.
+
+``front_view_instant_centre`` without ``tro`` is the projected arm-line
+cross-check (``projected_fvic``); ``roll_centre_height`` and
+``roll_centre_migration`` use the instant-axis FVIC. The corners here are
+planar (both ball joints and the patch at x = 0), where the two agree exactly,
+so these numbers did not move when the definition changed on 2026-10-12.
+The instant-axis method itself is tested in test_instant_axis_fvic.py.
 """
 
 from __future__ import annotations

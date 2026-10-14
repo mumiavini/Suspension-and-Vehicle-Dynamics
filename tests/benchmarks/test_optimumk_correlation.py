@@ -25,8 +25,16 @@ the one that needs validation most for the design work.
 
 RC is compared both at static and through the travel sweep.
 roll_centre_height() accepts solved joint positions, so the
-RC construction uses displaced UBJ/LBJ and contact patch at
-each travel point.
+RC construction uses displaced UBJ/LBJ/TRO and contact patch at
+each travel point. Since 2026-10-12 it is the force-based RC (Milliken
+RCVD Ch. 17, SAE J670): the FVIC is the upright's instantaneous
+front-view pole at the contact-patch station, not the intersection of
+the projected arm lines. The sweep passes each row's travel so the
+points are brought into the CHASSIS frame and the RC height is
+CHASSIS-referenced. If OptimumK's export turns out to be
+ground-referenced, the two differ by exactly the travel, and the
+comparison must convert -- settle that on the first real CSV rather than
+widening the tolerance.
 
 Sign conventions in the CSV must be ISO 8855 (this project's native):
   - Negative camber = top inboard
@@ -345,7 +353,10 @@ class TestOptimumKSweep:
             rl = solver_l.solve(wheel_travel_mm=wt)
             rr = solver_r.solve(wheel_travel_mm=wt)
             assert rl.converged and rr.converged, f"Solver failed at wt={wt}"
-            rc = roll_centre_height(axle, left_result=rl, right_result=rr)
+            rc = roll_centre_height(
+                axle, left_result=rl, right_result=rr,
+                left_travel_mm=wt, right_travel_mm=wt,
+            )
             err = abs(rc.rc_height_mm - row["rc_height_mm"])
             assert err < _RC_TOL_MM, (
                 f"RC at wt={wt:.1f}mm: "
@@ -372,7 +383,10 @@ class TestOptimumKSweep:
             errs["toe"] = max(errs["toe"], abs(rl.toe_deg_per_side - _toe_per_side(row, toe_col)))
             errs["caster"] = max(errs["caster"], abs(rl.caster_deg - row["caster_deg"]))
             errs["kpi"] = max(errs["kpi"], abs(rl.kpi_deg - row["kpi_deg"]))
-            rc = roll_centre_height(axle, left_result=rl, right_result=rr)
+            rc = roll_centre_height(
+                axle, left_result=rl, right_result=rr,
+                left_travel_mm=wt, right_travel_mm=wt,
+            )
             errs["rc"] = max(errs["rc"], abs(rc.rc_height_mm - row["rc_height_mm"]))
         for k, v in errs.items():
             tol = _RC_TOL_MM if k == "rc" else _ANGLE_TOL_DEG

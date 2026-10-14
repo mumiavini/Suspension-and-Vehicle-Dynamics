@@ -330,15 +330,22 @@ class TestAxleRates:
         the arm line, so the ride-height rate is set by the same FVIC. What
         moved is RC migration, -0.3914 -> -0.3106 mm/mm, a ~20 % improvement
         that falls out of the shorter upper arm. It was not a target.
+
+        Re-anchored 2026-10-12, no geometry change: the FVIC is now the
+        instant-axis one at the patch station (vdcore.analysis.roll_centre).
+        The projected arm lines sat at UBJ x = -12.3 and LBJ x = +10.1 while
+        the front-view pole moves -0.258 mm in Y per mm of X, so migration
+        -0.3106 -> -0.1999 and the RC range 27.90..43.44 -> 30.67..40.70;
+        an independent finite-difference screw-axis RC gives the same values.
         """
         r = axle_rates(front_axle)
         assert r.camber_gain_deg_per_mm == pytest.approx(-0.0386, abs=0.0005)
-        assert r.rc_migration_mm_per_mm == pytest.approx(-0.3106, abs=0.005)
+        assert r.rc_migration_mm_per_mm == pytest.approx(-0.1999, abs=0.005)
         assert r.half_track_change_mm_per_mm == pytest.approx(0.0574, abs=0.0005)
         assert r.camber_full_bump_deg == pytest.approx(-2.5155, abs=0.01)
         assert r.camber_full_droop_deg == pytest.approx(-0.5795, abs=0.01)
-        assert r.rc_min_mm == pytest.approx(27.90, abs=0.2)
-        assert r.rc_max_mm == pytest.approx(43.44, abs=0.2)
+        assert r.rc_min_mm == pytest.approx(30.67, abs=0.2)
+        assert r.rc_max_mm == pytest.approx(40.70, abs=0.2)
 
     def test_rear_rates(self, rear_axle: Axle) -> None:
         """Re-anchored 2026-09-01 (UCA pickup to y=210, pickups swept forward).
@@ -346,6 +353,10 @@ class TestAxleRates:
         Camber gain is unchanged to four decimals -- the rear rake is still
         zero and the pickup only slid along its arm line. RC migration
         improves -0.4239 -> -0.3380 mm/mm for the same reason as the front.
+
+        The 2026-10-12 switch to the instant-axis FVIC left every rear value
+        unchanged: no caster, so both ball joints and the patch share
+        x = -1540 and the projected construction was already exact there.
         """
         r = axle_rates(rear_axle)
         assert r.camber_gain_deg_per_mm == pytest.approx(-0.0411, abs=0.0005)
@@ -424,8 +435,11 @@ class TestAxleRoll:
         s = axle_roll(front_axle, 1.5)
         assert s.outer_camber_deg == pytest.approx(-0.648, abs=0.01)
         assert s.inner_camber_deg == pytest.approx(-2.392, abs=0.01)
-        assert s.rc_height_mm == pytest.approx(34.86, abs=0.1)
-        assert s.rc_lateral_mm == pytest.approx(-86.90, abs=1.0)
+        # 2026-10-12: instant-axis FVIC at the patch station (was the projected
+        # arm-line intersection): 34.86 / -86.90 -> 35.21 / -55.76 mm, matching
+        # an independent finite-difference screw-axis RC at the same travel.
+        assert s.rc_height_mm == pytest.approx(35.21, abs=0.1)
+        assert s.rc_lateral_mm == pytest.approx(-55.76, abs=1.0)
         assert s.wheel_travel_mm == pytest.approx(16.229, abs=0.01)
 
     def test_rear_roll(self, rear_axle: Axle) -> None:
@@ -442,17 +456,20 @@ class TestAxleRoll:
         assert -2.5 <= s.outer_camber_deg <= 0.0
 
     def test_roll_centre_migrates_far_sideways(self, front_axle: Axle) -> None:
-        """~58 mm per degree of roll. The legacy app reported ~1 mm TOTAL,
+        """~37 mm per degree of roll. The legacy app reported ~1 mm TOTAL,
         because it averaged the two sides and the lateral terms cancelled.
 
         Threshold lowered from 90 to 70 mm on 2026-09-01: the shorter upper
-        arm cut lateral migration from 111.5 to 86.9 mm at 1.5 deg. The guard
-        is against the legacy app's order-of-magnitude error, not against a
-        design target, so the bound tracks the geometry rather than pinning
-        it -- the exact value is asserted in test_front_roll.
+        arm cut lateral migration from 111.5 to 86.9 mm at 1.5 deg. Lowered
+        again to 40 mm on 2026-10-12, with no geometry change: the instant-axis
+        FVIC at the patch station puts it at 55.8 mm (the projected arm lines,
+        taken at two different X stations on a castered upright, overstated
+        it). The guard is against the legacy app's order-of-magnitude error,
+        not against a design target, so the bound tracks the geometry rather
+        than pinning it -- the exact value is asserted in test_front_roll.
         """
         s = axle_roll(front_axle, 1.5)
-        assert abs(s.rc_lateral_mm) > 70.0
+        assert abs(s.rc_lateral_mm) > 40.0
 
 
 @pytest.fixture(scope="module")

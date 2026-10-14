@@ -127,8 +127,8 @@ def export_for_optimumk(corner: Corner) -> str:
     lines.append(f"# Optimum Kinematics hardpoints -- corner {corner.corner_id}")
     lines.append(f"# Frame: OptimumK (X+ forward, Y+ RIGHT, Z+ up)")
     lines.append(f"# Converted from ISO 8855 (Y negated)")
-    lines.append(f"# Static camber: {corner.static_camber_deg:.1f} deg")
-    lines.append(f"# Static toe (per side): {corner.static_toe_deg_per_side:.1f} deg")
+    lines.append(f"# Static camber: {corner.static_camber_deg:.3f} deg")
+    lines.append(f"# Static toe (per side): {corner.static_toe_deg_per_side:.3f} deg")
     lines.append(f"# Tire loaded radius: {corner.tire.loaded_radius_mm:.1f} mm")
     lines.append(f"#")
     lines.append(f"# {'Point':<25s}  {'X':>10s}  {'Y':>10s}  {'Z':>10s}")
@@ -157,7 +157,10 @@ def print_static_values(fl: Corner, fr: Corner) -> None:
     scrub = float(r.contact_patch.y_mm - kp_ground[1])
     mech_trail = float(kp_ground[0] - r.contact_patch.x_mm)
 
-    fvic = front_view_instant_centre(fl, ubj=r.ubj, lbj=r.lbj, contact_patch=r.contact_patch)
+    # Instant-axis FVIC at the patch station, the same one roll_centre_height uses.
+    fvic = front_view_instant_centre(
+        fl, ubj=r.ubj, lbj=r.lbj, contact_patch=r.contact_patch, tro=r.tro
+    )
     axle = Axle(left=fl, right=fr)
     rr = DWSolver(fr).solve()
     assert rr.converged

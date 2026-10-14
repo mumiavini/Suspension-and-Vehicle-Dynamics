@@ -564,7 +564,9 @@ def _side_view_anti(inp: AxleInputs, veh: VehicleData, is_front: bool,
         svic = np.array([x, z])
         dx = x - inp.axle_x_mm
         if abs(dx) < 1e-9:
-            return svic, 0.0
+            # SVIC directly above the contact patch: tan(theta) is infinite and
+            # the anti percentage is undefined -- not zero.
+            return svic, float("nan")
         tan_theta = z / dx
 
     # theta is measured at the contact patch. The rear axle looks the other way

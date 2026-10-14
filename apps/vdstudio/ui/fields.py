@@ -1,0 +1,366 @@
+"""Editor field specifications for the design inputs (one place, reused by pages).
+
+Synthesis inputs live in the scripts' DESIGN frame: y OUTBOARD, z UP, x
+REARWARD of the front axle. Hardpoint tables are ISO 8855. Tooltips say which.
+"""
+
+from __future__ import annotations
+
+from ..engine.project import SOURCES
+from .widgets import Field
+
+DI = " (design_intent)"
+
+
+def vehicle_fields() -> list[tuple[str, list[Field]]]:
+    v = "vehicle."
+    return [
+        ("Mass & CG" + DI, [
+            Field(v + "total_mass_kg", "Total mass (with driver)", "kg", 50, 1000, 1, 1),
+            Field(v + "unsprung_mass_kg", "Unsprung mass (4 corners)", "kg", 0, 200, 0.5, 1),
+            Field(v + "cg_height_mm", "CG height", "mm", 50, 1000, 5, 1),
+            Field(v + "wheelbase_mm", "Wheelbase", "mm", 1000, 3500, 5, 1,
+                  tip="Authoritative in synthesis: the rear axle sits at the front axle station "
+                      "+ this wheelbase (the CG station is kept, so the weight distribution "
+                      "follows). In hardpoint mode the wheelbase is read from the points."),
+            Field(v + "cg_from_front_axle_mm", "CG behind front axle", "mm", 0, 3000, 5, 1,
+                  tip="Sets the weight distribution: front fraction = 1 - x/L."),
+        ]),
+        ("Roll budget targets" + DI, [
+            Field(v + "target_roll_gradient_deg_per_g", "Target roll gradient", "deg/g", 0.1,
+                  5, 0.05, 2),
+            Field(v + "chassis_factor_min", "Chassis torsion factor (min)", "×", 1, 20, 0.5, 1),
+            Field(v + "chassis_factor_target", "Chassis torsion factor (target)", "×", 1, 20,
+                  0.5, 1),
+            Field(v + "tilt_test_angle_deg", "Tilt-test angle", "deg", 30, 80, 1, 0),
+        ]),
+        ("Provenance of non-point inputs", [
+            Field("mass_source", "Mass / CG provenance", kind="choice", choices=SOURCES,
+                  tip="Set to 'estimate' automatically when the subsystem CG estimate is "
+                      "applied. Counted in the status bar's estimate-tagged inputs."),
+            Field("tire_source", "Tyre loaded radius provenance (synthesis)", kind="choice",
+                  choices=SOURCES,
+                  tip="An estimate until TTC data exists. Hardpoint mode has its own field "
+                      "per axle on the Hardpoints page."),
+        ]),
+        ("Load-case assumptions (tyre: no TTC data)", [
+            Field(v + "brake_bias_front", "Brake bias front", "-", 0, 1, 0.01, 2),
+            Field(v + "lltd_front", "LLTD front share", "-", 0, 1, 0.01, 2,
+                  tip="Front share of total lateral load transfer used by the load cases."),
+            Field(v + "mu_lateral", "Lateral μ", "-", 0.1, 3, 0.05, 2),
+            Field(v + "mu_longitudinal", "Longitudinal μ", "-", 0.1, 3, 0.05, 2),
+            Field(v + "design_ay_g", "Design lateral acceleration", "g", 0.1, 4, 0.05, 2),
+        ]),
+    ]
+
+
+def axle_fields(axle: str) -> list[tuple[str, list[Field]]]:
+    a = axle + "."
+    dfr = "DESIGN frame: y outboard from the car centreline, z up from the ground."
+    return [
+        ("Wheel & tyre package", [
+            Field(a + "track_mm", "Track (contact patches)", "mm", 800, 2000, 5, 1,
+                  tip="Measured between contact patches: the rules / tilt-test datum."),
+            Field(a + "loaded_radius_mm", "Tyre loaded radius", "mm", 150, 400, 1, 1),
+            Field(a + "rim_diameter_in", "Rim diameter", "in", 8, 18, 1, 0),
+            Field(a + "static_camber_deg", "Static camber" + DI, "deg", -6, 3, 0.1, 2,
+                  tip="Built into the upright; negative = top inboard."),
+        ]),
+        ("Outboard: ball joints & kingpin", [
+            Field(a + "lbj_y_mm", "LBJ y (outboard)", "mm", 100, 1000, 1, 2, tip=dfr),
+            Field(a + "lbj_z_mm", "LBJ z", "mm", 20, 400, 1, 2, tip=dfr),
+            Field(a + "kpi_deg", "KPI" + DI, "deg", -5, 25, 0.25, 2),
+            Field(a + "kingpin_length_mm", "Kingpin length (front view)", "mm", 100, 450, 1, 2),
+        ]),
+        ("Front-view targets" + DI, [
+            Field(a + "rc_height_mm", "Roll centre height", "mm", -100, 300, 1, 1,
+                  tip="Places the FVIC: z_ic = h_rc · FVSA / (T/2)."),
+            Field(a + "fvsa_length_mm", "FVSA length", "mm", 200, 10000, 25, 0,
+                  tip="Places the FVIC: y_ic = T/2 - FVSA."),
+        ]),
+        ("Inboard: chassis pickup planes", [
+            Field(a + "inner_pickup_y_mm", "Shared pickup plane y", "mm", 0, 600, 1, 1, tip=dfr),
+            Field(a + "lca_inner_y_mm", "LCA plane override", "mm", 0, 600, 1, 1, "optfloat",
+                  tip="Unchecked: use the shared plane. Only the arm length changes."),
+            Field(a + "uca_inner_y_mm", "UCA plane override", "mm", 0, 600, 1, 1, "optfloat"),
+        ]),
+        ("Side view: layout & anti-geometry", [
+            Field(a + "axle_x_mm", "Axle station (rearward of front)", "mm", -100, 4000, 5, 1,
+                  tip="DESIGN frame: x positive REARWARD from the front axle." if axle == "front"
+                  else "Derived, read-only: front axle station + vehicle wheelbase (edit the "
+                       "wheelbase in the vehicle data). DESIGN frame: x positive REARWARD."),
+            Field(a + "lca_base_mm", "LCA base", "mm", 20, 800, 5, 1),
+            Field(a + "lca_sweep_mm", "LCA sweep", "mm", -500, 500, 5, 1),
+            Field(a + "uca_base_mm", "UCA base", "mm", 20, 800, 5, 1),
+            Field(a + "uca_sweep_mm", "UCA sweep", "mm", -500, 500, 5, 1),
+            Field(a + "dz_lca_mm", "LCA pivot-axis rise", "mm", -200, 200, 0.5, 3,
+                  tip="z(rear pickup) - z(front pickup). Inclines the axis: anti-geometry."),
+            Field(a + "dz_uca_mm", "UCA pivot-axis rise", "mm", -200, 200, 0.5, 3,
+                  tip="On the 2027 front a NEGATIVE value gives anti-dive."),
+        ]),
+        ("Sweep settings", [
+            Field(a + "travel_bump_mm", "Bump travel", "mm", 1, 100, 1, 1),
+            Field(a + "travel_droop_mm", "Droop travel", "mm", 1, 100, 1, 1),
+            Field(a + "roll_reference_deg", "Reference roll angle", "deg", 0.1, 6, 0.1, 2),
+        ]),
+    ]
+
+
+def axle_band_fields(axle: str) -> list[tuple[str, list[Field]]]:
+    a = axle + ".limits."
+    bands = [
+        ("rc_height_mm", "Roll centre height", "mm", 1, 1),
+        ("fvsa_length_mm", "FVSA length", "mm", 25, 0),
+        ("scrub_radius_mm", "Scrub radius", "mm", 1, 1),
+        ("kpi_deg", "KPI", "deg", 0.5, 1),
+        ("kingpin_length_mm", "Kingpin length", "mm", 5, 0),
+        ("lca_length_mm", "Wishbone leg length", "mm", 5, 0),
+        ("uca_lca_ratio", "UCA / LCA ratio", "-", 0.01, 2),
+        ("camber_gain_deg_per_mm", "|Camber gain|", "deg/mm", 0.001, 4),
+        ("anti_percent", "Anti-dive / anti-squat", "%", 1, 1),
+        ("outer_camber_in_roll_deg", "Outer camber in roll", "deg", 0.1, 2),
+    ]
+    rows: list[Field] = []
+    for key, lab, unit, step, dec in bands:
+        rows.append(Field(a + key + ".0", lab + " — min", unit, -1e5, 1e5, step, dec))
+        rows.append(Field(a + key + ".1", lab + " — max", unit, -1e5, 1e5, step, dec))
+    rows.append(Field(a + "ea_ratio_max", "Sweep e/a — max", "-", 0, 10, 0.1, 2))
+    rows.append(Field(a + "ball_joint_clearance_mm", "Ball-joint clearance to rim", "mm", 0, 100,
+                      1, 1))
+    return [(f"{axle.title()} design-intent bands (information, not targets)", rows)]
+
+
+def steering_fields() -> list[tuple[str, list[Field]]]:
+    s = "steering."
+    dfr = "DESIGN frame: x rearward, y outboard, z up."
+    return [
+        ("Kingpin in side view" + DI, [
+            Field(s + "caster_deg", "Caster", "deg", -5, 15, 0.25, 2),
+            Field(s + "caster_offset_mm", "Caster offset (axis shift)", "mm", -80, 80, 1, 1,
+                  tip="Translates the kingpin fore-aft: trail without changing caster."),
+        ]),
+        ("Steering arm" + DI, [
+            Field(s + "tro_height_along_kingpin_mm", "Height along kingpin from LBJ", "mm", -100,
+                  300, 1, 2),
+            Field(s + "steer_arm_length_mm", "Arm length", "mm", 20, 200, 1, 2),
+            Field(s + "steer_arm_angle_deg", "Arm angle", "deg", -60, 60, 0.5, 2,
+                  tip="Rotation of the arm about the kingpin from straight ahead; sets "
+                      "Ackermann."),
+        ]),
+        ("Rack (lateral, horizontal)" + DI, [
+            Field(s + "rack_x_mm", "Rack x (rearward)", "mm", -300, 300, 1, 2, tip=dfr),
+            Field(s + "rack_z_mm", "Rack z", "mm", 0, 400, 0.5, 4,
+                  tip="Main bump-steer knob."),
+            Field(s + "rack_half_length_mm", "Rack half length (inner joint y)", "mm", 50, 500, 1,
+                  2, tip=dfr),
+        ]),
+        ("Rack hardware & driver", [
+            Field(s + "pinion_radius_mm", "Pinion radius", "mm", 5, 50, 0.5, 2),
+            Field(s + "max_rack_travel_mm", "Max rack travel (half stroke)", "mm", 5, 100, 1, 1),
+            Field(s + "steering_wheel_diameter_mm", "Steering wheel diameter", "mm", 150, 400, 5,
+                  0),
+            Field(s + "mu_parking", "Parking μ (tyre assumption)", "-", 0.1, 3, 0.05, 2),
+        ]),
+        ("Alignment & references", [
+            Field(s + "static_toe_deg_per_side", "Static toe per side (+ in)" + DI, "deg", -3, 3,
+                  0.05, 3),
+            Field(s + "ackermann_at_steer_deg", "Ackermann reference outer angle", "deg", 1, 40,
+                  1, 1),
+        ]),
+    ]
+
+
+def steering_band_fields() -> list[tuple[str, list[Field]]]:
+    s = "steering.limits."
+    rows: list[Field] = []
+    for key, lab, unit, step, dec in (
+            ("bump_steer_deg_per_mm", "|Bump steer|", "deg/mm", 0.0005, 4),
+            ("ackermann_pct", "Ackermann", "%", 5, 0),
+            ("steering_ratio", "Steering ratio", ":1", 0.1, 1),
+            ("tie_rod_length_mm", "Tie rod length", "mm", 5, 0),
+            ("mechanical_trail_mm", "Mechanical trail", "mm", 1, 0),
+            ("rack_x_window_mm", "Rack x window", "mm", 5, 0),
+            ("rack_z_window_mm", "Rack z window", "mm", 5, 0)):
+        rows.append(Field(s + key + ".0", lab + " — min", unit, -1e5, 1e5, step, dec))
+        rows.append(Field(s + key + ".1", lab + " — max", unit, -1e5, 1e5, step, dec))
+    rows.append(Field(s + "rod_end_misalignment_deg", "Tie-rod swing — max", "deg", 0, 60, 1, 1))
+    rows.append(Field(s + "steering_wheel_torque_Nm", "Steering-wheel torque — max", "N·m", 0, 50,
+                      0.5, 1))
+    return [("Steering design-intent bands (information, not targets)", rows)]
+
+
+def layout_fields(axle: str) -> list[tuple[str, list[Field]]]:
+    """Brake / drive layout: where the torque reacts sets the anti-geometry reference point."""
+    ref = (" Inboard: the torque reacts on the chassis, so the anti line runs from the WHEEL "
+           "CENTRE to the side-view IC. Outboard: it reacts on the upright, so the line runs "
+           "from the CONTACT PATCH. Source: design_intent.")
+    lay = "layout."
+    if axle == "front":
+        rows = [Field(lay + "front_brakes_inboard", "Front brakes inboard", kind="bool",
+                      tip="Sets the anti-dive reference point." + ref)]
+    else:
+        rows = [Field(lay + "rear_drive_inboard", "Drive inboard (chassis diff + driveshafts)",
+                      kind="bool", tip="Sets the anti-squat reference point. The 2027 car has "
+                                       "a chassis-mounted diff with driveshafts." + ref),
+                Field(lay + "rear_brakes_inboard", "Rear brakes inboard", kind="bool",
+                      tip="Sets the anti-lift (braking) reference point." + ref)]
+    return [("Anti-geometry reference: brake / drive layout" + DI, rows)]
+
+
+def tilt_fields() -> list[tuple[str, list[Field]]]:
+    """The project inputs the tilt-table page reads (shared with Concept & targets)."""
+    v = "vehicle."
+    return [("Car and test (saved in the project)", [
+        Field(v + "tilt_test_angle_deg", "Table angle (rules: 60°)", "deg", 30, 80, 1, 0),
+        Field(v + "cg_height_mm", "CG height (with driver)", "mm", 50, 1000, 5, 1,
+              tip="The test is run with the tallest driver seated: use that CG."),
+        Field(v + "total_mass_kg", "Total mass (with driver)", "kg", 50, 1000, 1, 1),
+        Field(v + "target_roll_gradient_deg_per_g", "Roll gradient (design_intent)", "deg/g",
+              0.0, 5, 0.05, 2),
+        Field("mass_source", "Mass / CG provenance", kind="choice", choices=SOURCES),
+    ])]
+
+
+def damper_spring_fields() -> list[tuple[str, list[Field]]]:
+    """The team's damper and springs (saved in the project)."""
+    d, k = "damper.", "springs."
+    return [
+        ("Damper (one model, all corners)", [
+            Field(d + "eye_to_eye_extended_mm", "Eye to eye, fully extended", "mm", 100, 500, 1,
+                  1, tip="Centre to centre of the eye bearings, damper fully extended."),
+            Field(d + "stroke_mm", "Stroke", "mm", 10, 150, 0.5, 1,
+                  tip="Exposed shaft length with the damper fully extended. Measure it: "
+                      "everything about damper travel depends on it."),
+            Field(d + "bump_rubber_mm", "Bump rubber (compressed)", "mm", 0, 40, 0.5, 1,
+                  tip="Thickness the bump rubber keeps when fully squeezed; eats into the "
+                      "stroke."),
+            Field(d + "bolt_mm", "Eye bolt", "mm", 4, 20, 0.5, 1),
+            Field(d + "bearing_od_mm", "Eye bearing OD", "mm", 10, 80, 0.5, 1),
+            Field(d + "length_source", "Length provenance", kind="choice", choices=SOURCES),
+            Field(d + "stroke_source", "Stroke provenance", kind="choice", choices=SOURCES),
+        ]),
+        ("Springs (rating as marked, lb/in)", [
+            Field(k + "front_lb_in", "Fitted front", "lb/in", 10, 2000, 10, 0),
+            Field(k + "rear_lb_in", "Fitted rear", "lb/in", 10, 2000, 10, 0),
+            Field(k + "roll_stiffness_front_share", "Roll stiffness front share "
+                  "(design_intent)", "-", 0, 1, 0.02, 2,
+                  tip="Target split of the TOTAL roll stiffness (springs + anti-roll bars). "
+                      "Sets how much bar each axle needs; also which wheel lifts first on "
+                      "the tilt table."),
+            Field(k + "source", "Provenance", kind="choice", choices=SOURCES),
+        ]),
+    ]
+
+
+def rocker_fields(axle: str) -> list[tuple[str, list[Field]]]:
+    """One axle's rod + rocker + damper points (LEFT corner, chassis frame, ISO 8855)."""
+    r = f"rocker_{axle}."
+    tip = ("LEFT corner, chassis frame, ISO 8855 (X fwd, Y LEFT, Z up), mm, at ride height; "
+           "the right corner is the mirror.")
+
+    def xyz(key: str, label: str, t: str = "") -> list[Field]:
+        return [Field(f"{r}{key}.{i}", f"{label} {c}", "mm", -5000, 5000, 1, 1,
+                      tip=(t + " " if t else "") + tip)
+                for i, c in enumerate("XYZ")]
+
+    return [
+        ("Rod", [
+            Field(r + "enabled", "Rocker drawn", kind="bool"),
+            Field(r + "rod_type", "Rod", kind="choice", choices=("pushrod", "pullrod")),
+            Field(r + "mount_body", "Rod mounted on", kind="choice",
+                  choices=("lca", "uca", "upright")),
+            *xyz("rod_mount", "Outer end", "On the member chosen above."),
+            Field(r + "source", "Provenance", kind="choice", choices=SOURCES),
+        ]),
+        ("Rocker axis", [
+            *xyz("rocker_pivot", "Pivot", "A point on the rocker axis."),
+            *[Field(f"{r}rocker_axis.{i}", f"Axis {c}", "-", -1, 1, 0.01, 4,
+                    tip="Direction of the rocker's pivot axis (normalised). " + tip)
+              for i, c in enumerate("XYZ")],
+        ]),
+        ("Rocker pickups", [
+            *xyz("rocker_rod", "Rod pickup"),
+            *xyz("rocker_damper", "Damper pickup"),
+        ]),
+        ("Damper chassis end", xyz("damper_chassis", "End")),
+    ]
+
+
+def turning_envelope_fields() -> list[tuple[str, list[Field]]]:
+    """What lies outboard of the outer front patch, for the FSAE hairpin check."""
+    e = "turning_envelope."
+    return [("Outermost point for the hairpin check (estimate)", [
+        Field(e + "tyre_section_width_mm", "Front tyre section width", "mm", 50, 400, 5, 0,
+              tip="The outer front tyre's plan-view outline: half this width outboard of the "
+                  "patch centre along the axle, the loaded radius ahead and behind."),
+        Field(e + "body_outboard_of_patch_mm", "Body point outboard of the patch", "mm",
+              -500, 500, 5, 0,
+              tip="A body-fixed point (front wing endplate, bodywork), lateral offset from the "
+                  "outer front contact-patch centre, + = further out. 0 and 0 = no body point "
+                  "beyond the patch."),
+        Field(e + "body_ahead_of_front_axle_mm", "Body point ahead of the front axle", "mm",
+              -2000, 2000, 10, 0, tip="Longitudinal offset of that point, + = forward."),
+        Field(e + "source", "Provenance", kind="choice", choices=SOURCES),
+    ])]
+
+
+def rod_end_bolt_fields() -> list[tuple[str, list[Field]]]:
+    """Bolt axis of each tie-rod / toe-link rod end (direction only; estimate by default)."""
+    tip = ("Direction of the rod end's bolt (normalised), ISO 8855 (X fwd, Y LEFT, Z up), "
+           "LEFT corner; the right one is mirrored. Inner: fixed to the chassis. Outer: fixed "
+           "to the upright, given at ride height. Misalignment = asin(|rod · bolt|): rotation "
+           "about the bolt and about the rod's own axis is free.")
+    out = []
+    for key, title in (("front_inner", "Front tie rod, inner"),
+                       ("front_outer", "Front tie rod, outer (upright)"),
+                       ("rear_inner", "Rear toe link, inner"),
+                       ("rear_outer", "Rear toe link, outer (upright)")):
+        b = f"rod_end_bolts.{key}."
+        out.append((title + " bolt axis", [
+            Field(b + str(i), f"{ax} component", "-", -1, 1, 0.05, 3, tip=tip)
+            for i, ax in enumerate("XYZ")]))
+    out.append(("Provenance", [Field("rod_end_bolts.source", "Bolt axes provenance",
+                                     kind="choice", choices=SOURCES,
+                                     tip="Default vertical bolts are an estimate until the "
+                                         "brackets are drawn.")]))
+    return out
+
+
+def pushrod_fields() -> list[tuple[str, list[Field]]]:
+    """Pushrod line per axle for the link-force equilibrium (estimate: no rocker drawn yet)."""
+    tip = ("Offset from the LEFT lower ball joint, ISO 8855 (X fwd, Y LEFT, Z up); the right "
+           "corner is mirrored. The pushrod acts on the upright through its outboard point "
+           "(for an arm-mounted pushrod near the LBJ this is the usual approximation). "
+           "Source: estimate until the spring/damper package is drawn.")
+    out = []
+    for axle in ("front", "rear"):
+        b = f"pushrod_{axle}."
+        out.append((f"{axle.title()} pushrod (estimate)", [
+            Field(b + "inboard_from_lbj_mm.0", "Inboard end dx", "mm", -400, 400, 5, 1, tip=tip),
+            Field(b + "inboard_from_lbj_mm.1", "Inboard end dy", "mm", -600, 600, 5, 1, tip=tip),
+            Field(b + "inboard_from_lbj_mm.2", "Inboard end dz", "mm", -600, 600, 5, 1, tip=tip),
+            Field(b + "outboard_from_lbj_mm.1", "Outboard end dy", "mm", -200, 200, 5, 1,
+                  tip=tip),
+            Field(b + "outboard_from_lbj_mm.2", "Outboard end dz", "mm", -200, 200, 5, 1,
+                  tip=tip),
+        ]))
+    return out
+
+
+def toe_link_fields() -> list[tuple[str, list[Field]]]:
+    rows: list[Field] = []
+    for end, lab in (("inboard", "Inboard (chassis)"), ("outboard", "Outboard (upright)")):
+        for i, ax in enumerate("XYZ"):
+            rows.append(Field(f"rear_toe_link_{end}.{i}", f"{lab} {ax}", "mm", -5000, 5000, 1, 3,
+                              tip="ISO 8855, LEFT side (mirrored to the right). X is entered "
+                                  "for the declared rear axle station below and moves with the "
+                                  "axle; absolute Y/Z: retune after changing rear track, LBJ or "
+                                  "pickup planes. Z inboard is the rear bump-steer knob."))
+    rows.append(Field("rear_toe_link_axle_x_mm", "Declared at rear axle station", "mm", -100,
+                      4000, 5, 1,
+                      tip="DESIGN frame (x rearward). The rear axle station the X values above "
+                          "were entered against; synthesis shifts both X values by the "
+                          "difference to the current rear axle station."))
+    rows.append(Field("rear_static_toe_deg_per_side", "Rear static toe per side (+ in)" + DI,
+                      "deg", -3, 3, 0.05, 3))
+    return [("Rear toe link (declared design input, ISO 8855 left side)", rows)]

@@ -74,6 +74,10 @@ owns the tie rod that closes the sixth DOF.
 
 - `sla_geometry.py` — static synthesis only: hardpoints, static KPIs, checks,
   anti-geometry, leg forces. No sweeps. It cannot build a complete corner.
+  Its leg forces close the system with a two-force UCA (no tie rod, no
+  pushrod), which cannot react a longitudinal force. The full six-link upright
+  equilibrium (4 legs + tie rod + pushrod) is
+  `vdcore.analysis.upright_loads`, used by VD Studio's maneuver page.
 - `steering_geometry.py` — caster, tie rod, rack, bump steer, Ackermann, effort.
   Supersedes sla's zero-caster outboard ball joints.
 - `legacy_app/` — the 📊 Analysis tab (the old "Analysis" and
@@ -97,6 +101,13 @@ owns the tie rod that closes the sixth DOF.
   drop-in replacement yet: `DWSolver` is too slow per-solve for the same cost
   function.
 
+- `apps/vdstudio/` — the VD Studio desktop app. `engine/` is Qt-free and runs
+  the same chain as `scripts/geometry_summary.py` (the default project
+  reproduces the merged 2027 CSV exactly — pinned in `tests/app`); every KPI
+  is computed on `DWSolver` / `vdcore.analysis` or the script that owns it,
+  with its source and band attached. `ui/` is presentation only. It never
+  recommends a value: bands are information, targets are query arguments.
+
 Track is measured at the **contact patches**. `loaded_radius_mm` is the vertical
 wheel-centre-to-road distance, so patches sit at z=0 and negative camber moves
 them OUTBOARD (widening ground track, increasing scrub). Static camber is built
@@ -104,6 +115,14 @@ into the upright, so ball joints, KPI and kingpin length are unaffected.
 
 Rate and roll Z values are **chassis-referenced**. Ground-referenced RC
 migration differs by exactly 1 mm per mm of travel — always state which.
+
+The front-view IC (and so RC height, FVSA, RC migration and RC in roll) is the
+upright's **3D instant axis** at the contact-patch station
+(`vdcore.analysis.roll_centre.instant_axis_fvic`, the force-based roll
+centre), solved analytically from the positions. The projected arm-line
+construction (`projected_fvic`) is a cross-check only: with caster the ball
+joints sit at different X and it overstated the 2027 front RC migration by
+~55 %.
 
 ## Numerical conventions
 
@@ -129,6 +148,9 @@ uv run mypy vdcore/
 # Purity check
 python scripts/check_purity.py
 
+# Run the VD Studio desktop app
+uv run --extra desktop python -m apps.vdstudio
+
 # Run the Streamlit app (existing, uses .venv)
 & .venv\Scripts\streamlit.exe run app.py
 ```
@@ -144,6 +166,9 @@ vdcore/                     # PURE LIBRARY — zero UI imports
   optimize/                 # differential_evolution wrappers
   io/                       # config load/save, frame transforms, CSV/JSON export
   validate/                 # cross-checks vs Optimum Kinematics, benchmark cases
+apps/vdstudio/              # VD Studio desktop app (PySide6/pyqtgraph). apps/ may import UI libs
+  engine/                   #   Qt-free: project, geometry, kpis, curves, pose, whatif, telemetry, exports
+  ui/                       #   pages, widgets, 3D/2D views, controller (background workers)
 legacy_app/                 # FROZEN — original Streamlit app. Dynamic KPIs are WRONG, see below
   geometry/                 #   primitives, 2D/3D solvers, model
   analysis/                 #   io, KPIs, optimizer, sweeps, viz3d

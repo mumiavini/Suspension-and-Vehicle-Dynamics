@@ -42,7 +42,8 @@ you can see whether that is there.
 
 Frame: ``--frame`` states the frame the *CAD* is in, and the coordinates are
 transformed back to ISO 8855 for the CSV -- so a model built with
-``--frame sw_fsae`` must be read back with ``--frame sw_fsae``. Reading it as
+``--frame sw_fsae`` must be read back with ``--frame sw_fsae`` (and one built
+with ``--forward/--left/--origin`` with the same three). Reading it as
 ``iso`` yields a mirrored car with no error, which is exactly the kind of
 silent sign bug this repo keeps getting bitten by.
 """
@@ -68,7 +69,11 @@ from export_solidworks_skeleton import (  # noqa: E402
     POINT_NAMES,
     REPO,
     SKETCH_PREFIX,
+    Frame,
     _prop,
+    add_placement_args,
+    frame_from_args,
+    resolve_frame,
 )
 
 DEFAULT_OUT = REPO / "Geometry Summary" / "hardpoints_solidworks.csv"
@@ -225,10 +230,14 @@ def _sketch_to_model(sketch):
         return lambda p: p
 
     def to_model(point: Vec) -> Vec:
-        # Inverse of p_sketch = scale * R @ p_model + T, with R orthonormal.
+        # IMathTransform works on ROW vectors: p_sketch = scale * p_model @ R + T.
+        # The inverse is p_model = (p_sketch - T) @ R.T / scale, i.e. R @ shifted.
+        # (Applying R.T instead mirrors every sketch on a plane rotated about a
+        # non-symmetric axis -- a 2D sketch on a plane parallel to the Top plane
+        # came back with Y and Z negated. 3D sketches have the identity.)
         shifted = [(point[i] - translation[i]) / scale for i in range(3)]
         return tuple(  # type: ignore[return-value]
-            sum(rotation[r][c] * shifted[r] for r in range(3)) for c in range(3)
+            sum(rotation[r][c] * shifted[c] for c in range(3)) for r in range(3)
         )
 
     return to_model
@@ -420,7 +429,7 @@ def _name_corner(nodes: list[Vec], group: list[int], edges: list[Edge]) -> dict[
     }
 
 
-def decode(segments: list[RawSegment], frame: str) -> dict[tuple[str, str], Vec]:
+def decode(segments: list[RawSegment], frame: str | Frame) -> dict[tuple[str, str], Vec]:
     """Turn raw CAD line segments into a named hardpoint table in ISO 8855."""
     if not segments:
         raise ValueError(
@@ -428,8 +437,13 @@ def decode(segments: list[RawSegment], frame: str) -> dict[tuple[str, str], Vec]
             "Run --survey to see what this model contains."
         )
 
-    inverse = _inverse_frame(FRAMES[frame])
-    iso = [(name, _apply(inverse, a), _apply(inverse, b)) for name, a, b in segments]
+    placed = resolve_frame(frame)
+    inverse = _inverse_frame(placed.matrix)
+
+    def to_iso(p: Vec) -> Vec:
+        return _apply(inverse, tuple(v - o for v, o in zip(p, placed.origin_mm, strict=True)))
+
+    iso = [(name, to_iso(a), to_iso(b)) for name, a, b in segments]
 
     nodes, edges = _weld(iso, WELD_TOL_MM)
     groups = _components(len(nodes), edges)
@@ -559,6 +573,7 @@ def main() -> int:
         "--frame", choices=sorted(FRAMES), default="iso",
         help="the frame the CAD model is in; output is always ISO 8855 (default: iso)",
     )
+    add_placement_args(parser)
     parser.add_argument(
         "--prefix", default=SKETCH_PREFIX,
         help=f"sketch name prefix to read (default: {SKETCH_PREFIX})",
@@ -586,6 +601,7 @@ def main() -> int:
     model = None
     app = None
     try:
+        frame = frame_from_args(args)
         app = _connect()
         model, opened_here = _open_document(app, args.file)
         print(f"Source document: {_prop(model, 'GetTitle')}")
@@ -596,7 +612,7 @@ def main() -> int:
 
         segments = read_segments(model, args.prefix)
         print(f"Read {len(segments)} line(s) from '{args.prefix}*' sketches.")
-        table = decode(segments, args.frame)
+        table = decode(segments, frame)
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -607,7 +623,7 @@ def main() -> int:
     summarise(table)
     write_csv(table, args.out)
     print(f"Wrote {args.out}")
-    print(f"Frame: CAD is {args.frame}; CSV is ISO 8855.")
+    print(f"Frame: CAD is {frame.label}; CSV is ISO 8855.")
 
     if args.compare is not None:
         try:

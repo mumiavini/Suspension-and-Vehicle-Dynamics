@@ -130,6 +130,13 @@ class DWSolver:
         )
         self._tr_len = float(np.linalg.norm(self._tri_0 - self._tro_0))
 
+        # Axial position of each ball joint along its own pivot axis, measured
+        # in the STATIC chassis. A rigid chassis motion carries the pivot points
+        # and the axis together, so this value is invariant and is the target
+        # for residuals 1 and 3.
+        self._ubj_axial = self._axial_position(self._uca_if_0, self._uca_ir_0, self._ubj_0)
+        self._lbj_axial = self._axial_position(self._lca_if_0, self._lca_ir_0, self._lbj_0)
+
         # Rigid-body inter-distances on the upright
         self._d_ubj_lbj = float(np.linalg.norm(self._ubj_0 - self._lbj_0))
         self._d_ubj_tro = float(np.linalg.norm(self._ubj_0 - self._tro_0))
@@ -161,6 +168,13 @@ class DWSolver:
         proj = np.dot(to_obp, axis_unit) * axis_unit
         perp = to_obp - proj
         return float(np.linalg.norm(perp))
+
+    @staticmethod
+    def _axial_position(inboard_front: Arr, inboard_rear: Arr, outboard: Arr) -> float:
+        """Projection of the outboard joint onto the pivot axis, from the front pivot."""
+        axis = inboard_rear - inboard_front
+        axis_unit = axis / np.linalg.norm(axis)
+        return float(np.dot(outboard - inboard_front, axis_unit))
 
     def _build_body_frame(
         self,
@@ -332,21 +346,17 @@ class DWSolver:
 
         # UCA: UBJ must be at the correct distance from the UCA axis
         r[0] = self._arm_length(uca_if, uca_ir, ubj) - self._uca_len
-        # Also constrain UBJ to lie in the plane swept by the UCA
-        # by requiring UBJ projected onto the axis is within bounds
-        uca_axis = uca_ir - uca_if
-        uca_axis_unit = uca_axis / np.linalg.norm(uca_axis)
-        ubj_proj = np.dot(ubj - uca_if, uca_axis_unit)
-        ubj_proj_0 = np.dot(self._ubj_0 - self._uca_if_0, uca_axis_unit)
-        r[1] = ubj_proj - ubj_proj_0
+        # Also keep UBJ in the plane the UCA sweeps: its axial position along
+        # the (moved) pivot axis must equal the static one. The target is the
+        # static projection onto the STATIC axis. Projecting the static points
+        # onto the moved axis instead (as this once did) is wrong under roll:
+        # a pivot axis with Y/Z components rotates with the chassis, and that
+        # shifted the ball joints by up to 0.8 mm at 3 deg on the 2027 front.
+        r[1] = self._axial_position(uca_if, uca_ir, ubj) - self._ubj_axial
 
         # LCA: LBJ must be at the correct distance from the LCA axis
         r[2] = self._arm_length(lca_if, lca_ir, lbj) - self._lca_len
-        lca_axis = lca_ir - lca_if
-        lca_axis_unit = lca_axis / np.linalg.norm(lca_axis)
-        lbj_proj = np.dot(lbj - lca_if, lca_axis_unit)
-        lbj_proj_0 = np.dot(self._lbj_0 - self._lca_if_0, lca_axis_unit)
-        r[3] = lbj_proj - lbj_proj_0
+        r[3] = self._axial_position(lca_if, lca_ir, lbj) - self._lbj_axial
 
         # Tie rod length
         r[4] = float(np.linalg.norm(tro - tri)) - self._tr_len
