@@ -1,0 +1,22 @@
+{
+  "concept_id": "C",
+  "name": "Pullrod, low rockers and coil-overs",
+  "front": {
+    "rod_type": "pullrod",
+    "mount_body": "uca",
+    "rod_mount": [-1.0, 509.0, 358.0],
+    "pivot": [195.0, 250.0, 140.0],
+    "damper_toward": [560.0, 175.0, 160.0],
+    "rod_arm_mm": 40,
+    "target_mr": 0.80
+  },
+  "rear": {
+    "rod_type": "pullrod",
+    "mount_body": "uca",
+    "rod_mount": [-1522.0, 497.0, 364.0],
+    "pivot": [-1360.0, 250.0, 175.0],
+    "damper_toward": [-1100.0, 230.0, 170.0],
+    "rod_arm_mm": 42,
+    "target_mr": 0.80
+  }
+}

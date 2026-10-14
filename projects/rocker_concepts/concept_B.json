@@ -1,0 +1,6 @@
+{
+ "concept_id": "B",
+ "name": "Pushrod, coil-overs transverse/V across the top",
+ "front": {"rod_type": "pushrod", "mount_body": "lca", "rod_mount": [8.0, 545.0, 145.0], "pivot": [37.9, 212.4, 560.9], "damper_toward": [294.7, -89.6, 507.5], "rod_arm_mm": 55.0, "target_mr": 0.80},
+ "rear":  {"rod_type": "pushrod", "mount_body": "lca", "rod_mount": [-1490.0, 495.0, 145.0], "pivot": [-1426.3, 240.4, 442.4], "damper_toward": [-1315.4, -142.4, 475.8], "rod_arm_mm": 55.0, "target_mr": 0.80}
+}
