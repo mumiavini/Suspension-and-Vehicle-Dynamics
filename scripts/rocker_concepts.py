@@ -154,6 +154,9 @@ THRESHOLDS = (
      "rocker / coil-over vs wishbones, tie rod / toe link (with steer)"),
     ("pivot_bracket_mm", None, "max", 60.0, "rocker pivot to nearest bodied tube"),
     ("damper_bracket_mm", None, "max", 60.0, "coil-over chassis end to nearest bodied tube"),
+    ("pivot_node_mm", None, "max", 60.0, "rocker pivot to the nearest frame node (3+ tubes)"),
+    ("damper_node_mm", None, "max", 60.0,
+     "coil-over chassis end to the nearest frame node (3+ tubes)"),
     ("rod_angle_max_deg", None, "max", 30.0, "rod transmission angle (to the end stops)"),
     ("damper_angle_max_deg", None, "max", 30.0,
      "coil-over transmission angle (to the end stops)"),
@@ -217,9 +220,32 @@ class AxleConcept:
     rod_arm_mm: float
     target_mr: float = 0.80
     damper_clock_deg: float = 0.0
+    # a point the coil-over's line must pass through (its chassis bracket, e.g. at a frame
+    # node): damper_toward is then iterated so that the line from the damper pickup goes
+    # through it; the chassis eye lands on that line at the ride length
+    damper_end: tuple[float, float, float] | None = None
 
 
 def make_spec(geo, project: Project, axle: str, c: AxleConcept) -> RockerSpec:
+    """Damper arm for the target MR, equal damper margins; with ``damper_end``, the
+    coil-over's line aimed through that point."""
+    if c.damper_end is None:
+        return _make_spec(geo, project, axle, c)
+    o, end = np.asarray(c.pivot, float), np.asarray(c.damper_end, float)
+    toward = np.asarray(c.damper_toward, float)
+    sp = None
+    for _ in range(12):
+        sp = _make_spec(geo, project, axle, replace(c, damper_toward=_t4(toward),
+                                                    damper_end=None))
+        new = o + (end - np.asarray(sp.rocker_damper, float))
+        if float(np.linalg.norm(_unit(new - o) - _unit(toward - o))) < 1e-5:
+            break
+        toward = new
+    assert sp is not None
+    return sp
+
+
+def _make_spec(geo, project: Project, axle: str, c: AxleConcept) -> RockerSpec:
     """Damper arm for the target MR (bisection on 10-200 mm), then equal damper margins."""
     cid = S.AXLE_CORNER[axle]
     corner = geo.corner(cid)
@@ -238,6 +264,8 @@ def make_spec(geo, project: Project, axle: str, c: AxleConcept) -> RockerSpec:
                          f"10-200 mm (MR {flo + c.target_mr:.3f} .. {fhi + c.target_mr:.3f}); "
                          "change the rod arm")
     for _ in range(60):
+        if hi - lo < 1e-6:
+            break
         mid = 0.5 * (lo + hi)
         fm = mr(mid, flip) - c.target_mr
         if flo * fm <= 0:
@@ -329,6 +357,79 @@ def frame_model(project: Project) -> tuple[list[Member], list[Box]]:
                 continue
         boxes.append(Box(name, lo, hi))
     return members, boxes
+
+
+# Welded joints of the frame. A bracket at a node loads the tubes at a joint; one at
+# mid-span bends a tube.
+NODE_MERGE_MM = 30.0       # tube ends this close are one welded cluster (about one tube OD)
+NODE_MIN_TUBE_MM = 50.0    # shorter bodied pieces (tabs, profile sketches) make no node
+NODE_CROSS_MM = 10.0       # two tubes' interiors this close cross at a welded node
+
+
+@dataclass(frozen=True)
+class Node:
+    """A frame node: where three or more bodied tube ends meet (a tube passing through
+    the joint, or a crossing, counts as two ends)."""
+
+    p: np.ndarray
+    tubes: tuple[str, ...]
+    valence: int
+
+
+def frame_nodes(members: list[Member]) -> list[Node]:
+    tubes = [m for m in members
+             if m.bodied and float(np.linalg.norm(m.b - m.a)) >= NODE_MIN_TUBE_MM]
+    ends = [(np.asarray(e, float), i) for i, m in enumerate(tubes) for e in (m.a, m.b)]
+    clusters: list[list[int]] = []
+    for k, (p, _i) in enumerate(ends):           # single-linkage clusters of tube ends
+        hit = [c for c in clusters
+               if any(float(np.linalg.norm(ends[j][0] - p)) < NODE_MERGE_MM for j in c)]
+        clusters = [c for c in clusters if c not in hit] + [[k] + [j for c in hit for j in c]]
+    nodes = []
+    for c in clusters:
+        centre = np.mean([ends[j][0] for j in c], axis=0)
+        inc = [ends[j][1] for j in c]
+        for i, m in enumerate(tubes):            # a tube passing through the joint
+            if i in inc:
+                continue
+            d, from_end = _foot(centre, m.a, m.b)
+            if d < 0.5 * NODE_MERGE_MM and from_end > NODE_MERGE_MM:
+                inc += [i, i]
+        if len(inc) >= 3:
+            nodes.append(Node(centre, tuple(sorted({tubes[i].name for i in inc})), len(inc)))
+    for i, m in enumerate(tubes):                # crossings (X braces)
+        for j in range(i + 1, len(tubes)):
+            n = tubes[j]
+            p, q = _closest(m.a, m.b, n.a, n.b)
+            if float(np.linalg.norm(p - q)) > NODE_CROSS_MM:
+                continue
+            c = 0.5 * (p + q)
+            if min(_foot(c, m.a, m.b)[1], _foot(c, n.a, n.b)[1]) <= NODE_MERGE_MM:
+                continue                         # at an end: a cluster above
+            if all(float(np.linalg.norm(x.p - c)) > NODE_MERGE_MM for x in nodes):
+                nodes.append(Node(c, tuple(sorted({m.name, n.name})), 4))
+    return nodes
+
+
+def _closest(p1, q1, p2, q2) -> tuple[np.ndarray, np.ndarray]:
+    """Closest points of two segments."""
+    p1, q1, p2, q2 = (np.asarray(v, float) for v in (p1, q1, p2, q2))
+    d1, d2, r = q1 - p1, q2 - p2, p1 - p2
+    a, e, f = d1 @ d1, d2 @ d2, d2 @ r
+    c, b = d1 @ r, d1 @ d2
+    den = a * e - b * b
+    s = float(np.clip((b * f - c * e) / den, 0, 1)) if den > 1e-12 else 0.0
+    t = (b * s + f) / e
+    if t < 0:
+        t, s = 0.0, float(np.clip(-c / a, 0, 1))
+    elif t > 1:
+        t, s = 1.0, float(np.clip((b - c) / a, 0, 1))
+    return p1 + s * d1, p2 + t * d2
+
+
+def nearest_node(ctx: Ctx, p) -> tuple[float, Node]:
+    p = np.asarray(p, float)
+    return min(((float(np.linalg.norm(n.p - p)), n) for n in ctx.nodes), key=lambda x: x[0])
 
 
 # --------------------------------------------------------------------------- #
@@ -486,6 +587,7 @@ class Ctx:
     boxes: list[Box]
     engine: list[Hull] = None  # type: ignore[assignment]
     engine_fit_mm: float = math.nan
+    nodes: list[Node] = None  # type: ignore[assignment]
 
     @property
     def tubes(self) -> list[tuple[str, np.ndarray, np.ndarray]]:
@@ -499,7 +601,7 @@ def load_ctx() -> Ctx:
     rc = {"front": st.value("front.rc_static"), "rear": st.value("rear.rc_static")}
     members, boxes = frame_model(p)
     engine, fit = engine_model(p)
-    return Ctx(p, g, rc, members, boxes, engine, fit)
+    return Ctx(p, g, rc, members, boxes, engine, fit, frame_nodes(members))
 
 
 def seg_seg(p1, q1, p2, q2) -> float:
@@ -793,6 +895,12 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                                f"from its nearer end"
                                + (f"; {b['closer_sketch_only']}" if "closer_sketch_only" in b
                                   else ""))
+    for key, p in (("pivot_node", pivot), ("damper_node", dc)):
+        (dl, nl), (dr, nr) = nearest_node(ctx, p), nearest_node(ctx, mirror(p))
+        d, n, side = (dl, nl, "L") if dl >= dr else (dr, nr, "R")
+        out[key + "_mm"] = d
+        out[key + "_where"] = (f"node {_pt(n.p, '.0f')} ({side}), {n.valence} tube ends: "
+                               f"{', '.join(n.tubes)}")
 
     # ---- angles over the physical range
     out["rod_angle_max_deg"] = float(sw.rod_angle_deg.max())
@@ -917,10 +1025,12 @@ def specs_for(ctx: Ctx, concept: dict) -> dict[str, RockerSpec]:
         if "spec" in c:                       # a fully specified rocker
             out[ax] = RockerSpec(**{**c["spec"], "enabled": True})
             continue
+        end = c.get("damper_end")
         ac = AxleConcept(c["rod_type"], c["mount_body"], tuple(c["rod_mount"]),
-                         tuple(c["pivot"]), tuple(c["damper_toward"]),
+                         tuple(c["pivot"]), tuple(c.get("damper_toward", end)),
                          float(c["rod_arm_mm"]), float(c.get("target_mr", 0.80)),
-                         float(c.get("damper_clock_deg", 0.0)))
+                         float(c.get("damper_clock_deg", 0.0)),
+                         None if end is None else tuple(end))
         out[ax] = make_spec(ctx.geo, ctx.project, ax, ac)
     return out
 
@@ -1067,6 +1177,9 @@ ROWS = (  # (label, key, format)
     ("Gap: linkage vs solid bodies' bounding boxes [mm]", "gap_solid_bodies", ".1f"),
     ("Rocker pivot to nearest bodied tube [mm]", "pivot_bracket_mm", ".1f"),
     ("Coil-over chassis end to nearest bodied tube [mm]", "damper_bracket_mm", ".1f"),
+    ("Rocker pivot to the nearest frame node (3+ tubes) [mm]", "pivot_node_mm", ".1f"),
+    ("Coil-over chassis end to the nearest frame node (3+ tubes) [mm]", "damper_node_mm",
+     ".1f"),
     ("Gap: rocker / coil-over vs wishbones, tie rod / toe link, with steer [mm]",
      "gap_linkage_members", ".1f"),
     ("Gap: linkage vs chain and sprockets [mm] (estimate)", "gap_chain", ".1f"),
@@ -1231,7 +1344,7 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
             m = res[ax]
             for key in ("gap_rod_frame", "gap_rocker_frame", "gap_coilover_frame",
                         "gap_rod_members", "gap_rod_rim", "gap_engine", "gap_solid_bodies",
-                        "pivot_bracket", "damper_bracket"):
+                        "pivot_bracket", "damper_bracket", "pivot_node", "damper_node"):
                 w = m.get(key + "_where")
                 if w:
                     v = m.get(key, m.get(key + "_mm"))

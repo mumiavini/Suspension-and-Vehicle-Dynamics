@@ -119,3 +119,27 @@ def test_clearance_helpers(rc) -> None:
     assert rc.pt_seg((0, 1, 0), (-1, 0, 0), (1, 0, 0)) == pytest.approx(1.0)
     a, b = rc.trim((0, 0, 0), (100, 0, 0), 10.0, 35.0)
     assert a[0] == pytest.approx(10.0) and b[0] == pytest.approx(65.0)
+
+
+def test_frame_nodes_are_the_welded_joints(rc, ctx) -> None:
+    """Nodes are joints of 3+ bodied tube ends; the front hoop's foot is the busiest."""
+    assert all(n.valence >= 3 for n in ctx.nodes)
+    d, n = rc.nearest_node(ctx, (-120.4, 205.0, 117.4))
+    assert d < 1.0 and n.valence == 9 and "FRONTO HO" in n.tubes
+    # the floor X brace crosses at the centre line: a node with no tube end in it
+    d, n = rc.nearest_node(ctx, (0.0, 0.0, 117.4))
+    assert d < 1.0 and n.valence == 4
+    # a mid-span point is far from every node
+    assert rc.nearest_node(ctx, (330.0, 215.0, 415.0))[0] > 150.0
+
+
+def test_damper_end_aims_the_coilover_through_a_point(rc, ctx) -> None:
+    end = (-105.9, 251.0, 319.5)
+    c = rc.AxleConcept("pushrod", "upright", (5.5, 572.75, 182.49), (67.2, 274.3, 414.8),
+                       (461.9, 311.7, 362.1), 62.8, damper_end=end)
+    sp = rc.make_spec(ctx.geo, ctx.project, "front", c)
+    rd, dc = np.asarray(sp.rocker_damper), np.asarray(sp.damper_chassis)
+    u = (dc - rd) / np.linalg.norm(dc - rd)
+    assert np.linalg.norm(np.cross(np.asarray(end) - rd, u)) < 0.01
+    sw = rocker_sweep(ctx.geo.corner("FL"), rc.S.layout_for(sp, "FL"), [0.0])
+    assert sw.motion_ratio[0] == pytest.approx(0.80, abs=1e-6)
