@@ -1111,7 +1111,7 @@ def _pt(p, fmt: str = ".1f") -> str:
     return "(" + ", ".join(format(float(v), fmt) for v in p) + ")"
 
 
-def report(ctx: Ctx, cols) -> str:
+def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
     E = ESTIMATES
     n_sk = sum(not m.bodied and not m.reference for m in ctx.members)
     n_ref = sum(m.reference for m in ctx.members)
@@ -1212,7 +1212,7 @@ def report(ctx: Ctx, cols) -> str:
     for cid, name, res, specs, c in cols:
         L += ["", f"## {'Seed' if cid == 'seed' else 'Concept ' + cid}: {name}", "",
               f"![views]({'seed' if cid == 'seed' else 'concept_' + cid}_views.svg)", ""]
-        if c.get("summary"):
+        if c.get("summary") and (texts_for is None or cid in texts_for):
             L += [c["summary"], ""]
         L += ["| point (LEFT corner) | front | rear |", "|---|---|---|"]
         for lab, attr in (("rod outer end (on the mount body)", "rod_mount"),
@@ -1241,7 +1241,7 @@ def report(ctx: Ctx, cols) -> str:
         L += ["", "**Outside the thresholds:** " + ("none" if not fails else "; ".join(
             f"{ax} {lab} {v:.1f} (limit {op} {lim:g})" for ax, lab, v, op, lim, _ok in fails))]
         for head, key in (("Pros", "pros"), ("Cons", "cons"), ("Not checked", "not_checked")):
-            if c.get(key):
+            if c.get(key) and (texts_for is None or cid in texts_for):
                 L += ["", f"**{head}**", ""] + [f"- {s}" for s in c[key]]
     return "\n".join(L) + "\n"
 
@@ -1289,7 +1289,7 @@ def cmd_frame() -> None:
 
 def cmd_build(only: list[str] | None = None, report_name: str = "README.md",
               seed_project: Path | None = None, variants: bool = True,
-              title: str | None = None) -> None:
+              title: str | None = None, texts_for: list[str] | None = None) -> None:
     """Variants, views and a side-by-side report.
 
     ``only``: concept ids to include (default: every ``concept_*.json``). ``seed_project``:
@@ -1330,7 +1330,7 @@ def cmd_build(only: list[str] | None = None, report_name: str = "README.md",
             views_svg(ctx, specs, f"Concept {cid}: {c.get('name', '')}"), encoding="utf-8")
     (OUT_DIR / "seed_views.svg").write_text(
         views_svg(ctx, seed_specs, f"Seed ({seed_name})"), encoding="utf-8")
-    text = report(ctx, cols)
+    text = report(ctx, cols, texts_for)
     if title:
         text = text.replace("# Rocker and push/pull rod concepts (FSAE 2027)", f"# {title}", 1)
     (OUT_DIR / report_name).write_text(text, encoding="utf-8")
@@ -1351,9 +1351,12 @@ def main() -> None:
                    help="project whose rockers are the Seed column (default: team project)")
     b.add_argument("--no-variants", action="store_true", help="do not write project variants")
     b.add_argument("--title", default=None, help="report title")
+    b.add_argument("--texts-for", nargs="+", default=None,
+                   help="print summary / pros / cons only for these concept ids")
     args = ap.parse_args()
     if args.cmd == "build":
-        cmd_build(args.only, args.report, args.seed_project, not args.no_variants, args.title)
+        cmd_build(args.only, args.report, args.seed_project, not args.no_variants, args.title,
+                  args.texts_for)
         return
     {"eval": lambda: cmd_eval(args.concept), "seed": cmd_seed, "frame": cmd_frame}[args.cmd]()
 

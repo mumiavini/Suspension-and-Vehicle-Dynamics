@@ -9,4 +9,5 @@ they are recomputed on open.
 - Save your variants here too (Save as…), e.g. `FSAE_2027_high_rc.vdproj.json`.
   Commit the ones the team should see.
 - Start-up order and saving: see `docs/VD_STUDIO.md`, "Project files".
-- **`rocker_concepts/`**: three push/pull-rod + rocker layouts checked against the chassis CAD (`scripts/rocker_concepts.py build`), with a side-by-side report (`README.md`) and views. Each is also a variant here, `FSAE_2027_rocker_concept_<A|B|C>.vdproj.json`. Consequences only; the team project keeps its seed layout until the designers choose.
+- **`rocker_concepts/`**: three push/pull-rod + rocker layouts checked against the chassis CAD (`scripts/rocker_concepts.py build`), with a side-by-side report (`README.md`) and views. Each is also a variant here, `FSAE_2027_rocker_concept_<A|B|C>.vdproj.json`. Consequences only (snapshot of 2026-10-14).
+- The designer chose concept A; its refinement (`rocker_concepts/concept_A_refined.md`) is now the team project's rocker layout. The previous team project is in `archive/FSAE_2027_before_rocker_concept_A.vdproj.json`.
