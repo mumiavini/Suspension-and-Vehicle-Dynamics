@@ -1,0 +1,229 @@
+{
+ "schema": 2,
+ "tool": "scripts/survey_chassis.py",
+ "created": "2026-10-15T00:13:07",
+ "units": "mm, the CAD model's own frame (nothing assumes ISO 8855)",
+ "title": "MONT_CHASSI_SUSP_MOTOR",
+ "path": "C:\\soft\\FSAE\\Suspension and Vehicle Dynamics\\MONT_CHASSI_SUSP_MOTOR\\MONT_CHASSI_SUSP_MOTOR.SLDASM",
+ "part_box_mm": null,
+ "bodies": [],
+ "features": [
+  [
+   "Coment\u00e1rios",
+   "CommentsFolder"
+  ],
+  [
+   "Favoritos",
+   "FavoriteFolder"
+  ],
+  [
+   "Hist\u00f3rico",
+   "HistoryFolder"
+  ],
+  [
+   "Defini\u00e7\u00f5es preferenciais",
+   "SelectionSetFolder"
+  ],
+  [
+   "Sensores",
+   "SensorFolder"
+  ],
+  [
+   "Planos de se\u00e7\u00e3o ativados",
+   "LiveSectionFolder"
+  ],
+  [
+   "Fich\u00e1rio do projeto",
+   "DocsFolder"
+  ],
+  [
+   "Anota\u00e7\u00f5es",
+   "DetailCabinet"
+  ],
+  [
+   "Luzes e c\u00e2meras",
+   "EnvFolder"
+  ],
+  [
+   "Marca\u00e7\u00f5es",
+   "InkMarkupFolder"
+  ],
+  [
+   "Equa\u00e7\u00f5es",
+   "EqnFolder"
+  ],
+  [
+   "Plano frontal",
+   "RefPlane"
+  ],
+  [
+   "Plano superior",
+   "RefPlane"
+  ],
+  [
+   "Plano direito",
+   "RefPlane"
+  ],
+  [
+   "Origem",
+   "OriginProfileFeature"
+  ],
+  [
+   "MOTOR_FIXADO-1",
+   "Reference"
+  ],
+  [
+   "susp-2",
+   "Reference"
+  ],
+  [
+   "Xasis 33.3-2",
+   "Reference"
+  ],
+  [
+   "Posicionamentos",
+   "MateGroup"
+  ],
+  [
+   "3DSketch1",
+   "3DProfileFeature"
+  ],
+  [
+   "Notas",
+   "NotesAreaFtrFolder"
+  ],
+  [
+   "Notas1___EndTag___",
+   "NotesAreaFtrFolder"
+  ],
+  [
+   "Ambiente",
+   "AmbientLight"
+  ],
+  [
+   "Direcional1",
+   "DirectionLight"
+  ],
+  [
+   "Direcional2",
+   "DirectionLight"
+  ],
+  [
+   "Direcional3",
+   "DirectionLight"
+  ],
+  [
+   "Coincidente52",
+   "MateCoincident"
+  ],
+  [
+   "Coincidente53",
+   "MateCoincident"
+  ],
+  [
+   "Coincidente54",
+   "MateCoincident"
+  ],
+  [
+   "Paralelo1",
+   "MateParallel"
+  ],
+  [
+   "Conc\u00eantrico5",
+   "MateConcentric"
+  ]
+ ],
+ "sketches": [
+  {
+   "name": "3DSketch1",
+   "type": "3d",
+   "lines": [
+    {
+     "a": [
+      -60.2676,
+      260.0578,
+      1486.1043
+     ],
+     "b": [
+      -60.2676,
+      1054.9607,
+      1486.1043
+     ],
+     "construction": false
+    },
+    {
+     "a": [
+      -349.9596,
+      944.1403,
+      1128.682
+     ],
+     "b": [
+      -388.8676,
+      944.1403,
+      1389.021
+     ],
+     "construction": false
+    },
+    {
+     "a": [
+      -369.4136,
+      1075.7555,
+      1258.8515
+     ],
+     "b": [
+      -369.4136,
+      812.5251,
+      1258.8515
+     ],
+     "construction": false
+    }
+   ],
+   "arcs": [],
+   "points": [
+    [
+     -60.2676,
+     260.0578,
+     1486.1043
+    ],
+    [
+     -60.2676,
+     1054.9607,
+     1486.1043
+    ],
+    [
+     -369.4136,
+     1075.7555,
+     1258.8515
+    ],
+    [
+     -349.9596,
+     944.1403,
+     1128.682
+    ],
+    [
+     -388.8676,
+     944.1403,
+     1389.021
+    ],
+    [
+     -369.4136,
+     812.5251,
+     1258.8515
+    ],
+    [
+     -369.4136,
+     944.1403,
+     1258.8515
+    ]
+   ],
+   "other": {}
+  }
+ ],
+ "ref_points": [],
+ "ref_axes": [],
+ "coord_systems": [],
+ "errors": [
+  "part box: AttributeError: <unknown>.GetPartBox",
+  "bodies: AttributeError: <unknown>.GetBodies2"
+ ]
+}

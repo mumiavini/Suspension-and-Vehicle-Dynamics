@@ -1,0 +1,73 @@
+{
+ "concept_id": "A_refined",
+ "name": "Concept A refined: pushrod, coil-overs fore-aft along the upper side structure",
+ "summary": "Concept A refined against the chassis team's update of 2026-10-15 and the engine placed on its mounts. Front: the pushrod's outer end moves from the lower wishbone to a clevis on the upright, on the kingpin axis 53.5 mm above the lower ball joint, so the spring load no longer bends the LCA and steering moves the damper only by the steering jacking any mount has (4.36 mm over the full rack travel, against 4.31 mm with an LCA mount); the rocker sits beside the side diagonal, 77 mm up from the UCA-front node, and the coil-over runs forward along the side of the front box. Rear: the rocker moves 95 mm forward onto the Tri_Tras upper rail, off the node it shared with the UCA front pivot, which takes it 33.5 mm clear of the estimated chain line, and the coil-over runs forward along the rail, 33.3 mm from the intake plenum. No evaluator threshold is missed on either axle; MR 0.80 at ride is the comparison query, not a choice.",
+ "front": {
+  "rod_type": "pushrod",
+  "mount_body": "upright",
+  "rod_mount": [
+   5.5,
+   572.75,
+   182.49
+  ],
+  "pivot": [
+   67.2,
+   274.3,
+   414.8
+  ],
+  "damper_toward": [
+   461.9,
+   311.7,
+   362.1
+  ],
+  "rod_arm_mm": 62.8,
+  "target_mr": 0.8
+ },
+ "rear": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -1515.0,
+   527.0,
+   140.0
+  ],
+  "pivot": [
+   -1265.0,
+   300.0,
+   381.0
+  ],
+  "damper_toward": [
+   -881.0,
+   422.0,
+   318.0
+  ],
+  "rod_arm_mm": 50,
+  "target_mr": 0.8
+ },
+ "pros": [
+  "Zero evaluator fails on both axles and both corners, against the chassis as updated and the engine on its mounts, swept to the damper end stops (front -35.8 / +35.3 mm, rear -35.8 / +35.7 mm) and, at the front, over the full rack travel of +-38 mm. Tightest air gaps: front coil-over eye 9.8 mm (upper side diagonal), rocker 11.8 mm, coil-over 12.3 mm; rear rod to its own LCA front leg 10.3 mm, rocker 12.1 mm, coil-over 15.7 mm.",
+  "Front: the spring load no longer bends the lower wishbone (concept A: about 158 N·m, ~300 MPa nominal at 3x static on a 25.4x1.2 leg, hand estimate). The rod stands transverse (0.2 deg in plan), 378 mm long, rod force 1.52x the wheel load (890 N at ride); it takes 12.4 kN of wheel load to buckle the 16x1 steel reference tube. Rod to rim 95.4 mm (A: 40.7), rod to tie rod at full lock 15.7 mm.",
+  "Front rocker margins up: rocker to frame 7.9 -> 11.8 mm, pivot stand-off 58.7 -> 53.3 mm, with its foot moved from 25 to 77 mm away from the six-tube UCA-front node; the coil-over's chassis end is 42.5 mm from the upper side diagonal.",
+  "Rear: chain line 8.2 -> 33.5 mm (estimate), coil-over eye 6.9 -> 20.4 mm, coil-over 9.9 -> 15.7 mm, drive shaft 26.5 -> 46.9 mm (estimate). The rocker no longer shares the UCA front-pivot node (94.6 mm away); pivot reaction 1658 -> 1441 N and bracket couple 86.5 -> 74.2 N·m at ride (upper bound).",
+  "Kinematics over +-25 mm: MR 0.787 / 0.800 / 0.819 front (+4.0 %) and 0.789 / 0.800 / 0.805 rear (+2.0 %), equal 8.5 mm damper margins. To the end stops: transmission angles at most 22.5 / 24.1 deg front and 23.2 / 26.2 deg rear, rocker rotation within +-22.2 / +-24.1 deg.",
+  "Low coil-overs and rockers: moving-mass height 442 mm front and 407 mm rear (seed 564 / 461 mm); CG -1.8 mm against the seed and tilt-table angle 62.27 deg (seed 62.13), with the estimated masses (1.3 kg coil-over + 0.3 kg rocker per corner)."
+ ],
+ "cons": [
+  "The front clevis has to sit exactly on the kingpin axis, 53.5 mm above the lower ball joint. Off the axis, steering drives the damper (15 / 30 mm aft gives 12.6 / 21.0 mm of damper change over the rack travel); below about 45 mm the full-lock tie rod comes within 9 mm. The steering arm leaves the kingpin 40 mm above the ball joint (project setting), 13.5 mm below the clevis, so both share that region of the upright, which has no CAD yet. The rod end sees about 4.9 deg of misalignment from steering alone, and the upright carries about 95 N·m about the ball joint at 3x static (hand estimate).",
+  "Neither rocker can be carried in double shear by the existing tubes: no bodied tube lies in or across a rocker plane near the pivots. Double shear needs a fabricated yoke (front: inner plate 37.5 mm to the side diagonal, outer plate a 36 mm arm plus a 94 mm web to the upper side diagonal) or fork (rear, cheeks +-18 mm on the upper rail). Pivot couples at ride (upper bound, force x stand-off): 66 N·m front, 74 N·m rear, about 200-220 N·m at 3x; at the rear about 96 % of it is torsion about the upper rail. None of it is sized.",
+  "Brackets land mid-span: the front coil-over end 195 mm from the nearer end of the upper side diagonal; at the rear both the rocker and the coil-over brackets load the same Tri_Tras upper rail, 79 and 281 mm from its node. The rail's bending and torsion were not checked.",
+  "The rear rod is swept 39.8 deg forward in plan (A: 21.7) to pass in front of the UCA front leg: 655 N fore-aft at ride (about 2 kN at 3x) into the LCA front-leg mount. It is longer (412 mm), so the reference tube buckles at 9.0 kN of wheel load (A: 11.0 kN), and it runs 10.3 mm from its own LCA front leg at the droop stop.",
+  "Thin positional margins: moving the front pivot +-5 mm gives rocker gaps of 8.0-11.3 mm and stand-offs of 49.3-57.4 mm, and 5 mm lower brings the coil-over eye to 4.9 mm (below the 5 mm limit); the rear rocker-to-rail gap changes about 0.75 mm per mm of pivot height. A few millimetres of CAD change at these tubes matter.",
+  "Bodywork and templates: the front coil-over is 12.1 mm from the 'Ressalto-extrusão2' solid (probably the FSAE leg template; concept A: 21.0 mm), so a leg-protection shield may have to fit there. The front rocker pickups reach y = 307 mm and the rear rocker / coil-over y = 316 / 332 mm over x -1326 to -1042: nose and sidepods must cover them.",
+  "No anti-roll-bar provision was designed in this round. With 220 lb/in springs the roll budget asks about 57 N·m/deg front and 78 N·m/deg rear for 1.0 deg/g; at the rear the drop links would have to pass the engine."
+ ],
+ "not_checked": [
+  "The engine's scanned mesh: MOTOR_FIXADO is placed by its four mounts (fit within 0.004 mm) but modelled only by its features and the plenum outline; the chain and sprockets (14/46 520 assumed) and the drive shafts are estimates; differential, exhaust, intake runners, radiator and fuel tank are not modelled.",
+  "The upright: clevis, steering-arm root, hub, bearing housing, brake disc and caliper. Only the 13-inch rim is checked against the rod.",
+  "Real part envelopes: all gaps use estimated diameters (rod 16, coil-over 60, eyes 40, rocker +-10 mm plates and +-20 mm pickup bolts, frame 25.4); rocker plates, yokes / forks and rod ends are not modelled.",
+  "Structure: no load cases, stress, fatigue or sizing of brackets, rails, rockers, rods, wishbones or uprights; the 3x figures are hand estimates; bracket compliance, which changes the effective MR, is not modelled.",
+  "Travel limits: the damper stroke (57 mm) is an estimate and there are no bump rubbers, so the linkage runs to the damper's end stops. With 220 lb/in springs and no preload the springs unseat at -23.7 mm (front, inside the +-25 mm travel) and -30.0 mm (rear), as with any layout at MR 0.80.",
+  "FSAE rules: leg protection for moving suspension parts beside the cockpit, attachments to the frame tubes used by the brackets.",
+  "The MR 0.80 target, the 1.0 deg/g roll gradient, the 50 % front roll share and the 220 lb/in springs are design-intent query arguments, not derived targets."
+ ]
+}

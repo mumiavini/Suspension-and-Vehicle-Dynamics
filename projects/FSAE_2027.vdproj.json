@@ -299,36 +299,36 @@
   "rocker_front": {
     "enabled": true,
     "rod_type": "pushrod",
-    "mount_body": "lca",
+    "mount_body": "upright",
     "rod_mount": [
-      9.0,
-      542.0,
-      145.0
+      5.5,
+      572.75,
+      182.49
     ],
     "rocker_pivot": [
-      20.0,
-      180.0,
-      535.0
+      67.2,
+      274.3,
+      414.8
     ],
     "rocker_axis": [
-      -0.0508,
-      -0.7327,
-      -0.6787
+      -0.0459,
+      -0.6195,
+      -0.7837
     ],
     "rocker_rod": [
-      -29.8011,
-      184.3486,
-      534.0308
+      4.4665,
+      276.2237,
+      416.9564
     ],
     "rocker_damper": [
-      22.3767,
-      140.6655,
-      577.2886
+      79.0384,
+      214.735,
+      461.1926
     ],
     "damper_chassis": [
-      213.735,
-      138.8937,
-      564.8857
+      268.2475,
+      232.6636,
+      435.9296
     ],
     "source": "design_intent"
   },
@@ -337,34 +337,34 @@
     "rod_type": "pushrod",
     "mount_body": "lca",
     "rod_mount": [
-      -1530.0,
-      523.0,
-      145.0
+      -1515.0,
+      527.0,
+      140.0
     ],
     "rocker_pivot": [
-      -1500.0,
-      160.0,
-      420.0
+      -1265.0,
+      300.0,
+      381.0
     ],
     "rocker_axis": [
-      -0.0332,
-      -0.6053,
-      -0.7953
+      0.094,
+      -0.6742,
+      -0.7325
     ],
     "rocker_rod": [
-      -1549.9241,
-      162.7533,
-      419.9897
+      -1307.9665,
+      278.6753,
+      395.1117
     ],
     "rocker_damper": [
-      -1512.2069,
-      104.9203,
-      462.4269
+      -1242.2255,
+      252.4324,
+      427.7009
     ],
     "damper_chassis": [
-      -1323.4708,
-      74.7226,
-      477.5258
+      -1061.7801,
+      309.7614,
+      398.0966
     ],
     "source": "design_intent"
   },
@@ -861,6 +861,15 @@
       "decision": "Front: pushrod on the LCA 40 mm inboard of the LBJ to a rocker on the top tube (bulkhead to front hoop), damper along that tube. Rear: pushrod on the LCA to a rocker just behind the rear frame, routed behind the UCA rear leg (33 mm clearance); damper forward over the rear frame. Both arms placed tangential at ride and sized for MR 0.80 with equal damper margins (stroke 57 mm is an ESTIMATE).",
       "rationale": "Seed to evaluate, not a choice: MR 0.80 with the 220 lb/in springs gives ~3.2 / 2.9 Hz (F/R, wheel-rate frequency); the springs alone give ~1.2 deg/g, so an anti-roll bar is needed for 1.0 deg/g. Rocker brackets, damper bodies and the engine/diff package are not checked: the chassis team places them in CAD.",
       "alternatives": "Rear pushrod in front of the UCA front leg (4.5 mm clearance: rejected); rear pullrod to a low rocker (MR 0.80 not reachable with these arms); MR from ~0.5 (550 lb/in springs) to ~1.0.",
+      "author": "Vinicius Trento"
+    },
+    {
+      "date": "2026-10-15",
+      "stage": "suspension",
+      "title": "Rocker layout: concept A, refined",
+      "decision": "Pushrods to bell-crank rockers on the upper side structure, coil-overs lying fore-aft along the frame sides (concept A of projects/rocker_concepts/README.md), refined against the chassis update of 2026-10-15 and the engine placed on its mounts: front rod on an upright clevis on the kingpin axis 53.5 mm above the LBJ; rear rocker moved 95 mm forward onto the Tri_Tras upper rail. Inputs in projects/rocker_concepts/concept_A_refined.json; report in projects/rocker_concepts/concept_A_refined.md.",
+      "rationale": "Chosen by the designer from the three concepts compared on 2026-10-14. The refined layout misses no evaluator threshold on either axle (both corners, to the damper end stops, full rack travel); front LCA bending from the rod removed; rear chain-line gap 8.2 -> 33.5 mm (estimate). MR 0.80 at ride and the 220 lb/in springs remain open decisions (design_intent query arguments).",
+      "alternatives": "Concept B (pushrod, transverse coil-overs over the top: needs a new rear member, rocker on the main-hoop brace) and concept C (low pullrod: regressive MR, rod loads 2.4x wheel load, no anti-roll-bar location found). Front fallback recorded in the refinement: rod on the LCA rear leg 39.5 mm from the ball joint with its own rocker (no fails, LCA bending -54 %).",
       "author": "Vinicius Trento"
     }
   ],
