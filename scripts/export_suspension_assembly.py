@@ -38,13 +38,12 @@ points: a modelling aid, not a detailed part, a structural size or a choice.
 Usage::
 
     uv run python scripts/export_suspension_assembly.py          # team project, chassis frame
-    uv run python scripts/export_suspension_assembly.py --frame iso --arb ARB.json
+    uv run python scripts/export_suspension_assembly.py --frame iso
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -85,14 +84,13 @@ _GROUPS = {
                 "upright_arm", "hub"),
     "wheel": ("tyre",),
     "rocker": ("rocker_boss", "rocker_arm_rod", "rocker_arm_damper", "rocker_edge",
-               "rocker_bolt_rod", "rocker_bolt_damper", "arb_rocker_arm"),
+               "rocker_bolt_rod", "rocker_bolt_damper"),
     "chassis_mounts": ("rocker_bracket_a", "rocker_bracket_b", "coilover_bracket_a",
                        "coilover_bracket_b"),
     "damper_body": ("coilover_eye_chassis", "coilover_body", "coilover_spring"),
     "damper_shaft": ("coilover_eye_rocker", "coilover_shaft"),
 }
 _MOUNT_GROUP = {"lca": "LCA", "uca": "UCA", "upright": "upright"}
-_ARB_SUFFIXES = ("arb_bearing", "arb_arm", "arb_drop_link")
 
 
 @dataclass(frozen=True)
@@ -246,6 +244,10 @@ def corner_mates(cid: str, rod: str, mount_body: str) -> list[Mate]:
 
 def build_model(project: Project, arb: dict | None = None,
                 asm_name: str = "SUSP_2027") -> Model:
+    if arb:
+        # the arms and drop links would sit in one fixed part, torn off the moving rockers
+        raise ValueError("an anti-roll bar is not jointed in the assembly export yet; "
+                         "use export_suspension_solids.py --arb for the single part")
     geo = G.resolve(project)
     parts = SS.all_parts(project, arb)
     comps: dict[str, Component] = {}
@@ -268,14 +270,10 @@ def build_model(project: Project, arb: dict | None = None,
         corner_parts[f"{PREFIX}{cid}"] = [c.name for c in comps.values() if c.corner == cid]
     for p in parts:
         cid = next((c for c in CORNERS if p.name.startswith(f"{PREFIX}{c}_")), None)
-        if cid is not None and p.name[len(f"{PREFIX}{cid}_"):] in _ARB_SUFFIXES:
-            comp(f"{PREFIX}ARB", None).bodies.append(p)
-        elif cid is not None:
+        if cid is not None:
             spec = _spec(project, cid)
             g = group_of(p.name, cid, spec.rod_type, spec.mount_body)
             comps[f"{PREFIX}{cid}_{g}"].bodies.append(p)
-        elif p.name.startswith(f"{PREFIX}ARB_"):
-            comp(f"{PREFIX}ARB", None).bodies.append(p)
         elif p.name == f"{PREFIX}rack_housing":
             comp(f"{PREFIX}rack", None).bodies.append(p)
         else:
@@ -338,6 +336,9 @@ def mobility(model: Model, asm: str) -> Mobility:
     """Linearised mobility of one corner assembly under its mates (positions in m)."""
     mates = model.mates[asm]
     names = sorted({m.child for m in mates} | {m.parent for m in mates})
+    unmated = set(model.corner_parts.get(asm, ())) - set(names)
+    if unmated:
+        raise ValueError(f"{asm}: parts with no mate would float: {sorted(unmated)}")
     moving = [n for n in names if not model.components[n].ground]
     col = {n: 6 * i for i, n in enumerate(moving)}
     nx = 6 * len(moving)
@@ -410,8 +411,8 @@ def mobility(model: Model, asm: str) -> Mobility:
         i = pts.index((name, r.a))
         return V[3 * i:3 * i + 3, :]
 
-    wheel = next(n for n in moving if n.endswith("_wheel"))
-    vz = vel(wheel, "P_CENTER")[2]
+    wheel = next((n for n in moving if n.endswith("_wheel")), None)
+    vz = vel(wheel, "P_CENTER")[2] if wheel else np.zeros(V.shape[1])
     moves = bool(np.any(np.abs(vz) > 1e-6))
     mr = float("nan")
     body = next((n for n in names if n.endswith("_damper_body")), None)
@@ -505,73 +506,6 @@ def render_macro(model: Model, frame, source: str) -> str:
     add("Dim gSegB(1 To 64) As Object")
     add("Dim gSegNameA(1 To 64) As String")
     add("Dim gSegNameB(1 To 64) As String")
-    add("")
-    add("Sub main()")
-    add("    Set swApp = Application.SldWorks")
-    add("    Set swModeler = swApp.GetModeler")
-    add("    Dim d As String")
-    add("    On Error Resume Next")
-    add("    d = swApp.GetCurrentMacroPathFolder")
-    add("    On Error GoTo 0")
-    add("    If Len(d) > 0 And Right(d, 1) <> \"\\\" Then d = d & \"\\\"")
-    add("    d = InputBox(\"Folder for the suspension files (created if missing). \" & _")
-    add("                 \"Files with the names this macro writes are replaced.\", _")
-    add("                 ASM_NAME, d & ASM_NAME & \"\\\")")
-    add("    If Len(d) = 0 Then Exit Sub")
-    add("    If Right(d, 1) <> \"\\\" Then d = d & \"\\\"")
-    add("    gDir = d")
-    add("    If Len(Dir(gDir, vbDirectory)) = 0 Then")
-    add("        On Error Resume Next")
-    add("        MkDir gDir")
-    add("        On Error GoTo 0")
-    add("    End If")
-    add("    If Len(Dir(gDir, vbDirectory)) = 0 Then")
-    add("        MsgBox \"Could not create the folder \" & gDir")
-    add("        Exit Sub")
-    add("    End If")
-    add("    InitNames")
-    add("    If Not ClearOld() Then Exit Sub")
-    add("    gLog = ASM_NAME & \" build log\" & vbCrLf & \"folder: \" & gDir & vbCrLf")
-    add("    gMade = 0: gFailed = 0: gFailList = \"\"")
-    add("    gRefMade = 0: gRefFailed = 0: gMateMade = 0: gMateFailed = 0: gOtherFailed = 0")
-    add("    Calibrate")
-    add("    LogLine \"CreateBodyFromCyl point is the centre: \" & gCentred")
-    add("    ' parts and corner assemblies are built without windows")
-    add("    swApp.DocumentVisible False, 1")
-    add("    swApp.DocumentVisible False, 2")
-    add("    On Error GoTo stopped")
-    add("    BuildParts")
-    add("    BuildCorners")
-    add("    swApp.DocumentVisible True, 1")
-    add("    swApp.DocumentVisible True, 2")
-    add("    BuildTop")
-    add("    ReopenTop")
-    add("    On Error GoTo 0")
-    add("    Dim msg As String")
-    add("    msg = ASM_NAME & \": \" & gMade & \" of \" & N_BODIES & \" solids, \" & _")
-    add("          gRefMade & \" of \" & N_REFS & \" reference points / axes, \" & _")
-    add("          gMateMade & \" of \" & N_MATES & \" mates.\"")
-    add("    LogLine msg")
-    add("    WriteLog")
-    add("    If gOtherFailed > 0 Then msg = msg & vbCrLf & gOtherFailed & _")
-    add("        \" placement / flexible / save step(s) failed.\"")
-    add("    If gFailed + gRefFailed + gMateFailed + gOtherFailed > 0 Then")
-    add("        msg = msg & vbCrLf & \"Some steps failed: see \" & gDir & ASM_NAME & _")
-    add("              \"_log.txt\"")
-    add("    End If")
-    add("    MsgBox msg")
-    add("    Exit Sub")
-    add("stopped:")
-    add("    Dim why As String")
-    add("    why = Err.Description")
-    add("    On Error Resume Next")
-    add("    swApp.DocumentVisible True, 1")
-    add("    swApp.DocumentVisible True, 2")
-    add("    LogLine \"STOPPED in \" & gCur & \": \" & why")
-    add("    WriteLog")
-    add("    MsgBox \"Stopped in \" & gCur & \": \" & why & vbCrLf & \"Log: \" & gDir & ASM_NAME "
-        "& \"_log.txt\"")
-    add("End Sub")
     add("")
     add("Private Sub LogLine(ByVal s As String)")
     add("    gLog = gLog & s & vbCrLf")
@@ -725,6 +659,75 @@ def render_macro(model: Model, frame, source: str) -> str:
         add(f"    AddComp \"{a}\", \".SLDASM\", True")
         add(f"    MakeFlexible \"{a}\"")
     add("    EndAsm")
+    add("End Sub")
+    add("")
+    # main comes last: Tools > Macro > Run starts the last argument-less Sub of the most
+    # recently created module (the imported one)
+    add("Sub main()")
+    add("    Set swApp = Application.SldWorks")
+    add("    Set swModeler = swApp.GetModeler")
+    add("    Dim d As String")
+    add("    On Error Resume Next")
+    add("    d = swApp.GetCurrentMacroPathFolder")
+    add("    On Error GoTo 0")
+    add("    If Len(d) > 0 And Right(d, 1) <> \"\\\" Then d = d & \"\\\"")
+    add("    d = InputBox(\"Folder for the suspension files (created if missing). \" & _")
+    add("                 \"Files with the names this macro writes are replaced.\", _")
+    add("                 ASM_NAME, d & ASM_NAME & \"\\\")")
+    add("    If Len(d) = 0 Then Exit Sub")
+    add("    If Right(d, 1) <> \"\\\" Then d = d & \"\\\"")
+    add("    gDir = d")
+    add("    If Len(Dir(gDir, vbDirectory)) = 0 Then")
+    add("        On Error Resume Next")
+    add("        MkDir gDir")
+    add("        On Error GoTo 0")
+    add("    End If")
+    add("    If Len(Dir(gDir, vbDirectory)) = 0 Then")
+    add("        MsgBox \"Could not create the folder \" & gDir")
+    add("        Exit Sub")
+    add("    End If")
+    add("    InitNames")
+    add("    If Not ClearOld() Then Exit Sub")
+    add("    gLog = ASM_NAME & \" build log\" & vbCrLf & \"folder: \" & gDir & vbCrLf")
+    add("    gMade = 0: gFailed = 0: gFailList = \"\"")
+    add("    gRefMade = 0: gRefFailed = 0: gMateMade = 0: gMateFailed = 0: gOtherFailed = 0")
+    add("    Calibrate")
+    add("    LogLine \"CreateBodyFromCyl point is the centre: \" & gCentred")
+    add("    ' parts and corner assemblies are built without windows")
+    add("    swApp.DocumentVisible False, 1")
+    add("    swApp.DocumentVisible False, 2")
+    add("    On Error GoTo stopped")
+    add("    BuildParts")
+    add("    BuildCorners")
+    add("    swApp.DocumentVisible True, 1")
+    add("    swApp.DocumentVisible True, 2")
+    add("    BuildTop")
+    add("    ReopenTop")
+    add("    On Error GoTo 0")
+    add("    Dim msg As String")
+    add("    msg = ASM_NAME & \": \" & gMade & \" of \" & N_BODIES & \" solids, \" & _")
+    add("          gRefMade & \" of \" & N_REFS & \" reference points / axes, \" & _")
+    add("          gMateMade & \" of \" & N_MATES & \" mates.\"")
+    add("    LogLine msg")
+    add("    WriteLog")
+    add("    If gOtherFailed > 0 Then msg = msg & vbCrLf & gOtherFailed & _")
+    add("        \" placement / flexible / save step(s) failed.\"")
+    add("    If gFailed + gRefFailed + gMateFailed + gOtherFailed > 0 Then")
+    add("        msg = msg & vbCrLf & \"Some steps failed: see \" & gDir & ASM_NAME & _")
+    add("              \"_log.txt\"")
+    add("    End If")
+    add("    MsgBox msg")
+    add("    Exit Sub")
+    add("stopped:")
+    add("    Dim why As String")
+    add("    why = Err.Description")
+    add("    On Error Resume Next")
+    add("    swApp.DocumentVisible True, 1")
+    add("    swApp.DocumentVisible True, 2")
+    add("    LogLine \"STOPPED in \" & gCur & \": \" & why")
+    add("    WriteLog")
+    add("    MsgBox \"Stopped in \" & gCur & \": \" & why & vbCrLf & \"Log: \" & gDir & ASM_NAME "
+        "& \"_log.txt\"")
     add("End Sub")
     add("")
     return "\r\n".join(L)
@@ -979,10 +982,31 @@ def _vba_assembly_helpers() -> list[str]:
         "    BeginAsm = True",
         "End Function",
         "",
+        "' Every part was modelled in place and every mate holds there: a component that is",
+        "' not at the identity after the mates was placed or moved wrongly.",
+        "Private Sub CheckPlaced()",
+        "    Dim c As Variant, r As Variant",
+        "    For Each c In gComps",
+        "        r = Empty",
+        "        On Error Resume Next",
+        "        r = c.Transform2.ArrayData",
+        "        On Error GoTo 0",
+        "        If IsArray(r) Then",
+        "            If Abs(r(9)) + Abs(r(10)) + Abs(r(11)) > 0.000001 Or _",
+        "               Abs(r(0) - 1) + Abs(r(4) - 1) + Abs(r(8) - 1) > 0.000001 Then",
+        "                gOtherFailed = gOtherFailed + 1",
+        "                LogLine \"FAIL \" & c.Name2 & \" is not where it was modelled in \" & _",
+        "                    gCur",
+        "            End If",
+        "        End If",
+        "    Next",
+        "End Sub",
+        "",
         "Private Sub EndAsm()",
         "    Dim e As Long, w As Long, ok As Boolean",
         "    swModel.ClearSelection2 True",
         "    swModel.ForceRebuild3 False",
+        "    CheckPlaced",
         "    On Error Resume Next",
         "    ok = swModel.Save3(1, e, w)",
         "    On Error GoTo 0",
@@ -1024,7 +1048,11 @@ def _vba_assembly_helpers() -> list[str]:
         "    v = d",
         "    On Error Resume Next",
         "    Set t = swApp.GetMathUtility.CreateTransform((v))",
-        "    ok = c.SetTransformAndSolve2(t)",
+        "    ok = c.SetTransformAndSolve3(t, False)",
+        "    If Err.Number <> 0 Or Not ok Then",
+        "        Err.Clear",
+        "        ok = c.SetTransformAndSolve2(t)",
+        "    End If",
         "    If Err.Number <> 0 Or Not ok Then",
         "        Err.Clear",
         "        c.Transform2 = t",
@@ -1171,8 +1199,6 @@ def _vba_assembly_helpers() -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--project", type=Path, default=REPO / "projects" / "FSAE_2027.vdproj.json")
-    ap.add_argument("--arb", type=Path, default=None,
-                    help="anti-roll-bar provision JSON (rocker_concepts format)")
     ap.add_argument("--frame", choices=("chassis", "iso"), default="chassis",
                     help="chassis: the chassis part's coordinates (Xasis 33.3); iso: ISO 8855")
     ap.add_argument("--out", type=Path, default=REPO / "projects" / "cad", help="output folder")
@@ -1180,8 +1206,7 @@ def main() -> int:
     ap.add_argument("--asm-name", default="SUSP_2027", help="top assembly file name")
     args = ap.parse_args()
     project = load_project(args.project)
-    arb = json.loads(args.arb.read_text(encoding="utf-8")) if args.arb else None
-    model = build_model(project, arb, args.asm_name)
+    model = build_model(project, None, args.asm_name)
     for asm in model.mates:
         mob = mobility(model, asm)
         print(f"{asm}: {len(model.corner_parts[asm])} parts, {mob.rows} mate constraints, "
@@ -1191,8 +1216,7 @@ def main() -> int:
         if mob.max_residual_mm > 1e-6 or mob.redundant or mob.joint_dof != 1:
             raise SystemExit(f"{asm}: the mate scheme is not a one-DOF mechanism")
     frame = X.cad_frame(project) if args.frame == "chassis" else swx.resolve_frame("iso")
-    src = args.project.name + (f" + {args.arb.name}" if args.arb else "")
-    text = render_macro(model, frame, src)
+    text = render_macro(model, frame, args.project.name)
     tag = "Xasis_33.3" if args.frame == "chassis" else "iso"
     path = args.out / f"{args.name}_{tag}.bas"
     path.write_bytes(text.encode("cp1252", errors="replace"))

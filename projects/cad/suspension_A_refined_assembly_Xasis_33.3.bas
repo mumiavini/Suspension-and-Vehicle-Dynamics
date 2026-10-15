@@ -50,72 +50,6 @@ Dim gSegB(1 To 64) As Object
 Dim gSegNameA(1 To 64) As String
 Dim gSegNameB(1 To 64) As String
 
-Sub main()
-    Set swApp = Application.SldWorks
-    Set swModeler = swApp.GetModeler
-    Dim d As String
-    On Error Resume Next
-    d = swApp.GetCurrentMacroPathFolder
-    On Error GoTo 0
-    If Len(d) > 0 And Right(d, 1) <> "\" Then d = d & "\"
-    d = InputBox("Folder for the suspension files (created if missing). " & _
-                 "Files with the names this macro writes are replaced.", _
-                 ASM_NAME, d & ASM_NAME & "\")
-    If Len(d) = 0 Then Exit Sub
-    If Right(d, 1) <> "\" Then d = d & "\"
-    gDir = d
-    If Len(Dir(gDir, vbDirectory)) = 0 Then
-        On Error Resume Next
-        MkDir gDir
-        On Error GoTo 0
-    End If
-    If Len(Dir(gDir, vbDirectory)) = 0 Then
-        MsgBox "Could not create the folder " & gDir
-        Exit Sub
-    End If
-    InitNames
-    If Not ClearOld() Then Exit Sub
-    gLog = ASM_NAME & " build log" & vbCrLf & "folder: " & gDir & vbCrLf
-    gMade = 0: gFailed = 0: gFailList = ""
-    gRefMade = 0: gRefFailed = 0: gMateMade = 0: gMateFailed = 0: gOtherFailed = 0
-    Calibrate
-    LogLine "CreateBodyFromCyl point is the centre: " & gCentred
-    ' parts and corner assemblies are built without windows
-    swApp.DocumentVisible False, 1
-    swApp.DocumentVisible False, 2
-    On Error GoTo stopped
-    BuildParts
-    BuildCorners
-    swApp.DocumentVisible True, 1
-    swApp.DocumentVisible True, 2
-    BuildTop
-    ReopenTop
-    On Error GoTo 0
-    Dim msg As String
-    msg = ASM_NAME & ": " & gMade & " of " & N_BODIES & " solids, " & _
-          gRefMade & " of " & N_REFS & " reference points / axes, " & _
-          gMateMade & " of " & N_MATES & " mates."
-    LogLine msg
-    WriteLog
-    If gOtherFailed > 0 Then msg = msg & vbCrLf & gOtherFailed & _
-        " placement / flexible / save step(s) failed."
-    If gFailed + gRefFailed + gMateFailed + gOtherFailed > 0 Then
-        msg = msg & vbCrLf & "Some steps failed: see " & gDir & ASM_NAME & _
-              "_log.txt"
-    End If
-    MsgBox msg
-    Exit Sub
-stopped:
-    Dim why As String
-    why = Err.Description
-    On Error Resume Next
-    swApp.DocumentVisible True, 1
-    swApp.DocumentVisible True, 2
-    LogLine "STOPPED in " & gCur & ": " & why
-    WriteLog
-    MsgBox "Stopped in " & gCur & ": " & why & vbCrLf & "Log: " & gDir & ASM_NAME & "_log.txt"
-End Sub
-
 Private Sub LogLine(ByVal s As String)
     gLog = gLog & s & vbCrLf
 End Sub
@@ -570,10 +504,31 @@ Private Function BeginAsm(ByVal nm As String) As Boolean
     BeginAsm = True
 End Function
 
+' Every part was modelled in place and every mate holds there: a component that is
+' not at the identity after the mates was placed or moved wrongly.
+Private Sub CheckPlaced()
+    Dim c As Variant, r As Variant
+    For Each c In gComps
+        r = Empty
+        On Error Resume Next
+        r = c.Transform2.ArrayData
+        On Error GoTo 0
+        If IsArray(r) Then
+            If Abs(r(9)) + Abs(r(10)) + Abs(r(11)) > 0.000001 Or _
+               Abs(r(0) - 1) + Abs(r(4) - 1) + Abs(r(8) - 1) > 0.000001 Then
+                gOtherFailed = gOtherFailed + 1
+                LogLine "FAIL " & c.Name2 & " is not where it was modelled in " & _
+                    gCur
+            End If
+        End If
+    Next
+End Sub
+
 Private Sub EndAsm()
     Dim e As Long, w As Long, ok As Boolean
     swModel.ClearSelection2 True
     swModel.ForceRebuild3 False
+    CheckPlaced
     On Error Resume Next
     ok = swModel.Save3(1, e, w)
     On Error GoTo 0
@@ -615,7 +570,11 @@ Private Function PlaceAtOrigin(c As Object, ByVal nm As String) As Boolean
     v = d
     On Error Resume Next
     Set t = swApp.GetMathUtility.CreateTransform((v))
-    ok = c.SetTransformAndSolve2(t)
+    ok = c.SetTransformAndSolve3(t, False)
+    If Err.Number <> 0 Or Not ok Then
+        Err.Clear
+        ok = c.SetTransformAndSolve2(t)
+    End If
     If Err.Number <> 0 Or Not ok Then
         Err.Clear
         c.Transform2 = t
@@ -1535,4 +1494,70 @@ Private Sub BuildTop()
     AddComp "SUSP_RR", ".SLDASM", True
     MakeFlexible "SUSP_RR"
     EndAsm
+End Sub
+
+Sub main()
+    Set swApp = Application.SldWorks
+    Set swModeler = swApp.GetModeler
+    Dim d As String
+    On Error Resume Next
+    d = swApp.GetCurrentMacroPathFolder
+    On Error GoTo 0
+    If Len(d) > 0 And Right(d, 1) <> "\" Then d = d & "\"
+    d = InputBox("Folder for the suspension files (created if missing). " & _
+                 "Files with the names this macro writes are replaced.", _
+                 ASM_NAME, d & ASM_NAME & "\")
+    If Len(d) = 0 Then Exit Sub
+    If Right(d, 1) <> "\" Then d = d & "\"
+    gDir = d
+    If Len(Dir(gDir, vbDirectory)) = 0 Then
+        On Error Resume Next
+        MkDir gDir
+        On Error GoTo 0
+    End If
+    If Len(Dir(gDir, vbDirectory)) = 0 Then
+        MsgBox "Could not create the folder " & gDir
+        Exit Sub
+    End If
+    InitNames
+    If Not ClearOld() Then Exit Sub
+    gLog = ASM_NAME & " build log" & vbCrLf & "folder: " & gDir & vbCrLf
+    gMade = 0: gFailed = 0: gFailList = ""
+    gRefMade = 0: gRefFailed = 0: gMateMade = 0: gMateFailed = 0: gOtherFailed = 0
+    Calibrate
+    LogLine "CreateBodyFromCyl point is the centre: " & gCentred
+    ' parts and corner assemblies are built without windows
+    swApp.DocumentVisible False, 1
+    swApp.DocumentVisible False, 2
+    On Error GoTo stopped
+    BuildParts
+    BuildCorners
+    swApp.DocumentVisible True, 1
+    swApp.DocumentVisible True, 2
+    BuildTop
+    ReopenTop
+    On Error GoTo 0
+    Dim msg As String
+    msg = ASM_NAME & ": " & gMade & " of " & N_BODIES & " solids, " & _
+          gRefMade & " of " & N_REFS & " reference points / axes, " & _
+          gMateMade & " of " & N_MATES & " mates."
+    LogLine msg
+    WriteLog
+    If gOtherFailed > 0 Then msg = msg & vbCrLf & gOtherFailed & _
+        " placement / flexible / save step(s) failed."
+    If gFailed + gRefFailed + gMateFailed + gOtherFailed > 0 Then
+        msg = msg & vbCrLf & "Some steps failed: see " & gDir & ASM_NAME & _
+              "_log.txt"
+    End If
+    MsgBox msg
+    Exit Sub
+stopped:
+    Dim why As String
+    why = Err.Description
+    On Error Resume Next
+    swApp.DocumentVisible True, 1
+    swApp.DocumentVisible True, 2
+    LogLine "STOPPED in " & gCur & ": " & why
+    WriteLog
+    MsgBox "Stopped in " & gCur & ": " & why & vbCrLf & "Log: " & gDir & ASM_NAME & "_log.txt"
 End Sub

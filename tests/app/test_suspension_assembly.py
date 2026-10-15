@@ -92,7 +92,11 @@ def test_mobility_sees_a_missing_and_a_repeated_mate(sa, model) -> None:
     asm = f"{sa.PREFIX}FL"
     mates = model.mates[asm]
     no_tie_rod = [m for m in mates if "tie_rod" not in m.label]
-    mob = sa.mobility(dataclasses.replace(model, mates={asm: no_tie_rod}), asm)
+    with pytest.raises(ValueError, match="no mate"):         # a part left floating
+        sa.mobility(dataclasses.replace(model, mates={asm: no_tie_rod}), asm)
+    parts = [c for c in model.corner_parts[asm] if not c.endswith("_tie_rod")]
+    mob = sa.mobility(dataclasses.replace(model, mates={asm: no_tie_rod},
+                                          corner_parts={asm: parts}), asm)
     assert mob.redundant == 0 and mob.joint_dof == 2       # heave, and the wheel steers
     axis = next(m for m in mates if m.label.endswith("UCA pivot axis"))
     doubled = sa.mobility(dataclasses.replace(model, mates={asm: mates + [axis]}), asm)
@@ -170,6 +174,19 @@ def test_macro_text_is_balanced_and_calls_only_defined_procedures(sa, project, m
     for proc in re.split(r"\r\nEnd (?:Sub|Function)", text):
         assert len(proc) < 60_000
     assert all(len(line) < 1000 for line in text.split("\r\n"))
+
+
+def test_main_is_the_last_argumentless_sub(sa, project, model) -> None:
+    """Tools > Macro > Run starts the last argument-less Sub of the newest module."""
+    text = sa.render_macro(model, sa.X.cad_frame(project), "test")
+    subs = re.findall(r"^(?:Private )?Sub (\w+)\(\)", text, flags=re.M)
+    assert subs[-1] == "main"
+    assert text.startswith('Attribute VB_Name = "SUSP_2027_build"')
+
+
+def test_the_anti_roll_bar_is_refused_until_it_is_jointed(sa, project) -> None:
+    with pytest.raises(ValueError, match="anti-roll bar"):
+        sa.build_model(project, arb={"front": {}})
 
 
 def test_parts_sit_in_the_chassis_frame(sa, project, model) -> None:

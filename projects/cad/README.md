@@ -77,4 +77,5 @@ coincident with `P_WHEEL_CENTER`. Coil-over: each eye centre coincident with
 `P_DAMPER_CHASSIS` (chassis_mounts) and `P_DAMPER` (rocker), the coil-over made
 a flexible sub-assembly. Regenerate with
 `uv run python scripts/export_suspension_assembly.py` (`--frame iso` for ISO
-numbers, `--arb` for an anti-roll-bar provision, fixed in `SUSP_ARB`).
+numbers). An anti-roll bar is not in the assembly yet (its arms and drop links
+need their own joints); the single-part macro takes `--arb`.
