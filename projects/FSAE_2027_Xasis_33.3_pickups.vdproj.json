@@ -1,7 +1,7 @@
 {
   "name": "FSAE 2027 -- pick-ups from Xasis 33.3",
   "team": "PUCPR Racing #27",
-  "author": "",
+  "author": "Vinicius Trento",
   "notes": "chassis pick-ups from CAD 'Xasis 33.3' (PSD, PST), placement forward -Y, left -X, up -Z; ISO origin at CAD (0, -120.4, 75) mm; other points from the project",
   "created": "2026-10-13",
   "vehicle": {
@@ -19,7 +19,7 @@
     "lltd_front": 0.45,
     "mu_lateral": 1.5,
     "mu_longitudinal": 1.4,
-    "design_ay_g": 1.5
+    "design_ay_g": 1.6
   },
   "front": {
     "name": "Front",
