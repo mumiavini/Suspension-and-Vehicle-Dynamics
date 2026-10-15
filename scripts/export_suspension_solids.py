@@ -156,6 +156,18 @@ def nearest_bodied(members, p) -> tuple[np.ndarray, str]:
     return best[1], best[2]
 
 
+def spin_axis(geo, cid: str) -> np.ndarray:
+    """The wheel's spin axis (unit, ISO) from the static solve."""
+    sv = DWSolver(geo.corner(cid))
+    res = sv.solve(wheel_travel_mm=0.0)
+    if not res.converged:
+        raise RuntimeError(f"{cid}: static solve did not converge")
+    spin = sv._reconstruct_spin_axis(_v([res.ubj.x_mm, res.ubj.y_mm, res.ubj.z_mm]),
+                                     _v([res.lbj.x_mm, res.lbj.y_mm, res.lbj.z_mm]),
+                                     _v([res.tro.x_mm, res.tro.y_mm, res.tro.z_mm]))
+    return _unit(spin)
+
+
 def corner_parts(geo, cid: str) -> list[Cyl]:
     """Wishbones, upright, wheel and tie rod / toe link of one corner (static)."""
     P = {k: _v(v) for k, v in geo.points[cid].items()}
@@ -183,15 +195,7 @@ def corner_parts(geo, cid: str) -> list[Cyl]:
                    Z["spindle_od"], "upright"))
     out.append(Cyl(f"{n}upright_arm", _t(_foot(tro, P["LCA_OUT"], P["UCA_OUT"])), _t(tro),
                    Z["arm_od"], "upright"))
-    # wheel: spin axis from the static solve
-    corner = geo.corner(cid)
-    sv = DWSolver(corner)
-    res = sv.solve(wheel_travel_mm=0.0)
-    if not res.converged:
-        raise RuntimeError(f"{cid}: static solve did not converge")
-    spin = sv._reconstruct_spin_axis(_v([res.ubj.x_mm, res.ubj.y_mm, res.ubj.z_mm]),
-                                     _v([res.lbj.x_mm, res.lbj.y_mm, res.lbj.z_mm]),
-                                     _v([res.tro.x_mm, res.tro.y_mm, res.tro.z_mm]))
+    spin = spin_axis(geo, cid)
     out.append(_centred(f"{n}hub", wc, spin, Z["hub_len"], Z["hub_od"], "upright"))
     out.append(_centred(f"{n}tyre", wc, spin, Z["tyre_width"], Z["tyre_od"], "wheel",
                         hollow=Z["rim_od"]))
@@ -367,6 +371,98 @@ def _num(v: float) -> str:
     return s if s not in ("-0",) else "0"
 
 
+def vba_calibrate() -> list[str]:
+    """``Calibrate``: sets ``gCentred`` (needs ``swModeler``)."""
+    return [
+        "' CreateBodyFromCyl takes a point, an axis, a radius and a length. Whether the point",
+        "' is the base or the middle of the cylinder is measured here on a probe body.",
+        "Private Sub Calibrate()",
+        "    Dim p(7) As Double",
+        "    p(0) = 0: p(1) = 0: p(2) = 0: p(3) = 0: p(4) = 0: p(5) = 1",
+        "    p(6) = 0.01: p(7) = 0.1",
+        "    Dim v As Variant",
+        "    v = p",
+        "    Dim b As Object",
+        "    Set b = swModeler.CreateBodyFromCyl((v))",
+        "    gCentred = False",
+        "    If Not b Is Nothing Then",
+        "        Dim bx As Variant",
+        "        bx = b.GetBodyBox",
+        "        If Abs(bx(2) + 0.05) < 0.005 Then gCentred = True",
+        "    End If",
+        "End Sub",
+    ]
+
+
+def vba_cylinder() -> list[str]:
+    """``MakeCylBody`` and ``Cyl``: one named, coloured body feature in ``swModel`` (needs
+    ``swModeler``, ``gCentred``, ``gMade``, ``gFailed``, ``gFailList``)."""
+    return [
+        "Private Function MakeCylBody(ByVal x1 As Double, ByVal y1 As Double, _",
+        "                             ByVal z1 As Double, ByVal x2 As Double, _",
+        "                             ByVal y2 As Double, ByVal z2 As Double, _",
+        "                             ByVal r As Double) As Object",
+        "    Dim dx As Double, dy As Double, dz As Double, L As Double",
+        "    dx = x2 - x1: dy = y2 - y1: dz = z2 - z1",
+        "    L = Sqr(dx * dx + dy * dy + dz * dz)",
+        "    If L < 0.000001 Or r <= 0 Then Exit Function",
+        "    Dim p(7) As Double",
+        "    If gCentred Then",
+        "        p(0) = (x1 + x2) / 2: p(1) = (y1 + y2) / 2: p(2) = (z1 + z2) / 2",
+        "    Else",
+        "        p(0) = x1: p(1) = y1: p(2) = z1",
+        "    End If",
+        "    p(3) = dx / L: p(4) = dy / L: p(5) = dz / L: p(6) = r: p(7) = L",
+        "    Dim v As Variant",
+        "    v = p",
+        "    Set MakeCylBody = swModeler.CreateBodyFromCyl((v))",
+        "End Function",
+        "",
+        "Private Sub Cyl(ByVal nm As String, ByVal x1 As Double, ByVal y1 As Double, _",
+        "                ByVal z1 As Double, ByVal x2 As Double, ByVal y2 As Double, _",
+        "                ByVal z2 As Double, ByVal od As Double, ByVal idia As Double, _",
+        "                ByVal cr As Double, ByVal cg As Double, ByVal cb As Double)",
+        "    Dim b As Object, inner As Object, f As Object",
+        "    Set b = MakeCylBody(x1, y1, z1, x2, y2, z2, od / 2)",
+        "    If b Is Nothing Then GoTo failed",
+        "    If idia > 0 Then",
+        "        ' a tube: cut a longer inner cylinder; keep the solid one if the cut fails",
+        "        Dim ex As Double, ey As Double, ez As Double, L As Double",
+        "        L = Sqr((x2 - x1) ^ 2 + (y2 - y1) ^ 2 + (z2 - z1) ^ 2)",
+        "        ex = (x2 - x1) / L * 0.001: ey = (y2 - y1) / L * 0.001",
+        "        ez = (z2 - z1) / L * 0.001",
+        "        Set inner = MakeCylBody(x1 - ex, y1 - ey, z1 - ez, x2 + ex, y2 + ey, z2 + ez, "
+        "idia / 2)",
+        "        If Not inner Is Nothing Then",
+        "            Dim res As Variant, opErr As Long",
+        "            On Error Resume Next",
+        "            res = b.Operations2(15902, inner, opErr)",
+        "            If opErr = 0 And Not IsEmpty(res) Then",
+        "                If UBound(res) >= 0 Then Set b = res(0)",
+        "            End If",
+        "            On Error GoTo 0",
+        "        End If",
+        "    End If",
+        "    Set f = swModel.CreateFeatureFromBody3(b, False, 0)",
+        "    If f Is Nothing Then GoTo failed",
+        "    f.Name = nm",
+        "    Dim c(8) As Double",
+        "    c(0) = cr: c(1) = cg: c(2) = cb: c(3) = 0.5: c(4) = 0.7: c(5) = 0.3",
+        "    c(6) = 0.3: c(7) = 0: c(8) = 0",
+        "    Dim cv As Variant",
+        "    cv = c",
+        "    On Error Resume Next",
+        "    f.SetMaterialPropertyValues2 cv, 1, Nothing",
+        "    On Error GoTo 0",
+        "    gMade = gMade + 1",
+        "    Exit Sub",
+        "failed:",
+        "    gFailed = gFailed + 1",
+        "    If gFailed <= 20 Then gFailList = gFailList & nm & vbCrLf",
+        "End Sub",
+    ]
+
+
 def render_macro(parts: list[Cyl], sketches: dict, frame, source: str) -> str:
     """The VBA module. Number literals use '.', which VBA reads whatever the locale."""
     fam = sorted({p.family for p in parts})
@@ -429,23 +525,7 @@ def render_macro(parts: list[Cyl], sketches: dict, frame, source: str) -> str:
     add("    MsgBox msg")
     add("End Sub")
     add("")
-    add("' CreateBodyFromCyl takes a point, an axis, a radius and a length. Whether the point")
-    add("' is the base or the middle of the cylinder is measured here on a probe body.")
-    add("Private Sub Calibrate()")
-    add("    Dim p(7) As Double")
-    add("    p(0) = 0: p(1) = 0: p(2) = 0: p(3) = 0: p(4) = 0: p(5) = 1")
-    add("    p(6) = 0.01: p(7) = 0.1")
-    add("    Dim v As Variant")
-    add("    v = p")
-    add("    Dim b As Object")
-    add("    Set b = swModeler.CreateBodyFromCyl((v))")
-    add("    gCentred = False")
-    add("    If Not b Is Nothing Then")
-    add("        Dim bx As Variant")
-    add("        bx = b.GetBodyBox")
-    add("        If Abs(bx(2) + 0.05) < 0.005 Then gCentred = True")
-    add("    End If")
-    add("End Sub")
+    L.extend(vba_calibrate())
     add("")
     add("Private Sub DeletePrevious()")
     add("    Dim f As Object")
@@ -465,68 +545,7 @@ def render_macro(parts: list[Cyl], sketches: dict, frame, source: str) -> str:
     add("    swModel.ClearSelection2 True")
     add("End Sub")
     add("")
-    add("Private Function MakeCylBody(ByVal x1 As Double, ByVal y1 As Double, _")
-    add("                             ByVal z1 As Double, ByVal x2 As Double, _")
-    add("                             ByVal y2 As Double, ByVal z2 As Double, _")
-    add("                             ByVal r As Double) As Object")
-    add("    Dim dx As Double, dy As Double, dz As Double, L As Double")
-    add("    dx = x2 - x1: dy = y2 - y1: dz = z2 - z1")
-    add("    L = Sqr(dx * dx + dy * dy + dz * dz)")
-    add("    If L < 0.000001 Or r <= 0 Then Exit Function")
-    add("    Dim p(7) As Double")
-    add("    If gCentred Then")
-    add("        p(0) = (x1 + x2) / 2: p(1) = (y1 + y2) / 2: p(2) = (z1 + z2) / 2")
-    add("    Else")
-    add("        p(0) = x1: p(1) = y1: p(2) = z1")
-    add("    End If")
-    add("    p(3) = dx / L: p(4) = dy / L: p(5) = dz / L: p(6) = r: p(7) = L")
-    add("    Dim v As Variant")
-    add("    v = p")
-    add("    Set MakeCylBody = swModeler.CreateBodyFromCyl((v))")
-    add("End Function")
-    add("")
-    add("Private Sub Cyl(ByVal nm As String, ByVal x1 As Double, ByVal y1 As Double, _")
-    add("                ByVal z1 As Double, ByVal x2 As Double, ByVal y2 As Double, _")
-    add("                ByVal z2 As Double, ByVal od As Double, ByVal idia As Double, _")
-    add("                ByVal cr As Double, ByVal cg As Double, ByVal cb As Double)")
-    add("    Dim b As Object, inner As Object, f As Object")
-    add("    Set b = MakeCylBody(x1, y1, z1, x2, y2, z2, od / 2)")
-    add("    If b Is Nothing Then GoTo failed")
-    add("    If idia > 0 Then")
-    add("        ' a tube: cut a longer inner cylinder; keep the solid one if the cut fails")
-    add("        Dim ex As Double, ey As Double, ez As Double, L As Double")
-    add("        L = Sqr((x2 - x1) ^ 2 + (y2 - y1) ^ 2 + (z2 - z1) ^ 2)")
-    add("        ex = (x2 - x1) / L * 0.001: ey = (y2 - y1) / L * 0.001")
-    add("        ez = (z2 - z1) / L * 0.001")
-    add("        Set inner = MakeCylBody(x1 - ex, y1 - ey, z1 - ez, x2 + ex, y2 + ey, z2 + ez, "
-        "idia / 2)")
-    add("        If Not inner Is Nothing Then")
-    add("            Dim res As Variant, opErr As Long")
-    add("            On Error Resume Next")
-    add("            res = b.Operations2(15902, inner, opErr)")
-    add("            If opErr = 0 And Not IsEmpty(res) Then")
-    add("                If UBound(res) >= 0 Then Set b = res(0)")
-    add("            End If")
-    add("            On Error GoTo 0")
-    add("        End If")
-    add("    End If")
-    add("    Set f = swModel.CreateFeatureFromBody3(b, False, 0)")
-    add("    If f Is Nothing Then GoTo failed")
-    add("    f.Name = nm")
-    add("    Dim c(8) As Double")
-    add("    c(0) = cr: c(1) = cg: c(2) = cb: c(3) = 0.5: c(4) = 0.7: c(5) = 0.3")
-    add("    c(6) = 0.3: c(7) = 0: c(8) = 0")
-    add("    Dim cv As Variant")
-    add("    cv = c")
-    add("    On Error Resume Next")
-    add("    f.SetMaterialPropertyValues2 cv, 1, Nothing")
-    add("    On Error GoTo 0")
-    add("    gMade = gMade + 1")
-    add("    Exit Sub")
-    add("failed:")
-    add("    gFailed = gFailed + 1")
-    add("    If gFailed <= 20 Then gFailList = gFailList & nm & vbCrLf")
-    add("End Sub")
+    L.extend(vba_cylinder())
     for f in fam:
         col = COLOURS.get(f, (0.6, 0.6, 0.6))
         add("")
