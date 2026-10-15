@@ -78,14 +78,31 @@ def test_equal_damper_margins_and_seed_metrics(rc, ctx) -> None:
 
 
 def test_frame_model_flags_sketch_only_lines(rc, ctx) -> None:
-    """The front box's top side tubes are sketch lines with no weldment body in Xasis 33.3;
-    the front bulkhead tubes are bodies with no 3D-sketch line."""
+    """The front box's top side tubes are 3D-sketch lines with no weldment body in Xasis
+    33.3 (kept, they may be planned tubes); 2D layout sketches with no body (templates,
+    ground lines) are references, not tubes; the front bulkhead is bodied."""
     top = [m for m in ctx.members if m.name == "Tri_Frente"
-           and {round(float(m.a[0]), 1), round(float(m.b[0]), 1)} == {559.6, -88.3}
-           and abs(float(m.a[1])) == 175.0]
-    assert len(top) == 2 and not any(m.bodied for m in top)
-    fbh = [m for m in ctx.members if m.name.startswith("body 2027 25X25")]
+           and round(float(m.a[0]), 1) == 559.6 and abs(float(m.a[1])) == 175.0
+           and float(m.b[0]) < -80.0]
+    assert len(top) == 2 and not any(m.bodied or m.reference for m in top)
+    fbh = [m for m in ctx.members if m.name == "front bulkhead"]
     assert fbh and all(m.bodied and abs(float(m.a[0]) - 559.6) < 1.0 for m in fbh)
+    refs = [m for m in ctx.members if m.name in ("Esboço8", "Esboço10", "head restraint")]
+    assert refs and all(m.reference for m in refs)
+
+
+def test_engine_sits_on_its_chassis_tabs(rc, ctx) -> None:
+    """MOTOR_FIXADO placed by its four mounts: the fit closes, the engine's +x runs to the
+    car's right (-y), and its own mount sketches land on the chassis tabs."""
+    R, t, worst = rc.engine_placement(ctx.project)
+    assert worst < 0.5
+    assert np.allclose(R @ R.T, np.eye(3), atol=1e-9) and np.linalg.det(R) > 0
+    assert R[:, 0] @ np.array([0.0, -1.0, 0.0]) > 0.999
+    names = [h.name for h in ctx.engine]
+    assert names[0].startswith("engine") and "intake plenum" in names
+    # the front-left mount arc (Esboço3) lands on the left 3DSketch8 tab end
+    assert np.allclose(R @ np.array([66.0, 387.5, 159.5]) + t, [-1063.3, 164.0, 399.4],
+                       atol=1.0)
 
 
 def test_rack_is_at_its_tie_rod_inner_x(rc, ctx) -> None:

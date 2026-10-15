@@ -88,6 +88,23 @@ from vdcore.geometry.solver import DWSolver  # noqa: E402
 PROJECT = REPO / "projects" / "FSAE_2027.vdproj.json"
 SURVEY = REPO / "projects" / "cad" / "Xasis 33.3_survey.json"
 OUT_DIR = REPO / "projects" / "rocker_concepts"
+ENGINE_SURVEY = REPO / "projects" / "cad" / "MOTOR_FIXADO_survey.json"
+
+# Engine placement: MOTOR_FIXADO's mount bosses and the chassis tabs they bolt to.
+# The two rear lugs are 160 mm wide through-bolts between the left and right tabs
+# (3DSketch6 lower, 3DSketch7 upper); each front boss face sits on the inner end of a
+# side tab (3DSketch8). (engine body, which end of its box, chassis tab sketch, pair)
+ENGINE_MOUNTS = (
+    ("Ressalto-extrusão14", "centre", "3DSketch6", "lug"),
+    ("Ressalto-extrusão15", "centre", "3DSketch7", "lug"),
+    ("Ressalto-extrusão22", "xmin", "3DSketch8", "left"),
+    ("Ressalto-extrusão17", "xmax", "3DSketch8", "right"),
+)
+ENGINE_FIT_TOL_MM = 2.0
+ENGINE_PLENUM_SKETCH = "3DSketch13"     # the intake plenum's outline
+# Engine sketches that are not engine surface: 3DSketch16 joins two mount centres
+# projected onto the part's bounding plane (y = +230 in the car).
+ENGINE_REFERENCE_SKETCHES = ("3DSketch16",)
 
 # --------------------------------------------------------------------------- #
 # Estimates (no CAD for these parts). Every number here is source="estimate".
@@ -109,12 +126,11 @@ ESTIMATES = {
     "column_mm": ((-30.0, 0.0, 157.0), (-300.0, 0.0, 560.0)),
     "driveshaft_od_mm": 60.0,          # CV joint / tripod housing envelope
     "diff_output_y_mm": 120.0,         # drive shaft inboard joint, |y|, on the rear axle
-    # engine envelope from the CAD engine-mount tabs, which are centred about y = -27 (the
-    # frame is not symmetric there): the front tabs (3DSketch8, x ~ -1070) end at y +164 /
-    # -218, the rear ones (3DSketch6/7, x ~ -1340..-1385) at y +53 / -107, so the case is
-    # narrower at the back. Two boxes: (x range, y centre, half width, z range)
-    "engine_boxes_mm": (((-1250.0, -1080.0), -27.0, 190.0, (115.0, 490.0)),
-                        ((-1400.0, -1250.0), -27.0, 130.0, (115.0, 490.0))),
+    # chain: front sprocket at the engine's output (MOTOR_FIXADO Esboço1), rear sprocket
+    # on the rear axle; pitch radii + chain for an assumed 14/46 520 set
+    "front_sprocket_r_mm": 45.0,
+    "rear_sprocket_r_mm": 120.0,
+    "chain_half_width_mm": 15.0,
     "coilover_kg": 1.3,                # moving masses per corner (CG effect only)
     "rocker_kg": 0.3,
 }
@@ -132,7 +148,10 @@ THRESHOLDS = (
     ("gap_rack", "front", "min", 5.0, "linkage vs steering rack"),
     ("gap_column", "front", "min", 5.0, "linkage vs steering column (estimate)"),
     ("gap_driveshaft", "rear", "min", 10.0, "linkage vs drive shaft (estimate)"),
-    ("gap_engine", "rear", "min", 10.0, "linkage vs engine envelope (estimate)"),
+    ("gap_engine", "rear", "min", 10.0, "linkage vs engine (MOTOR_FIXADO features, placed)"),
+    ("gap_chain", "rear", "min", 10.0, "linkage vs chain and sprockets (estimate)"),
+    ("gap_linkage_members", None, "min", 5.0,
+     "rocker / coil-over vs wishbones, tie rod / toe link (with steer)"),
     ("pivot_bracket_mm", None, "max", 60.0, "rocker pivot to nearest bodied tube"),
     ("damper_bracket_mm", None, "max", 60.0, "coil-over chassis end to nearest bodied tube"),
     ("rod_angle_max_deg", None, "max", 30.0, "rod transmission angle (to the end stops)"),
@@ -251,6 +270,7 @@ class Member:
     a: np.ndarray
     b: np.ndarray
     bodied: bool          # a weldment body of this shape exists in the CAD
+    reference: bool = False   # a 2D-sketch line with no body: template / layout reference
 
 
 @dataclass(frozen=True)
@@ -264,6 +284,7 @@ def frame_model(project: Project) -> tuple[list[Member], list[Box]]:
     sv = C.load_survey(SURVEY)
     fr = X.cad_frame(project)
     raw = json.loads(SURVEY.read_text(encoding="utf-8"))
+    sketch_type = {str(sk["name"]): str(sk.get("type", "")) for sk in raw.get("sketches", [])}
     bodies = []
     for b in raw.get("bodies", []):
         bx = b["box_mm"]
@@ -279,7 +300,8 @@ def frame_model(project: Project) -> tuple[list[Member], list[Box]]:
                  if np.all(lo >= lb - 30.0) and np.all(hi <= hb + 30.0)
                  and float(np.prod(np.maximum(hi - lo, 1.0))) > 0.2 * vol]
         matched.update(tight)
-        members.append(Member(ln.sketch, a, b, bool(tight)))
+        members.append(Member(ln.sketch, a, b, bool(tight),
+                              reference=not tight and sketch_type.get(ln.sketch) != "3d"))
     # a body piece lying inside a bodied member's own envelope is part of it (a member
     # split at a crossing, an end trim)
     for i, (_n, lo, hi) in enumerate(bodies):
@@ -310,6 +332,148 @@ def frame_model(project: Project) -> tuple[list[Member], list[Box]]:
 
 
 # --------------------------------------------------------------------------- #
+# The engine, placed on its mounts
+# --------------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class Hull:
+    """A convex volume: ``eq @ [x, y, z, 1] <= 0`` inside (scipy ConvexHull equations)."""
+
+    name: str
+    points: np.ndarray
+    eq: np.ndarray
+
+    def gap(self, a, b) -> float:
+        """Lower bound of the distance from a segment to the hull (< 0 inside).
+
+        The largest plane distance is exact on a face's footprint and smaller than the
+        true distance near edges and corners: a conservative (small) gap.
+        """
+        a, b = np.asarray(a, float), np.asarray(b, float)
+        s = np.linspace(0.0, 1.0, 41)[:, None]
+        pts = a + s * (b - a)
+        d = pts @ self.eq[:, :3].T + self.eq[:, 3]
+        return float(d.max(axis=1).min())
+
+
+def _hull(name: str, pts) -> Hull:
+    from scipy.spatial import ConvexHull
+
+    pts = np.asarray(pts, float)
+    return Hull(name, pts, ConvexHull(pts).equations)
+
+
+def _tab_ends(survey_raw: dict, sketch: str, frame) -> list[np.ndarray]:
+    """Inner ends (nearer the centreline) of a sketch's lines that run along the car's Y."""
+    out = []
+    for sk in survey_raw.get("sketches", []):
+        if sk["name"] != sketch:
+            continue
+        for ln in sk["lines"]:
+            if ln.get("construction"):
+                continue
+            a, b = C.cad_to_iso(ln["a"], frame), C.cad_to_iso(ln["b"], frame)
+            d = b - a
+            if abs(d[1]) > 0.95 * float(np.linalg.norm(d)):
+                out.append(a if abs(a[1]) < abs(b[1]) else b)
+    return out
+
+
+def engine_placement(project: Project) -> tuple[np.ndarray, np.ndarray, float]:
+    """``(R, t, worst residual mm)`` taking MOTOR_FIXADO's frame to the car (ISO 8855).
+
+    Kabsch fit of the engine's four mount points (ENGINE_MOUNTS) to the chassis tabs
+    they bolt to, both read from the CAD surveys. Raises if the fit is worse than
+    ENGINE_FIT_TOL_MM: then the engine and the chassis disagree and nothing is placed.
+    """
+    eng = json.loads(ENGINE_SURVEY.read_text(encoding="utf-8"))
+    chs = json.loads(SURVEY.read_text(encoding="utf-8"))
+    fr = X.cad_frame(project)
+    boxes = {b["name"]: (np.array(b["box_mm"][:3]), np.array(b["box_mm"][3:]))
+             for b in eng.get("bodies", [])}
+    P, Q = [], []
+    for body, where, sketch, pair in ENGINE_MOUNTS:
+        lo, hi = boxes[body]
+        c = 0.5 * (lo + hi)
+        if where == "xmin":
+            c[0] = lo[0]
+        elif where == "xmax":
+            c[0] = hi[0]
+        ends = _tab_ends(chs, sketch, fr)
+        left = [e for e in ends if e[1] > 0]
+        right = [e for e in ends if e[1] < 0]
+        if len(left) != 1 or len(right) != 1:
+            raise ValueError(f"{sketch}: expected one left and one right tab, found "
+                             f"{len(left)} / {len(right)}")
+        q = {"lug": 0.5 * (left[0] + right[0]), "left": left[0], "right": right[0]}[pair]
+        P.append(c)
+        Q.append(q)
+    P, Q = np.array(P), np.array(Q)
+    pc, qc = P.mean(0), Q.mean(0)
+    u, _s, vt = np.linalg.svd((P - pc).T @ (Q - qc))
+    d = np.sign(np.linalg.det(vt.T @ u.T))
+    R = vt.T @ np.diag([1.0, 1.0, d]) @ u.T
+    t = qc - R @ pc
+    worst = float(np.linalg.norm((R @ P.T).T + t - Q, axis=1).max())
+    if worst > ENGINE_FIT_TOL_MM:
+        raise ValueError(f"engine mounts do not fit the chassis tabs ({worst:.1f} mm)")
+    return R, t, worst
+
+
+def engine_model(project: Project) -> tuple[list[Hull], float]:
+    """Convex volumes of the engine as far as its survey describes it, in the car frame.
+
+    MOTOR_FIXADO is a scanned mesh; the survey carries its solid features only (mount
+    bosses, bolts, the sprocket profile) and its sketches. Two hulls: the crankcase
+    (all solid bodies and the sketch geometry that is not the plenum, the sprocket,
+    construction or a reference line reaching below the floor) and the intake plenum
+    (its outline sketch).
+    The mesh itself is not in the survey, so parts of the engine outside these features
+    are not represented. Plus the chain and sprockets (estimate).
+    """
+    R, t, worst = engine_placement(project)
+    eng = json.loads(ENGINE_SURVEY.read_text(encoding="utf-8"))
+
+    def car(p):
+        return R @ np.asarray(p, float) + t
+
+    crank: list[np.ndarray] = []
+    for b in eng.get("bodies", []):
+        lo, hi = b["box_mm"][:3], b["box_mm"][3:]
+        crank += [car([x, y, z]) for x in (lo[0], hi[0]) for y in (lo[1], hi[1])
+                  for z in (lo[2], hi[2])]
+    plenum: list[np.ndarray] = []
+    sprocket: list[np.ndarray] = []
+    for sk in eng.get("sketches", []):
+        pts = [car(ln[k]) for ln in sk.get("lines", []) if not ln.get("construction")
+               for k in ("a", "b")]
+        pts += [car(a["center"]) for a in sk.get("arcs", []) if "center" in a]
+        if not pts or min(float(p[2]) for p in pts) < 50.0 or \
+                sk["name"] in ENGINE_REFERENCE_SKETCHES:
+            continue                      # empty, or a reference line
+        if sk["name"] == ENGINE_PLENUM_SKETCH:
+            plenum += pts
+        elif sk["name"] == "Esboço1":     # the output-shaft profile: the front sprocket,
+            sprocket = pts                # outboard of the case (in the chain's hull)
+        else:
+            crank += pts
+    hulls = [_hull("engine (features)", crank)]
+    if len(plenum) >= 4:
+        hulls.append(_hull("intake plenum", plenum))
+    if sprocket:
+        E = ESTIMATES
+        fc = np.mean(sprocket, axis=0)
+        rc_ = np.array([-1540.0, fc[1], 245.0])     # rear axle, same chain line
+        ring = []
+        for c0, r in ((fc, E["front_sprocket_r_mm"]), (rc_, E["rear_sprocket_r_mm"])):
+            for ang in np.linspace(0.0, 2 * math.pi, 24, endpoint=False):
+                for dy in (-E["chain_half_width_mm"], E["chain_half_width_mm"]):
+                    ring.append(c0 + np.array([r * math.cos(ang), dy, r * math.sin(ang)]))
+        hulls.append(_hull("chain and sprockets (estimate)", ring))
+    return hulls, worst
+
+
+# --------------------------------------------------------------------------- #
 # Context and geometry helpers
 # --------------------------------------------------------------------------- #
 
@@ -320,6 +484,8 @@ class Ctx:
     rc: dict[str, float]
     members: list[Member]
     boxes: list[Box]
+    engine: list[Hull] = None  # type: ignore[assignment]
+    engine_fit_mm: float = math.nan
 
     @property
     def tubes(self) -> list[tuple[str, np.ndarray, np.ndarray]]:
@@ -332,7 +498,8 @@ def load_ctx() -> Ctx:
     st = K.compute_static(g)
     rc = {"front": st.value("front.rc_static"), "rear": st.value("rear.rc_static")}
     members, boxes = frame_model(p)
-    return Ctx(p, g, rc, members, boxes)
+    engine, fit = engine_model(p)
+    return Ctx(p, g, rc, members, boxes, engine, fit)
 
 
 def seg_seg(p1, q1, p2, q2) -> float:
@@ -366,7 +533,7 @@ def seg_aabb(a, b, lo, hi) -> float:
 
 
 def seg_box(a, b, boxes) -> float:
-    """Distance to the nearest ``engine_boxes_mm`` box (x range, y centre, half width, z)."""
+    """Distance to the nearest of some boxes given as (x range, y centre, half width, z range)."""
     return min(seg_aabb(a, b, np.array([x0, yc - hw, z0]), np.array([x1, yc + hw, z1]))
                for (x0, x1), yc, hw, (z0, z1) in boxes)
 
@@ -492,6 +659,8 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                        "coil-over": "gap_coilover_frame", "eyes": "gap_eyes_frame"}[name]
                 rad = eye_r if name == "eyes" else rad
                 for m in ctx.members:
+                    if m.reference:
+                        continue
                     g = seg_seg(p, q, m.a, m.b) - rad - tube_r
                     if g < worst.get(key, (math.inf, ""))[0]:
                         keep(key, g, f"{m.name} {_pt(m.a, '.0f')}->{_pt(m.b, '.0f')}"
@@ -502,8 +671,10 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                     keep("gap_solid_bodies", g, f"{name} vs '{bx.name}' box, {side} at "
                                                 f"{st.z:+.0f} mm")
                 if axle == "rear":
-                    keep("gap_engine", seg_box(p, q, E["engine_boxes_mm"]) - rad,
-                         f"{name}, {side} at {st.z:+.0f} mm")
+                    for h in ctx.engine:
+                        key_e = "gap_chain" if h.name.startswith("chain") else "gap_engine"
+                        keep(key_e, h.gap(p, q) - rad, f"{name} vs {h.name}, {side} at "
+                                                         f"{st.z:+.0f} mm")
     # ---- left vs right, heave and roll pairs
     for sl in left:
         for sr in right:
@@ -523,6 +694,7 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
             ("LCA front leg", corner.lca_inboard_front, "lbj"),
             ("LCA rear leg", corner.lca_inboard_rear, "lbj")]
     rod_r = E["rod_od_mm"] / 2.0
+    steer_dl = 0.0
     for z, st0 in zip(zs[::2], sw.states[::2], strict=True):
         guess = math.radians(st0.psi_deg)
         for rack in racks:
@@ -538,6 +710,8 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                 keep("gap_rod_members", -math.inf, f"{exc} (rack {rack:+.0f})")
                 continue
             rr = rk.point(rk.r, psi)
+            # steering moving the damper (a rod on the upright, off the kingpin axis)
+            steer_dl = max(steer_dl, abs(rk.damper_len(psi) - st0.damper_length_mm))
             lift = np.array([0.0, 0.0, float(z)])
             r0, r1 = trim(mount, rr, 30.0, 0.0)          # the mount's own bracket excluded
             for name, p_in, end in legs:
@@ -553,6 +727,21 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                  - E["tie_rod_od_mm"] / 2.0,
                  f"{'tie rod' if axle == 'front' else 'toe link'} at {z:+.0f} mm, "
                  f"rack {rack:+.0f}")
+            # the rocker and the coil-over against the same moving members
+            lk_s = Linkage(float(z), mount, rr, rk.point(rk.d, psi), pivot, dc, axis)
+            moving = [(n, a_, b_, E["wishbone_od_mm"] / 2.0) for n, p_in, end in legs
+                      for a_, b_ in ((np.array([p_in.x_mm, p_in.y_mm, p_in.z_mm]),
+                                      np.array([getattr(res, end).x_mm, getattr(res, end).y_mm,
+                                                getattr(res, end).z_mm]) + lift),)]
+            moving.append(("tie rod" if axle == "front" else "toe link", tin, tout,
+                           E["tie_rod_od_mm"] / 2.0))
+            for name, p, q, rad in lk_s.elements():
+                if name == "rod":
+                    continue
+                rad = eye_r if name == "eyes" else rad
+                for mname, ma, mb, mr in moving:
+                    keep("gap_linkage_members", seg_seg(p, q, ma, mb) - rad - mr,
+                         f"{name} vs {mname} at {z:+.0f} mm, rack {rack:+.0f}")
             # rim: rod points inside the wheel's width must stay inside the rim
             ubj = np.array([res.ubj.x_mm, res.ubj.y_mm, res.ubj.z_mm])
             lbj = np.array([res.lbj.x_mm, res.lbj.y_mm, res.lbj.z_mm])
@@ -593,6 +782,7 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                      - E["driveshaft_od_mm"] / 2.0, f"{name} at {z:+.0f} mm")
     for k, (g, w) in worst.items():
         out[k], out[k + "_where"] = g, w
+    out["damper_steer_change_mm"] = steer_dl
 
     # ---- brackets (both corners; the worse one)
     for key, p in (("pivot_bracket", pivot), ("damper_bracket", dc)):
@@ -763,22 +953,21 @@ def views_svg(ctx: Ctx, specs: dict[str, RockerSpec], title: str, scale: float =
             rods.append((m, rr))
             rockers += [(o, rr), (o, rd), (rr, rd)]
             dampers.append((rd, dc))
-    box_edges = []
-    for (ex0, ex1), eyc, ehw, (ez0, ez1) in ESTIMATES["engine_boxes_mm"]:
-        box = [np.array(v, float) for v in
-               ((ex0, eyc - ehw, ez0), (ex1, eyc - ehw, ez0), (ex1, eyc + ehw, ez0),
-                (ex0, eyc + ehw, ez0), (ex0, eyc - ehw, ez1), (ex1, eyc - ehw, ez1),
-                (ex1, eyc + ehw, ez1), (ex0, eyc + ehw, ez1))]
-        box_edges += [(box[i], box[j]) for i, j in ((0, 1), (1, 2), (2, 3), (3, 0), (4, 5),
-                                                    (5, 6), (6, 7), (7, 4), (0, 4), (1, 5),
-                                                    (2, 6), (3, 7))]
     stg = ctx.project.steering
     x_r = -float(stg.rack_x_mm)
     rack = [(np.array([x_r, -stg.rack_half_length_mm, stg.rack_z_mm]),
              np.array([x_r, stg.rack_half_length_mm, stg.rack_z_mm])),
             tuple(np.array(v) for v in ESTIMATES["column_mm"])]
     frame = [(m.a, m.b) for m in ctx.members if m.bodied]
-    sketch = [(m.a, m.b) for m in ctx.members if not m.bodied]
+    sketch = [(m.a, m.b) for m in ctx.members if not m.bodied and not m.reference]
+    from scipy.spatial import ConvexHull
+
+    engine_edges = []
+    for h in ctx.engine or []:
+        hull = ConvexHull(h.points)
+        for simplex in hull.simplices:
+            for i in range(3):
+                engine_edges.append((h.points[simplex[i]], h.points[simplex[(i + 1) % 3]]))
     tyres = []                      # outline only: loaded radius, tyre width
     half_w = 0.5 * float(ctx.project.turning_envelope.tyre_section_width_mm)
     for cid in ("FL", "FR", "RL", "RR"):
@@ -793,7 +982,7 @@ def views_svg(ctx: Ctx, specs: dict[str, RockerSpec], title: str, scale: float =
             tyres.append((e - np.array([0, half_w, 0]), e + np.array([0, half_w, 0])))
     layers = (("#d6dae1", 1.0, tyres, ""), ("#b8c0cc", 1.2, frame, ""),
               ("#c9ced6", 1.0, sketch, ' stroke-dasharray="2,3"'),
-              ("#9aa4b2", 1.0, box_edges, ' stroke-dasharray="5,4"'),
+              ("#e2b4a6", 0.6, engine_edges, ""),
               ("#2563eb", 1.5, susp, ""), ("#0f766e", 2.0, rack, ""),
               ("#ea580c", 2.6, rods, ""), ("#7c3aed", 2.2, rockers, ""),
               ("#16a34a", 6.0, dampers, ' stroke-opacity="0.75" stroke-linecap="round"'))
@@ -828,7 +1017,8 @@ def views_svg(ctx: Ctx, specs: dict[str, RockerSpec], title: str, scale: float =
                            f'stroke="{color}" stroke-width="{wdt}"{extra}/>')
     ly = total_h - 12
     out.append(f'<text x="{pad:.1f}" y="{ly:.1f}"><tspan fill="#6b7280">grey: CAD frame (dotted: '
-               'sketch line with no body); dashed box: engine envelope (estimate)</tspan>  '
+               'sketch line with no body)</tspan>  <tspan fill="#c2410c">light red: engine '
+               '(MOTOR_FIXADO features), plenum, chain (estimate)</tspan>  '
                '<tspan fill="#2563eb">blue: wishbones, tie rods</tspan>  <tspan fill="#0f766e">'
                'teal: rack, column (estimate)</tspan>  <tspan fill="#ea580c">orange: rods</tspan>'
                '  <tspan fill="#7c3aed">purple: rockers</tspan>  <tspan fill="#16a34a">green: '
@@ -873,10 +1063,15 @@ ROWS = (  # (label, key, format)
     ("Gap: linkage vs rack [mm]", "gap_rack", ".1f"),
     ("Gap: linkage vs steering column [mm] (estimate)", "gap_column", ".1f"),
     ("Gap: linkage vs drive shaft [mm] (estimate)", "gap_driveshaft", ".1f"),
-    ("Gap: linkage vs engine envelope [mm] (estimate)", "gap_engine", ".1f"),
+    ("Gap: linkage vs engine (MOTOR_FIXADO features, on its mounts) [mm]", "gap_engine", ".1f"),
     ("Gap: linkage vs solid bodies' bounding boxes [mm]", "gap_solid_bodies", ".1f"),
     ("Rocker pivot to nearest bodied tube [mm]", "pivot_bracket_mm", ".1f"),
     ("Coil-over chassis end to nearest bodied tube [mm]", "damper_bracket_mm", ".1f"),
+    ("Gap: rocker / coil-over vs wishbones, tie rod / toe link, with steer [mm]",
+     "gap_linkage_members", ".1f"),
+    ("Gap: linkage vs chain and sprockets [mm] (estimate)", "gap_chain", ".1f"),
+    ("Damper length change over the rack travel at fixed wheel-centre height [mm] "
+     "(steering jacking + any mount coupling; information)", "damper_steer_change_mm", ".2f"),
     ("Rocker / coil-over centreline height range z [mm]", "rocker_z_range_mm", ".0f"),
     ("Coil-over + rocker mass height z [mm]", "moving_mass_z_mm", ".0f"),
 )
@@ -956,11 +1151,8 @@ def report(ctx: Ctx, cols) -> str:
          f"{E['column_od_mm']:.0f}; damper stroke {ctx.project.damper.stroke_mm:g} mm "
          f"({ctx.project.damper.stroke_source}); drive shaft from the wheel centre to a joint "
          f"at |y| = {E['diff_output_y_mm']:.0f} mm on the axle line, OD "
-         f"{E['driveshaft_od_mm']:.0f}; engine envelope "
-         + " and ".join(f"x {b[0][0]:.0f}..{b[0][1]:.0f}, y {b[1] - b[2]:.0f}..{b[1] + b[2]:.0f}"
-                        for b in E["engine_boxes_mm"])
-         + f", z {E['engine_boxes_mm'][0][3][0]:.0f}..{E['engine_boxes_mm'][0][3][1]:.0f} mm "
-         "(from the CAD engine-mount tabs, centred about y -27); coil-over "
+         f"{E['driveshaft_od_mm']:.0f}; chain and sprockets on the engine's chain line "
+         f"(radii {E['front_sprocket_r_mm']:.0f} / {E['rear_sprocket_r_mm']:.0f} mm); coil-over "
          f"{E['coilover_kg']} kg and rocker {E['rocker_kg']} kg per corner (CG effect only).",
          "", "## Thresholds behind the ✗ flags", "",
          "Information, not requirements.", "", "| check | limit |", "|---|---|"]
@@ -974,9 +1166,9 @@ def report(ctx: Ctx, cols) -> str:
                                    for cid, *_ in cols) + " |",
               "|---|" + "---|" * len(cols)]
         for label, key, fmt in ROWS:
-            if axle == "front" and key in ("gap_driveshaft", "gap_engine"):
+            if axle == "front" and key in ("gap_driveshaft", "gap_engine", "gap_chain"):
                 continue
-            if axle == "rear" and key in ("gap_rack", "gap_column"):
+            if axle == "rear" and key in ("gap_rack", "gap_column", "damper_steer_change_mm"):
                 continue
             cells = []
             for _cid, _n, res, _s, _c in cols:
