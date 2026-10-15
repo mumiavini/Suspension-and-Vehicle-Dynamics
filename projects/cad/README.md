@@ -63,7 +63,9 @@ vdcore's: 0.800 at ride).
 
 How to run: open SolidWorks with no suspension file open, Tools > Macro > New
 (save a blank .swp where the files should go), File > Import File... the .bas,
-F5. It writes 47 files and `SUSP_2027_log.txt` (send the log if a step fails).
+open the module `SUSP_2027_build` it adds, click inside `Sub main` and press F5
+(the .swp's own module has an empty `main`). It writes 47 files and
+`SUSP_2027_log.txt` (send the log if a step fails), then opens `SUSP_2027`.
 Then insert `SUSP_2027.SLDASM` into `MONT_CHASSI_SUSP_MOTOR.SLDASM` and mate its
 origin and three planes to Xasis 33.3's; suppress `susp` there.
 

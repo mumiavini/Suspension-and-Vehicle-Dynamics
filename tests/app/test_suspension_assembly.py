@@ -118,7 +118,8 @@ def _statements(text: str) -> list[str]:
 
 _KEYWORDS = {"If", "Else", "ElseIf", "End", "For", "Next", "Do", "Loop", "Select", "Case",
              "Dim", "Set", "Exit", "On", "Private", "Sub", "Function", "Const", "Option",
-             "Open", "Print", "Close", "Kill", "MkDir", "SetAttr", "MsgBox", "GoTo"}
+             "Open", "Print", "Close", "Kill", "MkDir", "SetAttr", "MsgBox", "GoTo",
+             "Attribute"}
 
 
 def test_macro_text_is_balanced_and_calls_only_defined_procedures(sa, project, model) -> None:
@@ -182,3 +183,23 @@ def test_parts_sit_in_the_chassis_frame(sa, project, model) -> None:
     r = model.components[f"{sa.PREFIX}FL_chassis_mounts"].ref("P_LCA_IN_FRONT")
     d = np.min(np.linalg.norm(nodes - np.array(sa.SS._m(r.a, frame)) * 1000.0, axis=1))
     assert d < 0.1
+
+
+def test_construction_lines_cross_only_where_meant(sa, project, model) -> None:
+    """Each reference point is where its two lines cross; no two lines of a part's
+    REF_SKETCH overlap (collinear), which would make the selection ambiguous."""
+    frame = sa.X.cad_frame(project)
+    assert all(abs(np.linalg.norm(d) - 1.0) < 1e-12 for d in sa.REF_DIRS)
+    for c in model.components.values():
+        segs = sa.ref_segments(c, frame)
+        for i, (na, a0, a1) in enumerate(segs):
+            for nb, b0, b1 in segs[i + 1:]:
+                da, db = (a1 - a0) / np.linalg.norm(a1 - a0), (b1 - b0) / np.linalg.norm(b1 - b0)
+                if np.linalg.norm(np.cross(da, db)) > 1e-6:
+                    continue                            # not parallel
+                off = np.linalg.norm(np.cross(b0 - a0, da))
+                if off > 1e-6:
+                    continue                            # parallel, apart
+                ta = sorted((0.0, float((a1 - a0) @ da)))
+                tb = sorted((float((b0 - a0) @ da), float((b1 - a0) @ da)))
+                assert min(ta[1], tb[1]) - max(ta[0], tb[0]) < 1e-6, f"{c.name}: {na} / {nb}"
