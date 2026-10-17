@@ -377,8 +377,15 @@ class Node:
 
 
 def frame_nodes(members: list[Member]) -> list[Node]:
-    tubes = [m for m in members
-             if m.bodied and float(np.linalg.norm(m.b - m.a)) >= NODE_MIN_TUBE_MM]
+    tubes: list[Member] = []
+    for m in members:
+        if not m.bodied or float(np.linalg.norm(m.b - m.a)) < NODE_MIN_TUBE_MM:
+            continue
+        # the CAD models some tubes twice (two sketches on one tube): count them once
+        if any(max(_foot(m.a, t.a, t.b)[0], _foot(m.b, t.a, t.b)[0]) < 2.0 or
+               max(_foot(t.a, m.a, m.b)[0], _foot(t.b, m.a, m.b)[0]) < 2.0 for t in tubes):
+            continue
+        tubes.append(m)
     ends = [(np.asarray(e, float), i) for i, m in enumerate(tubes) for e in (m.a, m.b)]
     clusters: list[list[int]] = []
     for k, (p, _i) in enumerate(ends):           # single-linkage clusters of tube ends

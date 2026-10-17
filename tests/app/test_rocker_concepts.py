@@ -122,10 +122,12 @@ def test_clearance_helpers(rc) -> None:
 
 
 def test_frame_nodes_are_the_welded_joints(rc, ctx) -> None:
-    """Nodes are joints of 3+ bodied tube ends; the front hoop's foot is the busiest."""
+    """Nodes are joints of 3+ bodied tube ends. The front hoop's foot has 7: the CAD
+    models its lower leg and the bottom cross tube twice (PSD and FRONTO HO sketches),
+    and a tube is counted once."""
     assert all(n.valence >= 3 for n in ctx.nodes)
     d, n = rc.nearest_node(ctx, (-120.4, 205.0, 117.4))
-    assert d < 1.0 and n.valence == 9 and "FRONTO HO" in n.tubes
+    assert d < 1.0 and n.valence == 7
     # the floor X brace crosses at the centre line: a node with no tube end in it
     d, n = rc.nearest_node(ctx, (0.0, 0.0, 117.4))
     assert d < 1.0 and n.valence == 4
