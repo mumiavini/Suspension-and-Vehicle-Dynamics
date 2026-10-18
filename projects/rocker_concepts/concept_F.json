@@ -1,79 +1,69 @@
 {
  "concept_id": "F",
- "name": "Concept F: pullrods to rockers on the low frame nodes, coil-overs low",
- "summary": "Pullrods hang from clevises on the upper wishbones, 42-47 mm from the upper ball joints (front on the UCA front leg, rear between the two legs, 11 mm off the front leg), and pull bell-crank rockers bracketed off the lowest frame nodes. Front: the rocker pivot is 55.3 mm from the front-hoop bottom node (7 tube ends, tied with the main-hoop side node as the busiest joint of the frame; it is also the LCA rear pivot). The coil-over runs forward, down and inboard from the rocker outside the front box's side, enters the box through its lower front side triangle about 30 mm before its chassis eye, and ends at an eye inside the box, 58.0 mm from the floor/side node at the front of the box (5 tube ends; also the LCA front pivot). Rear: the rocker pivot is 54.1 mm from the rear lower node (5 tube ends; the rear LCA front pivot), outboard of the chain, and the coil-over climbs up and back, outboard of the PST tube, to an eye 56.6 mm from the rear upper node (4 tube ends; the rear UCA front pivot). Both rods are in tension (no buckling) and both rocker brackets and coil-over ends sit at welded joints. The trade-off: the lowest linkage of the node concepts (CG -4.55 mm against the seed) and rear coil-overs on the side structure, away from the differential's space, against long rods swept strongly in plan (38.7 deg front, 53.6 deg rear) at 2.4-2.6x the wheel load; a front that passes with thin margins to the rack housing (5.2 mm, the inner tie-rod joint and boot not modelled) and the LCA rear leg (5.0 mm); a front coil-over that crosses the frame side into the footwell; a front pivot that only fits as a stub cantilevered from the hoop; and a rear rocker whose pickup hardware hangs about 9 mm below the rear lower rails. No evaluator threshold is missed on either axle. MR 0.80 at ride is the comparison query, not a choice.",
+ "name": "Concept F (refined): pullrods to rockers on the low frame nodes",
+ "summary": "Pullrods from real clevises on the UCAs (the rod end 22-26 mm off the leg's centreline, 67-70 mm from the upper ball joint) to rockers bracketed off the lowest frame nodes, checked against the inner tie-rod joint and boot (a 50 mm envelope, estimate) and with a +-20 mm double-shear pivot bolt clear of the moving wishbones. The REAR works with margin: zero fails, rocker 53.7 mm from the rear lower node outboard of the chain, coil-over up to an eye 56.4 mm from the rear upper node, rod 20.3 mm from the wishbones. The FRONT does not quite: with the clevis stand-off, the boot and the pivot bolt all taken into account, the best layout found puts the rocker pivot 61.2 mm from the front-hoop bottom node (limit 60) and leaves the rod-to-UCA-rear-leg and coil-over-to-boot gaps at the 5.0 mm limit. The cause is geometric: both low front nodes are also LCA pivots, and a coil-over between them crosses the rack line where the inner joint and boot travel. Its rod also carries 2.87x the wheel load and the clevis bends the UCA (about 78 N·m at ride). Concept DF combines this rear with the front of concept D. MR 0.80 at ride is the comparison query, not a choice.",
  "front": {
   "rod_type": "pullrod",
   "mount_body": "uca",
   "rod_mount": [
-   5.12,
-   499.94,
-   376.49
+   -8.1,
+   469.05,
+   369.05
   ],
   "pivot": [
-   -113.99,
-   251.28,
-   146.94
+   -120.29,
+   252.79,
+   155.66
   ],
   "damper_end": [
-   85.64,
-   194.69,
-   159.59
+   78.5,
+   202.76,
+   163.42
   ],
-  "rod_arm_mm": 63.86,
-  "damper_clock_deg": -15.0,
+  "rod_arm_mm": 58.84,
+  "damper_clock_deg": -12.76,
   "target_mr": 0.8
  },
  "rear": {
   "rod_type": "pullrod",
   "mount_body": "uca",
   "rod_mount": [
-   -1513.42,
-   485.02,
-   372.25
+   -1490.45,
+   484.19,
+   362.18
   ],
   "pivot": [
-   -1249.07,
-   253.57,
-   158.93
+   -1250.53,
+   254.36,
+   158.19
   ],
   "damper_end": [
-   -1373.18,
-   278.94,
-   300.05
+   -1365.05,
+   283.21,
+   289.31
   ],
-  "rod_arm_mm": 39.78,
-  "damper_clock_deg": -9.35,
+  "rod_arm_mm": 38.25,
+  "damper_clock_deg": -7.77,
   "target_mr": 0.8
  },
  "pros": [
-  "Zero evaluator fails on both axles and both corners, including the two node checks, against the chassis as updated and the engine on its mounts, swept to the damper end stops (front -35.6 / +35.2 mm, rear -35.9 / +35.6 mm) and, at the front, over the full rack travel of +-38 mm.",
-  "Brackets at welded joints. Front: rocker pivot 55.3 mm from the front-hoop bottom node (-120, 205, 117; 7 tube ends: 3DSketch3, PSD / FRONTO HO, Tri_Frente, Tri_Meio, assoalho frontal), pivot bracket 38.0 mm to the hoop's lower leg (foot 40 mm from the node); coil-over eye 58.0 mm from the floor/side node (120, 205, 117; 5 tube ends), bracket 37.8 mm (foot 44 mm from the node). Rear: pivot 54.1 mm from the rear lower node (-1272, 215, 129; 5 tube ends), bracket 30.7 mm (foot 45 mm from the node); eye 56.6 mm from the rear upper node (-1336, 255, 337; 4 tube ends), bracket 46.2 mm.",
-  "Lowest linkage of the node concepts: coil-over + rocker mass height 186 mm front and 215 mm rear (rocker / coil-over z range 147-234 mm front, 129-304 mm rear). CG -4.55 mm against the seed and tilt-table angle 62.47 deg (seed 62.13), with the estimated 1.3 kg coil-over + 0.3 kg rocker per corner.",
-  "Rods in tension, so buckling does not set the rod tube: front 353.0 mm, 1516 N at ride (2.59x the wheel load); rear 409.1 mm, 1782 N (2.41x). The clevises sit 42 mm (front, on the UCA front leg) and 47 mm (rear, between the legs, 11 mm off the front leg; 46 mm along it) from the upper ball joints. A hand estimate of the UCA leg bending from the rod-force component normal to the leg, simply supported, gives 48 N·m front and 35 N·m rear at ride (45 N·m if the rear clevis load is taken on the rear leg): about 91 / 67 MPa on a 25.4x1.2 mm tube (272 / 200 MPa at 3x static), but 152 / 112 MPa (455 / 336 MPa at 3x) on the 20 mm tube the packaging gaps assume.",
-  "Kinematics over +-25 mm: MR 0.80 / 0.80 / 0.82 front (+2.6 %) and 0.79 / 0.80 / 0.80 rear (+2.1 %), equal damper margins 8.4 / 8.5 mm. Largest transmission angles to the end stops 13.6 deg (rod) / 24.8 deg (coil-over) front, 19.3 / 28.9 deg rear; rocker rotation -12.6 / +12.2 deg front, -22.3 / +21.2 deg rear.",
-  "Rear coil-overs outboard of the chain line and away from the axle centre: chain 11.0 mm (rocker, left at bump; estimate), drive shaft 74.5 mm, engine features 84.6 mm, left to right 487.1 mm. The rear linkage sits on the PST / Tri_Tras side structure, not in the differential's space.",
-  "Rocker pivot reactions at ride 1891 N front and 1325 N rear, bracket couples (upper bound, force x stand-off) 71.9 / 27.7 N·m front (pivot / coil-over end) and 40.7 / 42.7 N·m rear."
+  "Rear: zero evaluator fails with a real pullrod clevis: the rod end stands 25.5 mm off the UCA front leg's centreline, 62 mm from the upper ball joint along it, its tab pointing along the rod. Rocker pivot 53.7 mm from the rear lower node (-1272, 215, 129; 5 tube ends), bracket 31.8 mm; coil-over eye 56.4 mm from the rear upper node (-1336, 255, 337; 4 tube ends), bracket 45.9 mm.",
+  "Rear clearances: rod to wishbones 20.3 mm, coil-over / rocker to wishbones 8.4 mm, rocker to frame 9.1 mm, coil-over 10.9 mm, eyes 13.2 mm, chain 11.2 mm (estimate), drive shaft 80.9 mm, engine features 84.2 mm. The linkage sits on the PST / Tri_Tras side structure, outboard of the chain and away from the differential's space. The +-20 mm pivot bolt clears the frame by 8.5 mm and the moving wishbones by 10.4 mm, so a double-shear yoke fits.",
+  "Rear kinematics: MR 0.789 / 0.800 / 0.800 over +-25 mm (+1.3 %), equal damper margins 8.5 mm; rocker rotation -23.7 / +22.6 deg; transmission angles at most 20.7 deg (rod) and 28.8 deg (coil-over). Rod 388 mm in tension (no buckling), 1748 N at ride (2.36x the wheel load); pivot reaction 1296 N. Hand estimate of the UCA front-leg bending from the clevis: 43 N·m at ride (82 MPa on a 25.4x1.2 tube, 137 MPa on 20x1.2; about 3x that at 3 g).",
+  "Lowest linkage of the node concepts: coil-over + rocker mass height 192 mm front and 216 mm rear; CG -4.48 mm against the seed, tilt-table angle 62.47 deg (seed 62.13)."
  ],
  "cons": [
-  "Thin front margins. Coil-over eyes 5.1 mm from the PSD front upright of the box at the droop stop, rocker 5.0 mm from the LCA rear leg (bump, rack +38), coil-over 5.2 mm from the estimated rack housing (droop), rod 6.6 mm from the UCA front leg (bump, rack +38), against 5 mm limits. The coil-over crosses over the rack just outboard of the modelled 40 mm housing end, about 24 mm above the rack axis where the inner tie-rod joint and its boot travel (y 232-308 over +-38 mm of rack): to a 40 mm envelope at the inner joint it is 4.1 mm, to a 50 mm boot -0.9 mm (droop, rack +19), and 6.5 mm to the tie rod itself (bump, rack -38); the evaluator models only the housing. The front linkage also sits close to the bounding boxes of the two CAD template solids at the front hoop's foot: the fixed coil-over eye is 2.5 mm (at every travel) from the box of 'Ressalto-extrusão2', the extrusion of the Esboço10 leg-template profile (23.4 mm to the chamfered profile itself), and the rocker 2.6 mm at the droop stop from the box of 'Ressalto-extrusão1', the extrusion of the Esboço6 cockpit outline (53.9 mm to the outline). These are box gaps to check in CAD, not clashes.",
-  "Long rods swept strongly in plan: 38.7 deg front and 53.6 deg rear from transverse (38.4 / 35.1 deg from horizontal). The rods carry 2.6x / 2.4x the wheel load. Their fore-aft components (743 N front, 1172 N rear at ride) load the UCA in its plane at the clevis and go into the UCA pivots, at the rear into the UCA front pivot at the rear upper node, the node that also carries the coil-over eye. They lie in the rocker's plane (the rocker axis is normal to the rod at ride; out of plane at most 4.4 / 2.3 deg to the end stops), so they add to the pivot reaction rather than side-loading the rocker. The rear rod reaches from just ahead of the axle line (clevis at x -1513, 27 mm ahead of the rear wheel centre) forward to a rocker at x -1249.",
-  "The front coil-over starts outside the front box's side and enters it. From the rocker pickup at (-38, 329, 230) it runs forward, down and inboard, 21 deg from horizontal, over the LCA's inboard region (rocker 5.0 mm from the LCA rear leg). It crosses the box's lower front side triangle (bottom rail, front upright, side diagonal) at about (64, 218, 172), 30 mm before its eye, and ends at an eye at (83, 198, 161) inside the box, on a bracket that points rearward and inboard from the front upright into the footwell. A side panel or bodywork there needs an opening for the swinging coil-over, and the part inside the box falls under the FSAE leg-protection shielding rule.",
-  "The rear rocker hangs below the rear frame rails. The coil-over's rocker-end eye reaches z = 108.6 mm and the rocker's pickup bolt 106.6 mm (chassis-referenced, at the droop stop): 7.3 / 9.3 mm below the underside of the PST lower rails (115.9 mm) and about 4 mm below the sloping Tri_Tras lower rail beside it (about 110.8 mm). In heave it stays at least 89 mm above the road (at full bump); the frame's floor tubes under the main hoop (underside about 19 mm) are far lower, so the rocker does not set the ground clearance. The jacking / push-bar zone was not checked.",
-  "Pivot bolts: a pivot bolt the size of the evaluator's pickup bolts (+-20 mm along the axis, not modelled by the evaluator) would touch the front hoop's lower leg (-0.2 mm) on its inboard-upper side and overlap the moving LCA rear leg on its outboard-lower side (-4.8 mm at ride, -8.9 mm at full bump, rack +38). A yoke with an outer plate does not fit, so the front pivot needs a stub cantilevered from the hoop side, with the rocker hub 5.0 mm from the LCA rear leg at bump. At the rear the bolt is 6.5 mm from the frame, 6.4 mm from the estimated chain envelope (under the 10 mm chain threshold) and 11.2 mm from the LCA front leg.",
-  "Shared nodes: every node used here is also a wishbone pickup. The front pivot shares the front-hoop bottom node with the LCA rear pivot and the floor tubes; the front coil-over eye shares the floor/side node with the LCA front pivot; the rear pivot shares the rear lower node with the rear LCA front pivot; the rear eye shares the rear upper node with the rear UCA front pivot (eye 9.5 mm from the UCA front leg at droop) and the 3DSketch8 engine-mount tube. Bracket and clevis room at these joints is not modelled.",
-  "The pullrod clevis points are on the wishbone tubes: the front rod mount is 2.7 mm from the UCA front-leg centreline and the rear one 11 mm off the front leg, between the legs (it needs a gusset). A real clevis stands the rod end off the tube by about 20 mm or more, which moves the rod line and changes the MR and the 6.6 / 6.1 mm rod-to-UCA-front-leg gaps; the evaluator trims the first 30 mm of rod at the mount, so neither the clevis nor its 42-47 mm proximity to the ball-joint housing is checked.",
-  "MR is slightly progressive on both axles (+2.6 % / +2.1 %), and the rear rocker turns +-22 deg with a 28.9 deg coil-over transmission angle at the end stops, the largest of the node concepts. Steering moves the front damper by 4.47 mm over the full rack travel (steering jacking, as for any mount).",
-  "No anti-roll-bar provision. The roll budget asks about 56.7 N·m/deg front and 77.7 N·m/deg rear for the 1.0 deg/g query target; low rockers leave the drop links near the floor."
+  "Front misses the node check by 1.2 mm and sits on two limits: rocker pivot 61.2 mm from the front-hoop bottom node (limit 60; bracket 37.4 mm to the hoop's lower leg, foot 49 mm from the node), rod 5.0 mm from the UCA rear leg (droop, rack +19) and coil-over 5.0 mm from the inner tie-rod joint / boot envelope (droop), against 5 mm limits. Coil-over to frame 5.3 mm, eyes 5.1 mm. A single-shear stub pivot (the hub alone clearing the wishbones) was tried and lands farther from the node (about 64 mm).",
+  "Front rod: 318 mm, 1681 N at ride (2.87x the wheel load), swept 40.9 deg in plan. Its clevis sits 66 mm from the upper ball joint along the UCA front leg: hand estimate 78 N·m of leg bending at ride (147 MPa on 25.4x1.2, 247 MPa on 20x1.2; about 3x at 3 g). The front pivot bolt clears the moving wishbones by 3.0 mm and the frame by -0.1 mm (it touches the hoop's lower leg at its bracket).",
+  "Front coil-over crosses the front box's lower side bay into the footwell to its eye at the floor/side node (the LCA front pivot's node): leg protection and a side-panel opening are needed. The rocker is 1.6 mm from the bounding box of 'Ressalto-extrusão1' (box gaps overstate: to the template profiles the previous F measured 23-54 mm).",
+  "Rear rod swept strongly in plan (51.1 deg from transverse, 35.4 deg from horizontal): its fore-aft component loads the UCA in its plane at the clevis and goes into the UCA front pivot at the rear upper node, the node that also carries the coil-over eye. The rocker hangs low: its lowest hardware reaches z = 110.6 mm (chassis-referenced), about 5 mm below the underside of the rear lower rails (115.9 mm); it is still well above the frame's floor under the main hoop.",
+  "Rear shared nodes: the pivot is at the rear LCA front pivot's node and the eye at the rear UCA front pivot's node; bracket and clevis room there is not modelled. The chain (14/46 520 assumed) and the drive shafts are estimates; the differential is not modelled, but the linkage is outboard of it."
  ],
  "not_checked": [
-  "Ground clearance, the rear jacking point and the bodywork / side pods around the front coil-overs.",
-  "The differential and its sprocket carrier; the engine is modelled by its features and plenum outline only; the chain and sprockets (14/46 520 assumed) and the drive shafts are estimates.",
-  "The driver: the two front solid boxes are checked only as bounding boxes; leg protection for moving suspension parts beside the cockpit (FSAE rules).",
-  "Real part envelopes: all gaps use estimated diameters (rod 16, coil-over 60, eyes 40, rocker +-10 mm plates and +-20 mm pickup bolts, frame 25.4); brackets, clevises, the UCA clevis plates and the rod ends are not modelled.",
-  "Structure: no load cases, stress, fatigue or sizing of brackets, nodes, rockers, rods, wishbones or uprights; the UCA bending figures are hand estimates; bracket compliance, which changes the effective MR, is not modelled.",
-  "Travel limits: the damper stroke (57 mm) is an estimate and there are no bump rubbers. With 220 lb/in springs and no preload the springs unseat at -23.7 mm (front, inside the +-25 mm travel) and -30.0 mm (rear), as with any layout at MR 0.80.",
-  "The MR 0.80 target, the 1.0 deg/g roll gradient and the 50 % front roll share are design-intent query arguments, not derived targets. The 220 lb/in springs are a fixed input (measured; one of the two available rates).",
-  "Wishbone tube size: the packaging gaps use a 20 mm OD estimate, the hand stress estimates 25.4x1.2 mm and the SolidWorks solids 19.05 mm. With 25.4 mm legs three wishbone gaps of this concept fall below 5 mm (front rocker to LCA rear leg 2.3, front rod to UCA front leg 3.9, rear rod to UCA front leg 3.4 mm)."
+  "Real part envelopes: the inner tie-rod joint and boot (50 mm OD, 60 mm inboard of the joint to 20 mm past it at full travel), the rod 16, coil-over 60, eyes 40, rocker +-10 mm plates and +-20 mm bolts, frame 25.4 and wishbones 20 mm are estimates; with 25.4 mm wishbones the 5.0 mm front rod gap would close.",
+  "Structure: no load cases, stress, fatigue or sizing of clevises, brackets, nodes, rockers, rods or wishbones; the UCA bending figures are hand estimates; bracket compliance, which changes the effective MR, is not modelled.",
+  "The differential and its sprocket carrier, the engine's mesh (features and plenum only), ground clearance and the rear jacking zone.",
+  "Travel limits: the damper stroke (57 mm) is an estimate and there are no bump rubbers; with 220 lb/in springs and no preload the springs unseat at -23.7 mm front and -30.0 mm rear, as with any layout at MR 0.80.",
+  "The MR 0.80 target, the 1.0 deg/g roll gradient and the 50 % front roll share are design-intent query arguments, not derived targets. The 220 lb/in springs are a fixed input (measured; one of the two available rates)."
  ]
 }
