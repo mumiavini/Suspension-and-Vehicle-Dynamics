@@ -121,6 +121,12 @@ ESTIMATES = {
     "wishbone_od_mm": 20.0,
     "tie_rod_od_mm": 16.0,
     "rack_housing_od_mm": 40.0,
+    # the inner tie-rod joint and its boot, which travel with the rack past the housing:
+    # a 50 mm envelope from 60 mm inboard of the joint (at centre) to 20 mm past it at
+    # full travel
+    "rack_boot_od_mm": 50.0,
+    "rack_boot_inboard_mm": 60.0,
+    "rack_boot_past_joint_mm": 20.0,
     "column_od_mm": 40.0,              # steering column with its U-joints
     # column from the pinion (rack centre) up and back to the wheel behind the front hoop
     "column_mm": ((-30.0, 0.0, 157.0), (-300.0, 0.0, 560.0)),
@@ -145,7 +151,8 @@ THRESHOLDS = (
     ("gap_rod_members", None, "min", 5.0, "rod vs wishbones / tie rod / toe link (with steer)"),
     ("gap_rod_rim", None, "min", 15.0, "rod vs rim (13\", steered)"),
     ("gap_left_right", None, "min", 5.0, "left vs right linkage (heave and roll)"),
-    ("gap_rack", "front", "min", 5.0, "linkage vs steering rack"),
+    ("gap_rack", "front", "min", 5.0,
+     "linkage vs steering rack (housing, inner tie-rod joint and boot)"),
     ("gap_column", "front", "min", 5.0, "linkage vs steering column (estimate)"),
     ("gap_driveshaft", "rear", "min", 10.0, "linkage vs drive shaft (estimate)"),
     ("gap_engine", "rear", "min", 10.0, "linkage vs engine (MOTOR_FIXADO features, placed)"),
@@ -871,12 +878,20 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
             x_r = -float(stg.rack_x_mm)            # rack_x_mm is rearward-positive
             ra = np.array([x_r, -stg.rack_half_length_mm, stg.rack_z_mm])
             rb = np.array([x_r, stg.rack_half_length_mm, stg.rack_z_mm])
+            y0 = stg.rack_half_length_mm - E["rack_boot_inboard_mm"]
+            y1 = (stg.rack_half_length_mm + float(stg.max_rack_travel_mm)
+                  + E["rack_boot_past_joint_mm"])
+            boots = [(np.array([x_r, sg * y0, stg.rack_z_mm]),
+                      np.array([x_r, sg * y1, stg.rack_z_mm])) for sg in (1.0, -1.0)]
             ca, cb = (np.array(v) for v in E["column_mm"])
             for st in (lk, lk.mirrored()):
                 for name, p, q, rad in st.elements():
                     rad = eye_r if name == "eyes" else rad
                     keep("gap_rack", seg_seg(p, q, ra, rb) - rad - E["rack_housing_od_mm"] / 2,
-                         f"{name} at {z:+.0f} mm")
+                         f"{name} vs housing at {z:+.0f} mm")
+                    for ba, bb in boots:
+                        keep("gap_rack", seg_seg(p, q, ba, bb) - rad - E["rack_boot_od_mm"] / 2,
+                             f"{name} vs inner tie-rod joint / boot envelope at {z:+.0f} mm")
                     keep("gap_column", seg_seg(p, q, ca, cb) - rad - E["column_od_mm"] / 2,
                          f"{name} at {z:+.0f} mm")
         else:
@@ -1177,7 +1192,7 @@ ROWS = (  # (label, key, format)
     ("Gap: rod vs wishbones / tie rod / toe link, with steer [mm]", "gap_rod_members", ".1f"),
     ("Gap: rod vs rim, with steer [mm] (to the 13\" bead-seat radius)", "gap_rod_rim", ".1f"),
     ("Gap: left vs right, heave and roll [mm]", "gap_left_right", ".1f"),
-    ("Gap: linkage vs rack [mm]", "gap_rack", ".1f"),
+    ("Gap: linkage vs rack, inner tie-rod joint and boot [mm]", "gap_rack", ".1f"),
     ("Gap: linkage vs steering column [mm] (estimate)", "gap_column", ".1f"),
     ("Gap: linkage vs drive shaft [mm] (estimate)", "gap_driveshaft", ".1f"),
     ("Gap: linkage vs engine (MOTOR_FIXADO features, on its mounts) [mm]", "gap_engine", ".1f"),
@@ -1274,7 +1289,10 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
          f"{E['rod_od_mm']:.0f}×{E['rod_wall_mm']:.0f} mm steel; rocker envelope "
          f"±{E['rocker_half_mm']:.0f} mm, pickup bolts ±{E['pickup_bolt_half_mm']:.0f} mm; "
          f"wishbone OD {E['wishbone_od_mm']:.0f}, tie rod OD {E['tie_rod_od_mm']:.0f}, rack "
-         f"housing OD {E['rack_housing_od_mm']:.0f} mm; steering column "
+         f"housing OD {E['rack_housing_od_mm']:.0f} mm, inner tie-rod joint and boot "
+         f"{E['rack_boot_od_mm']:.0f} mm OD from {E['rack_boot_inboard_mm']:.0f} mm inboard of "
+         f"the joint to {E['rack_boot_past_joint_mm']:.0f} mm past it at full rack travel; "
+         f"steering column "
          f"{_pt(E['column_mm'][0], '.0f')} → {_pt(E['column_mm'][1], '.0f')}, OD "
          f"{E['column_od_mm']:.0f}; damper stroke {ctx.project.damper.stroke_mm:g} mm "
          f"({ctx.project.damper.stroke_source}); drive shaft from the wheel centre to a joint "
