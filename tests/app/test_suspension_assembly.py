@@ -194,7 +194,9 @@ def test_assemblies_are_built_visible_and_active(sa, project, model) -> None:
     main = text[text.index("Sub main()"):]
     assert "DocumentVisible False, 2" not in text
     assert main.index("DocumentVisible True, 2") < main.index("    BuildCorners")
-    assert main.index("DocumentVisible False, 1") < main.index("    BuildParts")
+    # parts hidden only while they are built; insertions run with both flags on
+    assert (main.index("DocumentVisible False, 1") < main.index("    BuildParts")
+            < main.index("DocumentVisible True, 1") < main.index("    BuildCorners"))
     begin = text[text.index("Private Function BeginAsm("):]
     begin = begin[:begin.index("End Function")]
     assert "ActivateAsm" in begin

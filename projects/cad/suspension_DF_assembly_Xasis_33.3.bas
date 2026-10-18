@@ -1579,15 +1579,15 @@ Sub main()
     gRefMade = 0: gRefFailed = 0: gMateMade = 0: gMateFailed = 0: gOtherFailed = 0
     Calibrate
     LogLine "CreateBodyFromCyl point is the centre: " & gCentred
-    ' parts are built without windows; assemblies need one: AddComponent inserts
-    ' nothing into a hidden assembly (every corner came out empty that way)
+    ' parts are built without windows. Components go in with both flags on, as in
+    ' the top assembly that worked: built hidden, the corners came out empty
     swApp.DocumentVisible False, 1
     swApp.DocumentVisible True, 2
     On Error GoTo stopped
     BuildParts
+    swApp.DocumentVisible True, 1
     BuildCorners
     BuildTop
-    swApp.DocumentVisible True, 1
     ReopenTop
     On Error GoTo 0
     Dim msg As String
