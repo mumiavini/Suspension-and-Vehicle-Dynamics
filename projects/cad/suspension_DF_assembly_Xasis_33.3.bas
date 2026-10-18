@@ -501,7 +501,49 @@ Private Function BeginAsm(ByVal nm As String) As Boolean
     ' saved first: the fallback selection names end in @<assembly name>
     If Not SaveAsFile(nm & ".SLDASM") Then Exit Function
     gAsmTitle = nm
+    ActivateAsm
     BeginAsm = True
+End Function
+
+' AddComponent works on the active, visible assembly.
+Private Sub ActivateAsm()
+    Dim e As Long, d As Object
+    On Error Resume Next
+    Set d = swApp.ActivateDoc3(swModel.GetTitle, False, 1, e)
+    If Not d Is Nothing Then Set swModel = d
+End Sub
+
+Private Function ActiveTitle() As String
+    On Error Resume Next
+    ActiveTitle = swApp.ActiveDoc.GetTitle
+End Function
+
+' AddComponent needs the file loaded in memory. The parts are (built in this run);
+' a part that is not is opened without a window, then the assembly is active again.
+Private Sub LoadDoc(ByVal p As String, ByVal ext As String)
+    Dim e As Long, w As Long, t As Long, d As Object
+    On Error Resume Next
+    Set d = swApp.GetOpenDocumentByName(p)
+    If Not d Is Nothing Then Exit Sub
+    t = 1
+    If ext = ".SLDASM" Then t = 2
+    Set d = swApp.OpenDoc6(p, t, 1, "", e, w)
+    On Error GoTo 0
+    LogLine "loaded " & FileOf(p) & " from disk (error " & e & ")"
+    ActivateAsm
+End Sub
+
+' The same insertion through the list method, at the identity.
+Private Function AddByList(ByVal p As String) As Object
+    Dim nms(0) As String, tr(15) As Double, cs(0) As String
+    Dim vn As Variant, vt As Variant, vc As Variant, res As Variant
+    nms(0) = p
+    tr(0) = 1: tr(4) = 1: tr(8) = 1: tr(12) = 1
+    cs(0) = ""
+    vn = nms: vt = tr: vc = cs
+    On Error Resume Next
+    res = swModel.AddComponents3((vn), (vt), (vc))
+    If IsArray(res) Then Set AddByList = res(LBound(res))
 End Function
 
 ' Every part was modelled in place and every mate holds there: a component that is
@@ -540,17 +582,26 @@ End Sub
 
 ' Every part is modelled in the assembly's coordinates: it goes in at the identity.
 Private Sub AddComp(ByVal nm As String, ByVal ext As String, ByVal fixIt As Boolean)
-    Dim c As Object, p As String
+    Dim c As Object, p As String, why As String
     p = gDir & nm & ext
+    LoadDoc p, ext
     On Error Resume Next
     Set c = swModel.AddComponent5(p, 0, "", False, "", 0, 0, 0)
     If c Is Nothing Then
+        If Err.Number <> 0 Then why = "; AddComponent5: " & Err.Description
         Err.Clear
         Set c = swModel.AddComponent4(p, "", 0, 0, 0)
     End If
+    If c Is Nothing Then
+        If Err.Number <> 0 Then why = why & "; AddComponent4: " & Err.Description
+        Err.Clear
+        Set c = AddByList(p)
+    End If
     On Error GoTo 0
     If c Is Nothing Then
-        LogLine "FAIL add component " & nm & " to " & gCur
+        gOtherFailed = gOtherFailed + 1
+        LogLine "FAIL add component " & nm & " to " & gCur & " (file found: " & _
+            (Len(Dir(p)) > 0) & "; active document: " & ActiveTitle() & why & ")"
         Exit Sub
     End If
     PlaceAtOrigin c, nm
@@ -623,8 +674,8 @@ Private Sub MakeFlexible(ByVal nm As String)
     End If
 End Sub
 
-' The parts and corners were made without windows (such documents cannot be shown
-' later): close all of them and open the top assembly again, visible.
+' The parts were made without windows (such documents cannot be shown later):
+' close everything this macro made and open the top assembly again.
 Private Sub ReopenTop()
     Dim e As Long, w As Long, doc As Object, still As String
     gCur = ASM_NAME
@@ -1528,15 +1579,15 @@ Sub main()
     gRefMade = 0: gRefFailed = 0: gMateMade = 0: gMateFailed = 0: gOtherFailed = 0
     Calibrate
     LogLine "CreateBodyFromCyl point is the centre: " & gCentred
-    ' parts and corner assemblies are built without windows
+    ' parts are built without windows; assemblies need one: AddComponent inserts
+    ' nothing into a hidden assembly (every corner came out empty that way)
     swApp.DocumentVisible False, 1
-    swApp.DocumentVisible False, 2
+    swApp.DocumentVisible True, 2
     On Error GoTo stopped
     BuildParts
     BuildCorners
-    swApp.DocumentVisible True, 1
-    swApp.DocumentVisible True, 2
     BuildTop
+    swApp.DocumentVisible True, 1
     ReopenTop
     On Error GoTo 0
     Dim msg As String
@@ -1546,7 +1597,7 @@ Sub main()
     LogLine msg
     WriteLog
     If gOtherFailed > 0 Then msg = msg & vbCrLf & gOtherFailed & _
-        " placement / flexible / save step(s) failed."
+        " add / placement / flexible / save step(s) failed."
     If gFailed + gRefFailed + gMateFailed + gOtherFailed > 0 Then
         msg = msg & vbCrLf & "Some steps failed: see " & gDir & ASM_NAME & _
               "_log.txt"

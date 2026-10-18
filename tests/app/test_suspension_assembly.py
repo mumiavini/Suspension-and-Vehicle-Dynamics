@@ -187,6 +187,25 @@ def test_main_is_the_last_argumentless_sub(sa, project, model) -> None:
     assert text.startswith('Attribute VB_Name = "SUSP_2027_build"')
 
 
+def test_assemblies_are_built_visible_and_active(sa, project, model) -> None:
+    """AddComponent inserts nothing into a hidden assembly: a run with the corners
+    built hidden left all four empty (every add failed, so did all 68 mates)."""
+    text = sa.render_macro(model, sa.X.cad_frame(project), "test")
+    main = text[text.index("Sub main()"):]
+    assert "DocumentVisible False, 2" not in text
+    assert main.index("DocumentVisible True, 2") < main.index("    BuildCorners")
+    assert main.index("DocumentVisible False, 1") < main.index("    BuildParts")
+    begin = text[text.index("Private Function BeginAsm("):]
+    begin = begin[:begin.index("End Function")]
+    assert "ActivateAsm" in begin
+    add = text[text.index("Private Sub AddComp("):]
+    add = add[:add.index("End Sub")]
+    # loaded first; three insertion routes; a failure says why
+    assert add.index("LoadDoc p, ext") < add.index("AddComponent5")
+    assert "AddByList(p)" in add and "gOtherFailed = gOtherFailed + 1" in add
+    assert "ActiveTitle()" in add
+
+
 def test_the_anti_roll_bar_is_refused_until_it_is_jointed(sa, project) -> None:
     with pytest.raises(ValueError, match="anti-roll bar"):
         sa.build_model(project, arb={"front": {}})
