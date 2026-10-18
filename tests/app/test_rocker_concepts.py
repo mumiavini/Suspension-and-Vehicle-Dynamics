@@ -73,8 +73,8 @@ def test_equal_damper_margins_and_seed_metrics(rc, ctx) -> None:
     # the physical range reaches past the +-25 mm design travel to the damper end stops
     z_ext, z_comp = f["end_stops_mm"]
     assert z_ext < -25.0 < 25.0 < z_comp
-    # the seed's pushrod is in compression
-    assert res["rear"]["rod_in_tension"] is False
+    # the team project's rear rod: a pullrod is in tension, a pushrod in compression
+    assert res["rear"]["rod_in_tension"] is (ctx.project.rocker_rear.rod_type == "pullrod")
 
 
 def test_frame_model_flags_sketch_only_lines(rc, ctx) -> None:

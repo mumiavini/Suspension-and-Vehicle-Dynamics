@@ -1202,7 +1202,7 @@ def main() -> int:
     ap.add_argument("--frame", choices=("chassis", "iso"), default="chassis",
                     help="chassis: the chassis part's coordinates (Xasis 33.3); iso: ISO 8855")
     ap.add_argument("--out", type=Path, default=REPO / "projects" / "cad", help="output folder")
-    ap.add_argument("--name", default="suspension_A_refined_assembly")
+    ap.add_argument("--name", default="suspension_assembly")
     ap.add_argument("--asm-name", default="SUSP_2027", help="top assembly file name")
     args = ap.parse_args()
     project = load_project(args.project)

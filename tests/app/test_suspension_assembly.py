@@ -44,15 +44,18 @@ def test_every_solid_is_in_exactly_one_part(sa, project, model) -> None:
     for cid in sa.CORNERS:
         asm = f"{sa.PREFIX}{cid}"
         link = "tie_rod" if cid in ("FL", "FR") else "toe_link"
+        spec = project.rocker_front if cid in ("FL", "FR") else project.rocker_rear
+        rod = spec.rod_type
         want = {f"{asm}_{g}" for g in ("chassis_mounts", "UCA", "LCA", "upright", link,
-                                       "pushrod", "rocker", "damper_body", "damper_shaft",
+                                       rod, "rocker", "damper_body", "damper_shaft",
                                        "wheel")}
         assert set(model.corner_parts[asm]) == want
-        # the rear rod sits on the LCA: its bracket goes with it (the front rod is on the
-        # kingpin axis, no bracket)
-        if cid in ("RL", "RR"):
-            names = [b.name for b in model.components[f"{asm}_LCA"].bodies]
-            assert f"{asm}_pushrod_mount_bracket" in names
+        # the rod's mount bracket goes with the member the rod sits on (none when the
+        # mount is on that member's own axis)
+        bracket = f"{asm}_{rod}_mount_bracket"
+        if bracket in [p.name for p in sa.SS.all_parts(project)]:
+            body = {"lca": "LCA", "uca": "UCA", "upright": "upright"}[spec.mount_body]
+            assert bracket in [b.name for b in model.components[f"{asm}_{body}"].bodies]
     assert all(model.components[c].ground for c in model.top_parts)
     assert [c for c in model.components.values() if c.ground and c.corner] == \
         [model.components[f"{sa.PREFIX}{cid}_chassis_mounts"] for cid in sa.CORNERS]

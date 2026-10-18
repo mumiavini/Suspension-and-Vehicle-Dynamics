@@ -299,72 +299,72 @@
   "rocker_front": {
     "enabled": true,
     "rod_type": "pushrod",
-    "mount_body": "upright",
+    "mount_body": "lca",
     "rod_mount": [
-      5.5,
-      572.75,
-      182.49
+      -17.0,
+      543.37,
+      138.62
     ],
     "rocker_pivot": [
-      67.2,
-      274.3,
-      414.8
+      -130.5,
+      269.57,
+      357.13
     ],
     "rocker_axis": [
-      -0.0459,
-      -0.6195,
-      -0.7837
+      -0.9376,
+      0.343,
+      -0.0573
     ],
     "rocker_rod": [
-      4.4665,
-      276.2237,
-      416.9564
+      -115.3104,
+      319.0047,
+      404.4681
     ],
     "rocker_damper": [
-      79.0384,
-      214.735,
-      461.1926
+      -158.6853,
+      192.2321,
+      355.4451
     ],
     "damper_chassis": [
-      268.2475,
-      232.6636,
-      435.9296
+      -148.7749,
+      187.377,
+      164.18
     ],
     "source": "design_intent"
   },
   "rocker_rear": {
     "enabled": true,
-    "rod_type": "pushrod",
-    "mount_body": "lca",
+    "rod_type": "pullrod",
+    "mount_body": "uca",
     "rod_mount": [
-      -1515.0,
-      527.0,
-      140.0
+      -1490.45,
+      484.19,
+      362.18
     ],
     "rocker_pivot": [
-      -1265.0,
-      300.0,
-      381.0
+      -1250.53,
+      254.36,
+      158.19
     ],
     "rocker_axis": [
-      0.094,
-      -0.6742,
-      -0.7325
+      0.7556,
+      0.2523,
+      0.6045
     ],
     "rocker_rod": [
-      -1307.9665,
-      278.6753,
-      395.1117
+      -1244.3007,
+      285.7816,
+      137.2869
     ],
     "rocker_damper": [
-      -1242.2255,
-      252.4324,
-      427.7009
+      -1270.1291,
+      324.5064,
+      153.4117
     ],
     "damper_chassis": [
-      -1061.7801,
-      309.7614,
-      398.0966
+      -1376.5764,
+      278.1955,
+      305.8123
     ],
     "source": "design_intent"
   },
@@ -870,6 +870,15 @@
       "decision": "Pushrods to bell-crank rockers on the upper side structure, coil-overs lying fore-aft along the frame sides (concept A of projects/rocker_concepts/README.md), refined against the chassis update of 2026-10-15 and the engine placed on its mounts: front rod on an upright clevis on the kingpin axis 53.5 mm above the LBJ; rear rocker moved 95 mm forward onto the Tri_Tras upper rail. Inputs in projects/rocker_concepts/concept_A_refined.json; report in projects/rocker_concepts/concept_A_refined.md.",
       "rationale": "Chosen by the designer from the three concepts compared on 2026-10-14. The refined layout misses no evaluator threshold on either axle (both corners, to the damper end stops, full rack travel); front LCA bending from the rod removed; rear chain-line gap 8.2 -> 33.5 mm (estimate). MR 0.80 at ride and the 220 lb/in springs remain open decisions (design_intent query arguments).",
       "alternatives": "Concept B (pushrod, transverse coil-overs over the top: needs a new rear member, rocker on the main-hoop brace) and concept C (low pullrod: regressive MR, rod loads 2.4x wheel load, no anti-roll-bar location found). Front fallback recorded in the refinement: rod on the LCA rear leg 39.5 mm from the ball joint with its own rocker (no fails, LCA bending -54 %).",
+      "author": "Vinicius Trento"
+    },
+    {
+      "date": "2026-10-18",
+      "stage": "suspension",
+      "title": "Rocker layout: concept DF (rockers and coil-overs at frame nodes)",
+      "decision": "Front of concept D: pushrod from the LCA rear leg 45 mm from the ball joint to a rocker 49.0 mm from the front-hoop side node; coil-over almost vertical behind the hoop's lower leg to an eye 57.5 mm from the front-hoop bottom node. Rear of concept F (refined): pullrod from a clevis on the UCA (rod end 25.5 mm off the front leg, 62 mm from the upper ball joint) to a rocker 53.7 mm from the rear lower node, outboard of the chain; coil-over up to an eye 56.4 mm from the rear upper node. Inputs in projects/rocker_concepts/concept_DF.json; comparison in projects/rocker_concepts/concept_nodes_DEF.md.",
+      "rationale": "Chosen by the designer to mount the rocker pivots and coil-over chassis ends at welded frame nodes instead of mid-span (concept A refined: 94 / 199 mm front, 95 / 188 mm rear from the nearest node). Zero evaluator fails on both axles, node checks and the inner tie-rod joint / boot envelope included. MR 0.80 at ride and the 220 lb/in springs remain open decisions (design_intent query arguments).",
+      "alternatives": "Concept D rear (rod at mid-span of the LCA front leg, about 270 MPa bending at ride on 25.4x1.2; coil-overs in the differential's space); concept E (high rockers, front coil-over boxed in by near-zero gaps); concept F front (refined: pivot 61.2 mm from its node and two gaps at the 5 mm limit, because both low front nodes are LCA pivots and the coil-over crosses the rack line).",
       "author": "Vinicius Trento"
     }
   ],
