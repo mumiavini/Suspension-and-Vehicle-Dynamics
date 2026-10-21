@@ -1,0 +1,68 @@
+{
+ "concept_id": "DF550",
+ "name": "DF with 550 lb/in springs, rockers retuned to MR 0.506 (reference)",
+ "summary": "Reference, not a new layout: the team project's DF positions (rod mounts, pivots, coil-over lines) with 550 lb/in springs and the rockers' damper arms shortened to reach MR 0.506 (front 82 -> 52 mm, rear 73 -> 46 mm), packaging checked to +-36 mm. It shows that DF cannot be carried over by changing only the rockers: at the front the shorter arm turns the coil-over line into the Tri_Meio rail (-9.3 mm at +36 mm) and moves the eye 61.2 mm from its node; the rear rod still runs through its own coil-over (-29.0 mm), as in DF.",
+ "springs_lb_in": {
+  "front": 550,
+  "rear": 550
+ },
+ "travel_limit_mm": 36.0,
+ "front": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -17.0,
+   543.37,
+   138.62
+  ],
+  "pivot": [
+   -130.5,
+   269.57,
+   357.13
+  ],
+  "damper_end": [
+   -145.27,
+   185.66,
+   96.54
+  ],
+  "rod_arm_mm": 70.11,
+  "target_mr": 0.506,
+  "damper_clock_deg": -1.52
+ },
+ "rear": {
+  "rod_type": "pullrod",
+  "mount_body": "uca",
+  "rod_mount": [
+   -1490.45,
+   484.19,
+   362.18
+  ],
+  "pivot": [
+   -1250.53,
+   254.36,
+   158.19
+  ],
+  "damper_end": [
+   -1365.05,
+   283.21,
+   289.31
+  ],
+  "rod_arm_mm": 38.25,
+  "damper_clock_deg": -7.77,
+  "target_mr": 0.506
+ },
+ "pros": [
+  "Same rod mounts, pivots and frame brackets as the team project; front rod self-clearance 11.8 mm, rack, inner joint and boot 69.9 mm away, rear rod, rocker and drive-shaft clearances unchanged (30.3, 9.1 and 80.9 mm)."
+ ],
+ "cons": [
+  "Front: coil-over body into the Tri_Meio rail (-9.3 mm at +36 mm), eye 4.0 mm from the hoop's lower leg and 61.2 mm from the front-hoop bottom node (limit 60).",
+  "Rear: the pullrod still crosses its own coil-over next to the rocker (-29.0 mm at -36 mm), the clash seen in SolidWorks on DF."
+ ],
+ "not_checked": [
+  "The +-36 mm travel limit is a design input (design_intent, the designer's choice of 2026-10-21): a bump stop and a droop limiter that are not in the project. With them the damper keeps about 10 mm at each end (it uses about 36 of its 57 mm, an estimate); without them the wheel could reach the damper's own end stops (about -54..-59 / +56..+59 mm), a range these layouts were not checked over.",
+  "Damping: the damper moves 0.506 mm per mm of wheel instead of 0.80, so the same valving gives (0.506/0.80)^2 = 40 % of today's damping at the wheel. Damping is outside this tool.",
+  "The 550 lb/in spring's free length, OD and coil-bind length are not in the project (the coil-over is a 60 mm OD envelope, an estimate). Static compression 12.0 mm front / 15.2 mm rear; with no preload the spring comes off its seat at -23.7 / -30.0 mm of wheel travel, inside the +-36 mm range, as it does today with 220 lb/in at 0.80.",
+  "Structure: no load cases, stress, fatigue or sizing of rockers, brackets, clevises, rods or wishbones; the spring force at ride is 58 % higher than today's (1156 / 1461 N against 731 / 924 N), which raises the rocker and bracket loads; leg-bending figures are hand estimates (simply supported leg, rod force at ride).",
+  "Real part envelopes are estimates (rod 16, coil-over 60, eyes 40, rocker +-10 mm plates and +-20 mm bolts, frame 25.4, wishbones 20, rack boot 50 mm). The differential, bodywork, the driver's legs and hands beyond the template boxes, and the steering wheel are not modelled."
+ ]
+}

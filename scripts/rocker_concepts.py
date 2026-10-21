@@ -1321,7 +1321,8 @@ def _pt(p, fmt: str = ".1f") -> str:
     return "(" + ", ".join(format(float(v), fmt) for v in p) + ")"
 
 
-def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
+def report(ctx: Ctx, cols, texts_for: list[str] | None = None,
+           seed_view: str = "seed_views.svg") -> str:
     E = ESTIMATES
     mrs = sorted({round(float(c[ax].get("target_mr", 0.80)), 3) for *_x, c in cols[1:]
                   for ax in ("front", "rear") if isinstance(c.get(ax), dict)
@@ -1347,11 +1348,12 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
          "",
          "- Frame: ISO 8855 (X forward, Y LEFT, Z up), mm, chassis-fixed; LEFT corner points "
          "(the right is the Y-mirror). Kinematics: `DWSolver` + `vdcore.analysis.rocker`.",
-         (f"- Motion ratio {mr_txt} at ride on every axle is a **query argument** so the "
-          "concepts compare like for like" if len(mrs) <= 1 else
+         (f"- Motion ratio {mr_txt} at ride on every concept axle is a **query argument** so "
+          "the concepts compare like for like" if len(mrs) <= 1 else
           f"- Motion ratio at ride is a **query argument** per concept ({mr_txt}; each "
           "concept's MR row), the same on both axles of a concept")
-         + " (the MR target is still an open decision). The coil-over is placed for equal "
+         + " (the MR target is still an open decision; the Seed column keeps its own "
+         "layout). The coil-over is placed for equal "
          "droop/bump margins at ±25 mm; the rocker arms are tangential at ride unless the "
          "concept clocks them.",
          f"- Springs fitted (front / rear, lb/in): {spring_txt}. Wheel rate = k·MR² at ride.",
@@ -1440,7 +1442,7 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
           "its static compression divided by the MR, whatever the layout."]
     for cid, name, res, specs, c in cols:
         L += ["", f"## {'Seed' if cid == 'seed' else 'Concept ' + cid}: {name}", "",
-              f"![views]({'seed' if cid == 'seed' else 'concept_' + cid}_views.svg)", ""]
+              f"![views]({seed_view if cid == 'seed' else f'concept_{cid}_views.svg'})", ""]
         if c.get("summary") and (texts_for is None or cid in texts_for):
             L += [c["summary"], ""]
         L += ["| point (LEFT corner) | front | rear |", "|---|---|---|"]
@@ -1566,9 +1568,11 @@ def cmd_build(only: list[str] | None = None, report_name: str = "README.md",
                          REPO / "projects" / f"FSAE_2027_rocker_concept_{cid}.vdproj.json")
         (OUT_DIR / f"concept_{cid}_views.svg").write_text(
             views_svg(ctx, specs, f"Concept {cid}: {c.get('name', '')}"), encoding="utf-8")
-    (OUT_DIR / "seed_views.svg").write_text(
+    # each report its own seed view: an older report's seed stays as it was
+    seed_view = f"{Path(report_name).stem}_seed_views.svg"
+    (OUT_DIR / seed_view).write_text(
         views_svg(ctx, seed_specs, f"Seed ({seed_name})"), encoding="utf-8")
-    text = report(ctx, cols, texts_for)
+    text = report(ctx, cols, texts_for, seed_view)
     if title:
         text = text.replace("# Rocker and push/pull rod concepts (FSAE 2027)", f"# {title}", 1)
     (OUT_DIR / report_name).write_text(text, encoding="utf-8")

@@ -1,0 +1,71 @@
+{
+ "concept_id": "G",
+ "name": "Concept G (550 lb/in): pushrods on the LCAs; front coil-over inside the frame behind the front hoop, rear rocker high at the UCA rear node",
+ "summary": "Pushrods on the LCAs at both axles. Front: the DF/D layout redrawn for MR 0.506, a smaller rocker (arms 55 / 45 mm) 47.4 mm from the front-hoop side node with the coil-over nearly vertical behind the hoop's lower leg, inside the frame, to an eye 55.6 mm from the front-hoop bottom node. Rear: a long bellcrank (arms 130 / 92 mm, 218 mm between pickups) 54.0 mm from the UCA rear pivot node, high on the rear structure, with the coil-over nearly vertical down to an eye 56.9 mm from the LCA rear pivot node. Zero evaluator fails; no part-to-part interference in the solids. Fits are thin at the front and the rear rocker is large; CG +0.6 mm against the team project.",
+ "springs_lb_in": {
+  "front": 550,
+  "rear": 550
+ },
+ "travel_limit_mm": 36.0,
+ "front": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -31.72,
+   533.6,
+   148.61
+  ],
+  "pivot": [
+   -142.97,
+   236.45,
+   345.67
+  ],
+  "damper_end": [
+   -149.8,
+   179.71,
+   99.27
+  ],
+  "rod_arm_mm": 54.73,
+  "damper_clock_deg": 1.84,
+  "target_mr": 0.506
+ },
+ "rear": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -1487.35,
+   525.07,
+   155.5
+  ],
+  "pivot": [
+   -1467.46,
+   186.04,
+   375.99
+  ],
+  "damper_end": [
+   -1471.23,
+   137.32,
+   185.82
+  ],
+  "rod_arm_mm": 130.0,
+  "damper_clock_deg": -3.3,
+  "target_mr": 0.506
+ },
+ "pros": [
+  "Front: zero fails; MR 0.487 / 0.506 / 0.512 over +-25 mm (+4.9 %); rocker rotation -23.7 / +23.1 deg; transmission angles at most 20.3 deg (rod) and 23.8 deg (coil-over). Pushrod 369 mm at 1.64x the wheel load (959 N at ride), buckling at 12.0 kN of wheel load. Clevis 31.3 mm off the LCA rear leg, 59 mm from the ball joint along it (32 N·m of leg bending at ride, 61 MPa on 25.4x1.2, hand estimate). Rack, inner joint and boot 73.5 mm away; coil-over / rocker to wishbones 25.6 mm; rod to its own rocker and coil-over 10.5 mm.",
+  "Rear: zero fails; MR 0.498 / 0.506 / 0.509 (+2.1 %); rocker rotation -11.6 / +11.3 deg; transmission angles at most 8.9 / 15.9 deg. Pushrod 383 mm, 52 deg from horizontal and 4 deg off transverse in plan, 1.39x the wheel load (1028 N), buckling at 13.2 kN. Clevis 33.1 mm off the LCA front leg, 59 mm from the ball joint (45 N·m, 85 MPa, hand estimate). Rocker to frame 13.6 mm, coil-over 11.7, eyes 14.1, chain 14.2 (estimate), engine features 79.3 mm.",
+  "One rod type on both axles (pushrods in compression), and the front keeps the team project's arrangement and frame nodes."
+ ],
+ "cons": [
+  "Front fits thinly: rocker 6.7 mm from the front hoop's upper leg, coil-over 8.5 mm from its lower leg, eyes 7.5 mm, against 5 mm limits; the coil-over hangs beside the driver's knee between the two template boxes (3.6 mm to each); moving the pivot 5 mm broke a threshold in 3 of 6 directions. The pivot bolt (+-20 mm) clears the frame by 1.5 mm and the solids' rocker hub touches the Tri_Meio rail by 1.1 mm: a one-sided stub or a shaped yoke.",
+  "Rear rocker is large and high: arms 130 / 92 mm, 158 deg apart (218 mm between pickups), hardware up to z = 485 mm; pivot reaction 2433 N and bracket couples up to 92 / 68 N·m at ride (upper bound). Rod to the UCA rear leg 6.1 mm at +36 mm and the coil-over 11.0 mm from the drive-shaft envelope (estimate); moving the pivot 5 mm broke a threshold in 2 of 6 directions, the eye in 3 of 6.",
+  "Front pivot reaction 1902 N against 1480 N in the team project (the spring force is 58 % higher at MR 0.506)."
+ ],
+ "not_checked": [
+  "The +-36 mm travel limit is a design input (design_intent, the designer's choice of 2026-10-21): a bump stop and a droop limiter that are not in the project. With them the damper keeps about 10 mm at each end (it uses about 36 of its 57 mm, an estimate); without them the wheel could reach the damper's own end stops (about -54..-59 / +56..+59 mm), a range these layouts were not checked over.",
+  "Damping: the damper moves 0.506 mm per mm of wheel instead of 0.80, so the same valving gives (0.506/0.80)^2 = 40 % of today's damping at the wheel. Damping is outside this tool.",
+  "The 550 lb/in spring's free length, OD and coil-bind length are not in the project (the coil-over is a 60 mm OD envelope, an estimate). Static compression 12.0 mm front / 15.2 mm rear; with no preload the spring comes off its seat at -23.7 / -30.0 mm of wheel travel, inside the +-36 mm range, as it does today with 220 lb/in at 0.80.",
+  "Structure: no load cases, stress, fatigue or sizing of rockers, brackets, clevises, rods or wishbones; the spring force at ride is 58 % higher than today's (1156 / 1461 N against 731 / 924 N), which raises the rocker and bracket loads; leg-bending figures are hand estimates (simply supported leg, rod force at ride).",
+  "Real part envelopes are estimates (rod 16, coil-over 60, eyes 40, rocker +-10 mm plates and +-20 mm bolts, frame 25.4, wishbones 20, rack boot 50 mm). The differential, bodywork, the driver's legs and hands beyond the template boxes, and the steering wheel are not modelled."
+ ]
+}
