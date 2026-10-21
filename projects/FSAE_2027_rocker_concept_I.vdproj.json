@@ -2,7 +2,7 @@
   "name": "FSAE 2027 -- PUCPR Racing -- rocker concept I",
   "team": "PUCPR Racing #27",
   "author": "Vinicius Trento",
-  "notes": "Rocker/rod concept I: Concept I (550 lb/in): front pullrod to a low rocker at the front-hoop bottom node, coil-over forward outside the frame side; rear pushrod from the UCA, coil-over down and inboard. Built by scripts/rocker_concepts.py from projects/rocker_concepts/concept_I.json (MR 0.506 is a comparison query, not a choice; packaging checked to ±36 mm of wheel travel, which needs a bump stop and a droop limiter). See projects/rocker_concepts/concept_550_lbin.md.",
+  "notes": "Rocker/rod concept I: Concept I (550 lb/in): front pullrod to a low rocker at the front-hoop bottom node, coil-over forward outside the frame side; rear pushrod from the UCA, coil-over low and near the centreline. Built by scripts/rocker_concepts.py from projects/rocker_concepts/concept_I.json (MR 0.506 is a comparison query, not a choice; packaging checked to ±36 mm of wheel travel, which needs a bump stop and a droop limiter). See projects/rocker_concepts/concept_550_lbin.md.",
   "created": "2026-10-13",
   "vehicle": {
     "name": "FSAE 2027 -- PUCPR Racing",
