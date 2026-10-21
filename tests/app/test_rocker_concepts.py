@@ -77,6 +77,49 @@ def test_equal_damper_margins_and_seed_metrics(rc, ctx) -> None:
     assert res["rear"]["rod_in_tension"] is (ctx.project.rocker_rear.rod_type == "pullrod")
 
 
+def test_rod_self_gap_sees_a_rod_through_its_own_coilover(rc) -> None:
+    """The rear rod of concept DF ran through its own coil-over in SolidWorks; no check
+    looked at the rod against its own linkage. Rocker in the XY plane: rod arm along +x,
+    damper arm along +y, coil-over on along +y."""
+    def link(mount):
+        return rc.Linkage(0.0, np.array(mount, float), np.array([50.0, 0.0, 0.0]),
+                          np.array([0.0, 60.0, 0.0]), np.zeros(3), np.array([0.0, 250.0, 0.0]),
+                          np.array([0.0, 0.0, 1.0]))
+    clear, _ = link((50.0, -300.0, 0.0)).rod_self_gap(20.0)       # rod leaves away from it
+    assert clear > 10.0
+    gap, name = link((-60.0, 300.0, 0.0)).rod_self_gap(20.0)       # rod crosses x = 0 at y 136
+    assert gap < 0.0 and name == "coil-over body"
+    # the rod end at its own pickup is not a clash: a rod straight out along the arm's
+    # tangent clears the arm it hangs on
+    g, _ = link((50.0, -60.0, 0.0)).rod_self_gap(20.0)
+    assert g > 0.0
+
+
+def test_concept_springs_and_travel_limit(rc, ctx) -> None:
+    """A concept can fit other springs and cap the packaging range (bump stop and droop
+    limiter): wheel rates scale with k, the MR and the damper end stops do not move."""
+    specs = {"front": ctx.project.rocker_front, "rear": ctx.project.rocker_rear}
+    opts = rc.concept_options({"springs_lb_in": {"front": 550, "rear": 550},
+                               "travel_limit_mm": 30})
+    assert opts == {"springs_lb_in": {"front": 550.0, "rear": 550.0}, "travel_limit_mm": 30.0}
+    base = rc.evaluate(ctx, specs)
+    res = rc.evaluate(ctx, specs, **opts)
+    for ax in ("front", "rear"):
+        b, r = base[ax], res[ax]
+        assert r["spring_lb_in"] == 550.0
+        k0 = ctx.project.springs.front_lb_in if ax == "front" else ctx.project.springs.rear_lb_in
+        assert r["wheel_rate_fitted_n_mm"] == pytest.approx(
+            b["wheel_rate_fitted_n_mm"] * 550.0 / k0, rel=1e-9)
+        assert r["mr_ride"] == pytest.approx(b["mr_ride"], abs=1e-12)
+        assert r["end_stops_mm"] == pytest.approx(b["end_stops_mm"], abs=1e-9)
+        lo, hi = r["packaging_range_mm"]
+        assert lo == pytest.approx(-30.0) and hi == pytest.approx(30.0)
+        assert b["packaging_range_mm"] == pytest.approx(b["end_stops_mm"], abs=1e-9)
+        # the rocker turns less over the narrower range
+        assert max(map(abs, r["psi_range_deg"])) < max(map(abs, b["psi_range_deg"]))
+    assert rc.with_springs(ctx.project, None) is ctx.project
+
+
 def test_frame_model_flags_sketch_only_lines(rc, ctx) -> None:
     """The front box's top side tubes are 3D-sketch lines with no weldment body in Xasis
     33.3 (kept, they may be planned tubes); 2D layout sketches with no body (templates,
