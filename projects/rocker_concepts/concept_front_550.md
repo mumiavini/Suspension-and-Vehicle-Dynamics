@@ -183,7 +183,7 @@ Wheel rates, frequencies and the roll budget follow from each column's springs a
 
 ![views](concept_GH_views.svg)
 
-The front of concept G with the team's rear (concept H), for comparison with H2 and K. Front: pushrod on the LCA to a small rocker (arms 55 / 45 mm) 47.4 mm from the front-hoop side node, the coil-over nearly vertical behind the hoop's lower leg, inside the frame, to an eye 55.6 mm from the front-hoop bottom node: the team's current DF front arrangement redrawn for MR 0.506. MR 0.487 / 0.506 / 0.512 (+4.9 %, rising, then back to the ride value at +36 mm). Zero evaluator fails; no interference between the suspension solids, but the rocker hub overlaps the Tri_Meio rail by 1.1 mm. The coil-over is 3.6 mm from the driver template boxes, and a search for this layout family with 10 mm or more to the boxes found none (at best about 5 mm).
+The front of concept G with the team's rear (concept H), for comparison with H2 and K. Front: pushrod on the LCA to a small rocker (arms 55 / 45 mm) 47.4 mm from the front-hoop side node, the coil-over nearly vertical behind the hoop's lower leg, inside the frame, to an eye 55.6 mm from the front-hoop bottom node: the team's current DF front arrangement redrawn for MR 0.506. MR 0.487 / 0.506 / 0.512 (+4.9 %, rising, then back to the ride value at +36 mm). Zero evaluator fails; no interference between the suspension solids, but the rocker hub overlaps the Tri_Meio rail by 1.1 mm. The coil-over is 3.6 mm from the 'Ressalto-extrusão1' / '2' boxes (taken to be the driver and leg templates), and a search for this layout family with 10 mm or more to the boxes found none (at best about 5 mm).
 
 | point (LEFT corner) | front | rear |
 |---|---|---|
@@ -225,15 +225,15 @@ The front of concept G with the team's rear (concept H), for comparison with H2 
 **Pros**
 
 - Front MR rises in bump: 0.487 / 0.506 / 0.512 over +-25 mm (+4.9 %); the wheel rate is 2.4 % above ride at +15 to +25 mm and back to ride at +36 mm.
-- Inside the frame like the team's DF front, on the same two nodes and bracket arrangement; the coil-over's outer surface stays within |y| = 229 mm, so no bodywork depends on it.
+- The coil-over is inside the frame like the team's DF coil-over; its outer surface stays within |y| = 229 mm, so no bodywork depends on it (the rocker plates reach |y| = 293 mm, outboard of the side rail at y = 255). Same two nodes as the DF front (pivot 47.4 mm from the front-hoop side node, eye 55.6 mm from the bottom node; DF 49.0 / 57.5 mm); the nearest bracket tubes differ (pivot: Tri_Meio, not FRONTO HO).
 - Smallest front rocker of the set (arms 55 / 45 mm, 89 mm between pickups) and the lowest front rod force (959 N of rod force at ride, 1.64x the wheel load); pushrod buckling at 12.0 kN of wheel load (19.7 kN in the rod). With the H rear, all four corners are pushrods.
-- Far from the steering: rack, inner joint and boot 73.5 mm, steering column 142.5 mm (estimate), rod to rim 34.8 mm; coil-over / rocker to the wishbones 25.6 mm. Moving the pivot 5 mm broke a threshold in 3 of 6 directions, the eye in 1 of 6, the rod mount in none.
+- Clear of the steering by the evaluator's limits: rack, inner joint and boot 73.5 mm, steering column 142.5 mm (estimate; the nearest of the set), rod to rim 34.8 mm (the nearest of the set, limit 15 mm); coil-over / rocker to the wishbones 25.6 mm.
 - Rear (concept H, the team project's rear since 2026-10-22): pushrod from a clevis on the UCA rear leg up to a rocker 53.5 mm from the UCA rear pivot node, coil-over down to an eye 52.1 mm from the LCA rear pivot node; zero evaluator fails, see concept_550_lbin.md.
 
 **Cons**
 
-- Next to the driver: the coil-over is 3.6 mm from both template boxes, beside the knee, where the team's DF coil-over is today (2.5 mm); with a coil-over OD above about 67 mm (the 60 mm is an estimate) it reaches them. Its adjusters are reached from inside the cockpit.
-- Thin frame fits: rocker 6.7 mm from the front hoop's upper leg, coil-over 8.5 mm from its lower leg, eyes 7.5 mm from the short Esboço144 member at the bottom node, against 5 mm limits. The pivot bolt (+-20 mm) clears the frame by 1.5 mm and the solids' rocker hub (32x44 mm) overlaps the Tri_Meio rail by 1.1 mm: a symmetric +-20 mm through-bolt and that hub do not fit as drawn.
+- Next to the driver: the coil-over is 3.6 mm from both template boxes, beside the knee, where the team's DF coil-over is today (the DF linkage is 2.5 mm from the boxes, at its rocker); with a coil-over OD above about 67 mm (the 60 mm is an estimate) it reaches them. Its adjusters are reached from inside the cockpit.
+- Thin frame fits: rocker 6.7 mm from the front hoop's upper leg, coil-over 8.5 mm from its lower leg, eyes 7.5 mm from the short Esboço144 member at the bottom node, against 5 mm limits. The pivot bolt (+-20 mm) clears the frame by 1.5 mm and the solids' rocker hub (32x44 mm) overlaps the Tri_Meio rail by 1.1 mm: the bolt fits with 1.5 mm to spare, but that hub does not fit as drawn. Moving the pivot 5 mm broke a threshold in 3 of 6 directions (eyes or rocker vs frame), the eye in 1 of 6 (eyes vs frame), the rod mount in none (H2 3 / 0 / 0, K 2 / 0 / 0). The clevis is 31.3 mm off the LCA rear leg, 59 mm from the ball joint, and bends it about 32 N·m at ride (61 MPa on 25.4x1.2, hand estimate).
 - Pivot reaction 1902 N at ride (DF front today 1480 N; H2 1140 N, K 2880 N); bracket couples up to 60 / 51 N·m (upper bound). Rocker rotation -23.7 / +23.1 deg, the largest of the set; the short arms make the wheel rate more sensitive to pickup tolerances.
 
 **Not checked**
@@ -289,16 +289,16 @@ Concept H's front, redrawn so its MR no longer falls in bump. Front: pullrod in 
 **Pros**
 
 - Front MR does not fall: 0.503 / 0.506 / 0.512 over +-25 mm (+1.8 %), and stays at or above the ride value through +36 mm (the search required it).
-- Lowest front loads of the set at the pivot: reaction 1140 N at ride (DF front today 1480 N, G 1902 N), bracket couples 42 / 47 N·m (upper bound). Pullrod in tension (no buckling), 1170 N of rod force at ride (2.00x the wheel load). Clevis 33.4 mm off the UCA front leg, 49 mm from the ball joint along it (29 N·m of leg bending at ride, 55 MPa on 25.4x1.2, hand estimate).
+- Lowest front pivot loads of the set: reaction 1140 N at ride (DF front today 1480 N, GH 1902 N, K 2880 N), pivot bracket couple 42 N·m (upper bound); the coil-over-end couple is 47 N·m (today 31 N·m). Pullrod in tension (no buckling), 1170 N of rod force at ride (2.00x the wheel load). Clevis 33.4 mm off the UCA front leg, 49 mm from the ball joint along it (29 N·m of leg bending at ride, 55 MPa on 25.4x1.2, hand estimate).
 - Low and clear of the driver: coil-over + rocker mass height 228 mm (team DF front 278 mm), CG -0.5 mm; rocker 38.2 mm from the template boxes; small rocker rotation (-8.0 / +7.9 deg) and transmission angles (8.0 / 18.6 deg). Moving the pivot 5 mm broke a threshold in 3 of 6 directions, the eye and the rod mount in none.
 - Clearances: rod to wishbones 28.2 mm, coil-over to frame 15.8 mm, rocker 9.3 mm, rack and boot 40.1 mm, steering column 219.6 mm (estimate).
 - Rear (concept H, the team project's rear since 2026-10-22): pushrod from a clevis on the UCA rear leg up to a rocker 53.5 mm from the UCA rear pivot node, coil-over down to an eye 52.1 mm from the LCA rear pivot node; zero evaluator fails, see concept_550_lbin.md.
 
 **Cons**
 
-- Large rocker: arms 130 / 135 mm, 47 deg apart (105 mm between pickups), against 86 / 94 mm on H; it hangs outside the frame side (plates to |y| = 358 mm) low at the front box, hardware down to z = 107-117 mm (chassis-referenced), about level with the underside of the lower frame tubes.
-- Coil-over outside the frame side: its outer surface reaches |y| = 378 mm between x = -71 and +174 mm (H: 339 mm), where bodywork has to cover it; bodywork is not modelled. Pullrod in tension at the front, pushrod in compression at the rear (two rod types).
-- Thin spots: rocker 5.9 mm from the LCA front leg (bump, full steer), rod 7.4 mm from its own damper pickup bolt (droop), eyes 8.4 mm from the frame, against 5 mm limits. The pivot bolt clears the frame by 0.8 mm and the solids' rocker hub (32x44 mm) overlaps the PSD tube by 2.7 mm: a symmetric +-20 mm through-bolt and that hub do not fit as drawn.
+- Large rocker: arms 130 / 135 mm, 47 deg apart (105 mm between pickups), against 86 / 94 mm on H; it hangs outside the frame side (plates to |y| = 358 mm) low at the front box, hardware down to z = 117 mm (chassis-referenced), about level with the lower frame tubes' centreline at the front box (node z = 117).
+- Coil-over and rocker outside the frame side between x = -71 and +174 mm, the coil-over's outer surface reaching |y| = 378 mm at its rocker end (H: 339 mm), where bodywork has to cover it; bodywork is not modelled. Pullrod in tension at the front, pushrod in compression at the rear (two rod types).
+- Thin spots: rocker 5.9 mm from the LCA front leg (bump, full steer), rod 7.4 mm from its own damper pickup bolt (droop), eyes 8.4 mm from the frame, against 5 mm limits. The pivot bolt clears the frame by 0.8 mm and the solids' rocker hub (32x44 mm) overlaps the PSD tube by 2.7 mm: the bolt fits with 0.8 mm to spare, but that hub does not fit as drawn.
 
 **Not checked**
 
@@ -312,7 +312,7 @@ Concept H's front, redrawn so its MR no longer falls in bump. Front: pullrod in 
 
 ![views](concept_K_views.svg)
 
-Front: a pullrod in tension from a clevis on the UCA front leg (31 mm from the ball joint along it) to a rocker 52.7 mm from the front-hoop side node, outside the frame side; the coil-over runs up and inboard along the front hoop to an eye 47.0 mm from the hoop's upper node (-89, 157, 561). MR 0.486 / 0.506 / 0.522 (+7.1 %, the most progressive front of the set). Zero evaluator fails; no interference between the suspension solids, but the rocker hub overlaps the Tri_Meio rail by up to 3.9 mm. The costs are a long damper arm (160 mm), the highest front loads (pivot reaction 2880 N, rod force 2260 N) and a high coil-over (hardware to z = 594 mm, CG +2.0 mm), at the top of the front hoop where the steering wheel and dash sit (not modelled).
+Front: a pullrod in tension from a clevis on the UCA front leg (31 mm from the ball joint along it) to a rocker 52.7 mm from the front-hoop side node, outside the frame side; the coil-over runs up and inboard along the front hoop to an eye 47.0 mm from the hoop's upper node (-89, 157, 561). MR 0.486 / 0.506 / 0.522 (+7.1 %, the most progressive front of the set). Zero evaluator fails; no interference between the suspension solids, but the rocker hub overlaps the Tri_Meio rail by up to 3.9 mm. The costs are a long damper arm (160 mm), the highest front loads (pivot reaction 2880 N, rod force 2260 N) and a high coil-over (hardware to z = 594 mm, CG +2.0 mm), at the top of the front hoop, outboard of it; the steering wheel, dash, bodywork and the driver's hands near the hoop top are not modelled.
 
 | point (LEFT corner) | front | rear |
 |---|---|---|
@@ -362,13 +362,13 @@ Front: a pullrod in tension from a clevis on the UCA front leg (31 mm from the b
 
 - Highest front loads of the set: pullrod 2260 N of rod force at ride (3.86x the wheel load), pivot reaction 2880 N (DF front today 1480 N), bracket couples up to 88 / 51 N·m (upper bound); the clevis is 31 mm from the ball joint and bends the UCA front leg about 54 N·m at ride (102 MPa on 25.4x1.2, hand estimate).
 - Long lever: damper arm 160 mm, rod arm 80 mm (213 mm between pickups).
-- High coil-over at the top of the front hoop: hardware from z = 226 to 594 mm, coil-over + rocker mass height 474 mm (DF front today 278 mm), CG +2.0 mm, tilt-table angle 61.98 deg (team project 62.13). Its eye sits near the hoop's upper node, 10.3 mm from a frame tube's bounding box, in the zone of the steering wheel, dash and the driver's hands, none of which is modelled. The rocker and the lower coil-over are outside the frame side (outer surface to |y| = 386 mm) at the front hoop.
-- Thin spots: rocker 7.1 mm from the UCA rear leg (bump, full steer), rocker 7.8 mm from the Tri_Meio rail; the pivot bolt clears the moving wishbones by 8.8 mm and the frame by 2.0 mm, and the solids' rocker hub (32x44 mm) overlaps the Tri_Meio rail by 3.9 mm: a symmetric +-20 mm through-bolt and that hub do not fit as drawn. Pullrod at the front, pushrod at the rear (two rod types).
+- High coil-over at the top of the front hoop: hardware from z = 236 to 594 mm, coil-over + rocker mass height 474 mm (DF front today 278 mm), CG +2.0 mm, tilt-table angle 61.98 deg (team project 62.13). The rocker and the whole coil-over sit outboard of the frame at the front hoop: the coil-over's outer surface reaches |y| = 386 mm at its rocker end and its chassis eye is at y = 201 mm, outboard of the hoop's upper node (y = 157), 10.3 mm from a frame tube's bounding box; 227.3 mm from the steering-column estimate (the largest of the set). The steering wheel, dash, bodywork and the driver's hands near the hoop top are not modelled.
+- Thin spots: rocker 7.1 mm from the UCA rear leg (bump, full steer), rocker 7.8 mm from the Tri_Meio rail; the pivot bolt clears the moving wishbones by 8.8 mm and the frame by 2.0 mm, and the solids' rocker hub (32x44 mm) overlaps the Tri_Meio rail by 3.9 mm: the bolt fits with 2.0 mm to spare, but that hub does not fit as drawn. Pullrod at the front, pushrod at the rear (two rod types).
 
 **Not checked**
 
 - The +-36 mm travel limit is a design input (design_intent): a bump stop and a droop limiter that are not in the project. With them the damper keeps about 10 mm at each end (it uses about 36 of its 57 mm, an estimate); without them the wheel could reach the damper's own end stops (about -56..-59 / +55..+57 mm at this front), a range not checked.
 - Damping: the damper moves 0.506 mm per mm of wheel instead of 0.80, so the same valving gives (0.506/0.80)^2 = 40 % of today's damping at the wheel. Damping is outside this tool.
-- The 550 lb/in spring's free length, OD and coil-bind length are not in the project (the coil-over is a 60 mm OD envelope, an estimate). With no preload the front spring comes off its seat at -23.7 mm of wheel travel, inside the +-36 mm range.
+- The 550 lb/in spring's free length, OD and coil-bind length are not in the project (the coil-over is a 60 mm OD envelope, an estimate). With no preload the front spring comes off its seat at about -24 mm of wheel travel (-23.7 mm at the ride MR), inside the +-36 mm range.
 - Structure: no load cases, stress, fatigue or sizing of rockers, brackets, clevises, rods or wishbones; the front spring force at ride is 1156 N (731 N today at 220 lb/in and MR 0.80); leg-bending figures are hand estimates (simply supported leg, rod force at ride).
 - Real part envelopes are estimates (rod 16, coil-over 60, eyes 40, rocker +-10 mm plates and +-20 mm bolts, frame 25.4, wishbones 20, rack boot 50 mm). Bodywork, the steering wheel and dash, and the driver beyond the template boxes are not modelled.
