@@ -301,34 +301,34 @@
     "rod_type": "pushrod",
     "mount_body": "lca",
     "rod_mount": [
-      -17.0,
-      543.37,
-      138.62
+      -31.72,
+      533.6,
+      148.61
     ],
     "rocker_pivot": [
-      -130.5,
-      269.57,
-      357.13
+      -142.97,
+      236.45,
+      345.67
     ],
     "rocker_axis": [
-      -0.9376,
-      0.343,
-      -0.0573
+      -0.9455,
+      0.3222,
+      -0.048
     ],
     "rocker_rod": [
-      -115.3104,
-      319.0047,
-      404.4681
+      -133.4458,
+      270.6098,
+      387.3566
     ],
     "rocker_damper": [
-      -158.6853,
-      192.2321,
-      355.4451
+      -157.7313,
+      193.6315,
+      349.0491
     ],
     "damper_chassis": [
-      -148.7749,
-      187.377,
-      164.18
+      -151.6577,
+      182.9707,
+      157.775
     ],
     "source": "design_intent"
   },
@@ -382,7 +382,7 @@
       220.0,
       550.0
     ],
-    "front_lb_in": 220.0,
+    "front_lb_in": 550.0,
     "rear_lb_in": 550.0,
     "source": "measured",
     "roll_stiffness_front_share": 0.5
@@ -888,6 +888,15 @@
       "decision": "Rear of concept H: pushrod (in compression) from a clevis on the UCA rear leg (24.9 mm off its centreline, 50 mm from the upper ball joint) up to a rocker 53.5 mm from the UCA rear pivot node (-1461, 210, 328); coil-over down to an eye 52.1 mm from the LCA rear pivot node (-1441, 175, 129). Rear springs 550 lb/in; MR 0.506 at ride keeps the wheel rate of 220 lb/in at 0.80 (24.7 N/mm). Packaging was checked to +-36 mm of wheel travel, which needs a rear bump stop and droop limiter (design_intent; about 10 mm of damper stroke left at each end). The front stays on concept DF (220 lb/in, MR 0.80, same 24.7 N/mm) until a front for 550 lb/in is chosen. Inputs in projects/rocker_concepts/concept_H.json; comparison in projects/rocker_concepts/concept_550_lbin.md.",
       "rationale": "Chosen by the designer from the three 550 lb/in concepts G, H, I. DF's rear pullrod ran through its own coil-over (gap -37.2 mm, seen in SolidWorks); H's rear passes every evaluator check, has no part-to-part interference in the solids, a rising MR (0.496 / 0.506 / 0.512) and was first or second under all five comparison lenses (packaging, structure, kinematics, integration, unmodelled risks). MR 0.506 and the +-36 mm travel limit are design_intent query arguments.",
       "alternatives": "G rear (pushrod from the LCA: lowest loads and lateral load into the UCA rear node, about 1.0 kN, but its rocker hub overlaps the frame and the engine tab and it is the least robust to 5 mm moves); I rear (best measured clearances but both coil-overs 72-102 mm from the centreline, in the unmodelled differential's space). Open items for H rear: about 2.1 kN per side pushed inboard into the UCA rear node at ride (no cross tube there), rocker hub needs a bracket detail, chain 11.4 mm and eyes 6.9 mm (estimates), differential envelope not modelled.",
+      "author": "Vinicius Trento"
+    },
+    {
+      "date": "2026-10-22",
+      "stage": "suspension",
+      "title": "Front rocker layout: concept GH front (concept G), 550 lb/in springs at MR 0.506",
+      "decision": "Front of concept G: pushrod (in compression) from a clevis on the LCA rear leg (31.3 mm off its centreline, 59 mm from the lower ball joint) to a rocker (arms 55 / 45 mm) 47.4 mm from the front-hoop side node; coil-over nearly vertical behind the hoop's lower leg, inside the frame, to an eye 55.6 mm from the front-hoop bottom node. Front springs 550 lb/in; MR 0.506 at ride, 24.7 N/mm at the wheel as before. With the rear of concept H the car now has 550 lb/in springs and pushrods at all four corners. Packaging checked to +-36 mm of wheel travel: the bump stops and droop limiters are design_intent and not drawn (about 10 mm of damper stroke left at each end). Inputs in projects/rocker_concepts/concept_GH.json; comparison in projects/rocker_concepts/concept_front_550.md.",
+      "rationale": "Chosen by the designer over H2 and K (all three zero evaluator fails, no part-to-part interference in the solids). Concept H's front was rejected for its falling MR (0.528 / 0.506 / 0.485, -8.4 %); G's rises (0.487 / 0.506 / 0.512, +4.9 %). It keeps the coil-over inside the frame on the DF front's nodes, the smallest rocker, and one rod type on all corners. MR 0.506 and the +-36 mm limit are design_intent query arguments.",
+      "alternatives": "H2 (H's front redrawn to a non-falling MR: lowest pivot reaction 1140 N, low, clear of the driver, but a 130 / 135 mm rocker and the coil-over outside the frame side to |y| = 378 mm); K (+7.1 % MR, but the highest loads, 2880 N pivot reaction, and a coil-over at the top of the front hoop, CG +2.0 mm). Open items for this front: the coil-over is 3.6 mm from the 'Ressalto-extrusão1' / '2' boxes (taken to be the driver / leg templates) beside the knee: check the real coil-over OD with the 550 lb/in spring (above about 67 mm it reaches them), the template rule reading and the driver's knee; pivot reaction 1902 N; the 32x44 mm rocker hub placeholder overlaps the Tri_Meio rail by 1.1 mm.",
       "author": "Vinicius Trento"
     }
   ],
