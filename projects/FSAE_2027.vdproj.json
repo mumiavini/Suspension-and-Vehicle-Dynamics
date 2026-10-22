@@ -334,37 +334,37 @@
   },
   "rocker_rear": {
     "enabled": true,
-    "rod_type": "pullrod",
+    "rod_type": "pushrod",
     "mount_body": "uca",
     "rod_mount": [
-      -1490.45,
-      484.19,
-      362.18
+      -1526.2,
+      467.73,
+      405.18
     ],
     "rocker_pivot": [
-      -1250.53,
-      254.36,
-      158.19
+      -1475.84,
+      196.02,
+      377.43
     ],
     "rocker_axis": [
-      0.7556,
-      0.2523,
-      0.6045
+      -0.9831,
+      -0.1827,
+      0.0051
     ],
     "rocker_rod": [
-      -1244.3007,
-      285.7816,
-      137.2869
+      -1479.5832,
+      218.7261,
+      468.8996
     ],
     "rocker_damper": [
-      -1270.1291,
-      324.5064,
-      153.4117
+      -1456.0188,
+      88.3997,
+      342.3308
     ],
     "damper_chassis": [
-      -1376.5764,
-      278.1955,
-      305.8123
+      -1466.7877,
+      141.1722,
+      158.4561
     ],
     "source": "design_intent"
   },
@@ -383,7 +383,7 @@
       550.0
     ],
     "front_lb_in": 220.0,
-    "rear_lb_in": 220.0,
+    "rear_lb_in": 550.0,
     "source": "measured",
     "roll_stiffness_front_share": 0.5
   },
@@ -879,6 +879,15 @@
       "decision": "Front of concept D: pushrod from the LCA rear leg 45 mm from the ball joint to a rocker 49.0 mm from the front-hoop side node; coil-over almost vertical behind the hoop's lower leg to an eye 57.5 mm from the front-hoop bottom node. Rear of concept F (refined): pullrod from a clevis on the UCA (rod end 25.5 mm off the front leg, 62 mm from the upper ball joint) to a rocker 53.7 mm from the rear lower node, outboard of the chain; coil-over up to an eye 56.4 mm from the rear upper node. Inputs in projects/rocker_concepts/concept_DF.json; comparison in projects/rocker_concepts/concept_nodes_DEF.md.",
       "rationale": "Chosen by the designer to mount the rocker pivots and coil-over chassis ends at welded frame nodes instead of mid-span (concept A refined: 94 / 199 mm front, 95 / 188 mm rear from the nearest node). Zero evaluator fails on both axles, node checks and the inner tie-rod joint / boot envelope included. MR 0.80 at ride and the 220 lb/in springs remain open decisions (design_intent query arguments).",
       "alternatives": "Concept D rear (rod at mid-span of the LCA front leg, about 270 MPa bending at ride on 25.4x1.2; coil-overs in the differential's space); concept E (high rockers, front coil-over boxed in by near-zero gaps); concept F front (refined: pivot 61.2 mm from its node and two gaps at the 5 mm limit, because both low front nodes are LCA pivots and the coil-over crosses the rack line).",
+      "author": "Vinicius Trento"
+    },
+    {
+      "date": "2026-10-22",
+      "stage": "suspension",
+      "title": "Rear rocker layout: concept H, 550 lb/in springs at MR 0.506",
+      "decision": "Rear of concept H: pushrod (in compression) from a clevis on the UCA rear leg (24.9 mm off its centreline, 50 mm from the upper ball joint) up to a rocker 53.5 mm from the UCA rear pivot node (-1461, 210, 328); coil-over down to an eye 52.1 mm from the LCA rear pivot node (-1441, 175, 129). Rear springs 550 lb/in; MR 0.506 at ride keeps the wheel rate of 220 lb/in at 0.80 (24.7 N/mm). Packaging was checked to +-36 mm of wheel travel, which needs a rear bump stop and droop limiter (design_intent; about 10 mm of damper stroke left at each end). The front stays on concept DF (220 lb/in, MR 0.80, same 24.7 N/mm) until a front for 550 lb/in is chosen. Inputs in projects/rocker_concepts/concept_H.json; comparison in projects/rocker_concepts/concept_550_lbin.md.",
+      "rationale": "Chosen by the designer from the three 550 lb/in concepts G, H, I. DF's rear pullrod ran through its own coil-over (gap -37.2 mm, seen in SolidWorks); H's rear passes every evaluator check, has no part-to-part interference in the solids, a rising MR (0.496 / 0.506 / 0.512) and was first or second under all five comparison lenses (packaging, structure, kinematics, integration, unmodelled risks). MR 0.506 and the +-36 mm travel limit are design_intent query arguments.",
+      "alternatives": "G rear (pushrod from the LCA: lowest loads and lateral load into the UCA rear node, about 1.0 kN, but its rocker hub overlaps the frame and the engine tab and it is the least robust to 5 mm moves); I rear (best measured clearances but both coil-overs 72-102 mm from the centreline, in the unmodelled differential's space). Open items for H rear: about 2.1 kN per side pushed inboard into the UCA rear node at ride (no cross tube there), rocker hub needs a bracket detail, chain 11.4 mm and eyes 6.9 mm (estimates), differential envelope not modelled.",
       "author": "Vinicius Trento"
     }
   ],

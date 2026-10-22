@@ -1505,10 +1505,11 @@ def cmd_eval(path: Path) -> None:
     print(json.dumps(_jsonable(res), indent=1))
 
 
-def cmd_seed() -> None:
+def cmd_seed(travel_limit_mm: float | None = None) -> None:
     ctx = load_ctx()
     specs = {"front": ctx.project.rocker_front, "rear": ctx.project.rocker_rear}
-    print(json.dumps(_jsonable(evaluate(ctx, specs, reference_z(ctx))), indent=1))
+    print(json.dumps(_jsonable(evaluate(ctx, specs, reference_z(ctx),
+                                        travel_limit_mm=travel_limit_mm)), indent=1))
 
 
 def cmd_frame() -> None:
@@ -1521,7 +1522,8 @@ def cmd_frame() -> None:
 
 def cmd_build(only: list[str] | None = None, report_name: str = "README.md",
               seed_project: Path | None = None, variants: bool = True,
-              title: str | None = None, texts_for: list[str] | None = None) -> None:
+              title: str | None = None, texts_for: list[str] | None = None,
+              seed_travel_limit_mm: float | None = None) -> None:
     """Variants, views and a side-by-side report.
 
     ``only``: concept ids to include (default: every ``concept_*.json``). ``seed_project``:
@@ -1541,8 +1543,13 @@ def cmd_build(only: list[str] | None = None, report_name: str = "README.md",
         raise SystemExit(f"no concept_*.json in {OUT_DIR}")
     seed_name = "the current team project" if seed_project is None else \
         f"the rockers of {seed_project.name}"
+    # the seed's own springs; a travel limit (bump stop / droop limiter) when it has one
+    seed_eval = evaluate(ctx, seed_specs, ref,
+                         springs_lb_in={"front": seed_p.springs.front_lb_in,
+                                        "rear": seed_p.springs.rear_lb_in},
+                         travel_limit_mm=seed_travel_limit_mm)
     cols: list[tuple[str, str, dict, dict, dict]] = [
-        ("seed", seed_name, evaluate(ctx, seed_specs, ref), seed_specs, {})]
+        ("seed", seed_name, seed_eval, seed_specs, {})]
     for f in files:
         c = json.loads(f.read_text(encoding="utf-8"))
         cid = str(c.get("concept_id", f.stem.split("_")[-1]))
@@ -1584,7 +1591,9 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("eval", help="metrics of one concept JSON")
     e.add_argument("concept", type=Path)
-    sub.add_parser("seed", help="metrics of the project's current layout")
+    sd = sub.add_parser("seed", help="metrics of the project's current layout")
+    sd.add_argument("--travel-limit", type=float, default=None,
+                    help="cap the packaging range at +- this wheel travel [mm]")
     sub.add_parser("frame", help="the CAD frame model (bodied / sketch-only members, boxes)")
     b = sub.add_parser("build", help="variants, report and views for every concept")
     b.add_argument("--only", nargs="+", default=None, help="concept ids (default: all)")
@@ -1595,10 +1604,15 @@ def main() -> None:
     b.add_argument("--title", default=None, help="report title")
     b.add_argument("--texts-for", nargs="+", default=None,
                    help="print summary / pros / cons only for these concept ids")
+    b.add_argument("--seed-travel-limit", type=float, default=None,
+                   help="cap the Seed column's packaging range at +- this wheel travel [mm]")
     args = ap.parse_args()
     if args.cmd == "build":
         cmd_build(args.only, args.report, args.seed_project, not args.no_variants, args.title,
-                  args.texts_for)
+                  args.texts_for, args.seed_travel_limit)
+        return
+    if args.cmd == "seed":
+        cmd_seed(args.travel_limit)
         return
     {"eval": lambda: cmd_eval(args.concept), "seed": cmd_seed, "frame": cmd_frame}[args.cmd]()
 
