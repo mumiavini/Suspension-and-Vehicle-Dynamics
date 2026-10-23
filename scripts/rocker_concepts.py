@@ -806,11 +806,13 @@ class Linkage:
     pivot: np.ndarray
     dc: np.ndarray
     axis: np.ndarray
+    hand: float = 1.0      # -1 on a mirrored corner: a clock angle turns the other way
 
     def mirrored(self) -> Linkage:
         a = self.axis
         return Linkage(self.z, mirror(self.mount), mirror(self.rr), mirror(self.rd),
-                       mirror(self.pivot), mirror(self.dc), np.array([-a[0], a[1], -a[2]]))
+                       mirror(self.pivot), mirror(self.dc), np.array([-a[0], a[1], -a[2]]),
+                       -self.hand)
 
     def elements(self) -> list[tuple[str, np.ndarray, np.ndarray, float]]:
         """(name, a, b, radius): the parts that take space, with estimated radii."""
@@ -854,7 +856,7 @@ class Linkage:
         (and its chassis bolt) about the damper axis: see ``RESERVOIR_CLOCKS_DEG``."""
         base, other = (self.rd, self.dc) if at_rocker else (self.dc, self.rd)
         u = _unit(other - base)
-        w = _clocked(u, _unit(np.cross(u, self.axis)), clock_deg) \
+        w = _clocked(u, _unit(np.cross(u, self.axis)), self.hand * clock_deg) \
             * side * float(damper.reservoir_offset_mm)
         r = 0.5 * float(damper.reservoir_od_mm)
         # a capsule whose core stops r/2 short of each flat end

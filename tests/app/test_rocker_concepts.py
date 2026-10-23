@@ -139,6 +139,16 @@ def test_reservoir_sits_beside_the_body_either_side(rc, ctx) -> None:
     p30, _, _ = lk.reservoir(d, 1.0, clock_deg=30.0)
     assert np.hypot(p30[0], p30[2]) == pytest.approx(d.reservoir_offset_mm)
     assert math.degrees(math.atan2(-p30[2], -p30[0])) == pytest.approx(30.0)
+    # the other corner is the mirror image, clocked canister included (mirroring turns a
+    # rotation the other way round)
+    lk = rc.Linkage(0.0, np.array([10.0, 300.0, 20.0]), np.array([50.0, 40.0, 0.0]),
+                    np.array([5.0, 60.0, 30.0]), np.zeros(3), np.array([30.0, 250.0, 60.0]),
+                    rc._unit(np.array([0.2, 0.3, 1.0])))
+    for side in (1.0, -1.0):
+        for clk in (0.0, 30.0, 90.0, 150.0):
+            pl, ql, _ = lk.reservoir(d, side, clock_deg=clk)
+            pr, qr, _ = lk.mirrored().reservoir(d, side, clock_deg=clk)
+            assert pr == pytest.approx(rc.mirror(pl)) and qr == pytest.approx(rc.mirror(ql))
 
 
 def test_concept_springs_and_travel_limit(rc, ctx) -> None:
