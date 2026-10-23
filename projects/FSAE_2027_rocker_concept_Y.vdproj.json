@@ -2,7 +2,7 @@
   "name": "FSAE 2027 -- PUCPR Racing -- rocker concept Y",
   "team": "PUCPR Racing #27",
   "author": "Vinicius Trento",
-  "notes": "Rocker/rod concept Y: Concept Y: front idea Y (pullrod, coil-overs low and transverse ahead of the rack); rear R2 (pullrod, low rocker, coil-over up outboard of the chain line). Built by scripts/rocker_concepts.py from projects/rocker_concepts/concept_Y.json (MR 0.506 is a comparison query, not a choice; packaging checked to ±36 mm of wheel travel, which needs a bump stop and a droop limiter). See projects/rocker_concepts/concept_xyz.md.",
+  "notes": "Rocker/rod concept Y: front idea Y (pullrod, coil-overs low and transverse ahead of the rack); rear R2 (pullrod, low rocker, coil-over up outboard of the chain line). Built by scripts/rocker_concepts.py from projects/rocker_concepts/concept_Y.json (MR 0.506 is a comparison query, not a choice; packaging checked to ±36 mm of wheel travel, which needs a bump stop and a droop limiter). See projects/rocker_concepts/concept_xyz.md.",
   "created": "2026-10-13",
   "vehicle": {
     "name": "FSAE 2027 -- PUCPR Racing",

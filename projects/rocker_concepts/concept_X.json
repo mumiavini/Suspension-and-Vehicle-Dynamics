@@ -1,6 +1,6 @@
 {
  "concept_id": "X",
- "name": "Concept X: front idea X (pushrod, coil-overs across the top of the front hoop); rear R1 (pushrod, coil-over forward along the upper side rail)",
+ "name": "front idea X (pushrod, coil-overs across the top of the front hoop); rear R1 (pushrod, coil-over forward along the upper side rail)",
  "summary": "Front, the team's idea X: a steep pushrod (57 deg from horizontal) from a clevis on the LCA rear leg to a rocker 48.4 mm from the front hoop's upper corner node; each coil-over lies across the top of the hoop toward the centreline, to an eye on a bracket on the hoop's top bar, 32 mm from its bend and 144 mm from the nearest node. Rear R1: pushrod from the LCA rear leg to a rocker on a bracket on the upper side rail (Tri_Tras), 118 mm from the UCA front node; the coil-over runs forward along the top of that rail to a second bracket on it, 150 mm from its front node. No physical interference on either axle; the evaluator's only flags are the node distances (front eye 144 mm; rear pivot 118 mm and eye 150 mm, limit 60 mm).",
  "springs_lb_in": {
   "front": 550,

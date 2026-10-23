@@ -2,7 +2,7 @@
   "name": "FSAE 2027 -- PUCPR Racing -- rocker concept Z",
   "team": "PUCPR Racing #27",
   "author": "Vinicius Trento",
-  "notes": "Rocker/rod concept Z: Concept Z: front Z (pullrod, rocker on the front hoop's side node, coil-over up to its upper corner); rear R3 (pushrod, coil-over rearward above the rear box). Built by scripts/rocker_concepts.py from projects/rocker_concepts/concept_Z.json (MR 0.506 is a comparison query, not a choice; packaging checked to ±36 mm of wheel travel, which needs a bump stop and a droop limiter). See projects/rocker_concepts/concept_xyz.md.",
+  "notes": "Rocker/rod concept Z: front Z (pullrod, rocker on the front hoop's side node, coil-over up to its upper corner); rear R3 (pushrod, coil-over rearward above the rear box). Built by scripts/rocker_concepts.py from projects/rocker_concepts/concept_Z.json (MR 0.506 is a comparison query, not a choice; packaging checked to ±36 mm of wheel travel, which needs a bump stop and a droop limiter). See projects/rocker_concepts/concept_xyz.md.",
   "created": "2026-10-13",
   "vehicle": {
     "name": "FSAE 2027 -- PUCPR Racing",

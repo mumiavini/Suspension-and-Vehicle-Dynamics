@@ -200,7 +200,7 @@ Wheel rates, frequencies and the roll budget follow from each column's springs a
 
 **Outside the thresholds:** front linkage and reservoir vs driver space (leg template octagon, cockpit template) -17.2 (limit ≥ 5); front rocker hub vs frame and moving wishbones -0.3 (limit ≥ 2); rear linkage and reservoir vs drivetrain keep-out (estimate) -95.7 (limit ≥ 10); rear damper reservoir (the better of its two sides) vs frame, wishbones, rod -18.1 (limit ≥ 5); rear rocker hub vs frame and moving wishbones 0.4 (limit ≥ 2)
 
-## Concept X: Concept X: front idea X (pushrod, coil-overs across the top of the front hoop); rear R1 (pushrod, coil-over forward along the upper side rail)
+## Concept X: front idea X (pushrod, coil-overs across the top of the front hoop); rear R1 (pushrod, coil-over forward along the upper side rail)
 
 ![views](concept_X_views.svg)
 
@@ -272,7 +272,7 @@ Front, the team's idea X: a steep pushrod (57 deg from horizontal) from a clevis
 - Envelopes: spring OD 55 mm, 220 mm eye to eye and 260 mm overall are from the coil-over drawing; the piggyback reservoir (OD 38 mm, 50 mm off the axis) is scaled from that drawing (estimate). Rod, rocker plates and bolts, rocker hub, wishbone and frame tube sizes are estimates. Bodywork, the steering wheel and dash, and the driver beyond the template sketches are not modelled.
 - Drivetrain: the chain, sprockets, differential and drive shafts are estimates (no CAD). The chain estimate itself passes through four rear-box tubes (front post -27.3 mm, top rail -25.0 mm, diagonal -14.2 mm, rear post -10.3 mm), so the real chain path differs from it; each rear here needs a check against the real drivetrain.
 
-## Concept Y: Concept Y: front idea Y (pullrod, coil-overs low and transverse ahead of the rack); rear R2 (pullrod, low rocker, coil-over up outboard of the chain line)
+## Concept Y: front idea Y (pullrod, coil-overs low and transverse ahead of the rack); rear R2 (pullrod, low rocker, coil-over up outboard of the chain line)
 
 ![views](concept_Y_views.svg)
 
@@ -346,11 +346,11 @@ Front, the team's idea Y: a pullrod from a clevis on the UCA rear leg down to a 
 - A clocked reservoir assumes the damper shaft can turn in the body and that the chassis eye is a spherical bearing; its misalignment limit (5 deg) is an estimate.
 - Drivetrain: the chain, sprockets, differential and drive shafts are estimates (no CAD). The chain estimate itself passes through four rear-box tubes (front post -27.3 mm, top rail -25.0 mm, diagonal -14.2 mm, rear post -10.3 mm), so the real chain path differs from it; each rear here needs a check against the real drivetrain.
 
-## Concept Z: Concept Z: front Z (pullrod, rocker on the front hoop's side node, coil-over up to its upper corner); rear R3 (pushrod, coil-over rearward above the rear box)
+## Concept Z: front Z (pullrod, rocker on the front hoop's side node, coil-over up to its upper corner); rear R3 (pushrod, coil-over rearward above the rear box)
 
 ![views](concept_Z_views.svg)
 
-Front Z, a third front: a pullrod from a clevis on the UCA rear leg to a rocker 53.4 mm from the front hoop's side node; the coil-over runs from the rocker, outboard of the hoop, up and inboard to an eye 49.6 mm from the hoop's upper corner node. No evaluator flag; both brackets on nodes; tension rod. Rear R3: pushrod from the LCA rear leg to a rocker 62.1 mm from the UCA front node; the coil-over runs rearward, above the rear box's top rail, to an eye on a bracket on the main-hoop brace 72.2 mm from the UCA rear node. R3 has no physical interference; it is flagged for its node distances (62.1 / 72.2 mm, limit 60) and an eye bracket 60.3 mm from the nearest tube (limit 60).
+Front Z, a third front, in the family of the earlier concept K (whose rocker hub overlaps the frame and wishbones by 2.4 mm under the hub check added since; Z clears it by 3.4 mm): a pullrod from a clevis on the UCA rear leg to a rocker 53.4 mm from the front hoop's side node; the coil-over runs from the rocker, outboard of the hoop, up and inboard to an eye 49.6 mm from the hoop's upper corner node. No evaluator flag; both brackets on nodes; tension rod. Rear R3: pushrod from the LCA rear leg to a rocker 62.1 mm from the UCA front node; the coil-over runs rearward, above the rear box's top rail, to an eye on a bracket on the main-hoop brace 72.2 mm from the UCA rear node. R3 has no physical interference; it is flagged for its node distances (62.1 / 72.2 mm, limit 60) and an eye bracket 60.3 mm from the nearest tube (limit 60).
 
 | point (LEFT corner) | front | rear |
 |---|---|---|

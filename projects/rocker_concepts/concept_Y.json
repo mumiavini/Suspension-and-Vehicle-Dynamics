@@ -1,6 +1,6 @@
 {
  "concept_id": "Y",
- "name": "Concept Y: front idea Y (pullrod, coil-overs low and transverse ahead of the rack); rear R2 (pullrod, low rocker, coil-over up outboard of the chain line)",
+ "name": "front idea Y (pullrod, coil-overs low and transverse ahead of the rack); rear R2 (pullrod, low rocker, coil-over up outboard of the chain line)",
  "summary": "Front, the team's idea Y: a pullrod from a clevis on the UCA rear leg down to a rocker 59.2 mm from the LCA front pivot node; each coil-over runs low and almost transverse (its axis at x = 57 to 78 mm), just ahead of the rack (x = -30 mm), to an eye on the floor X-diagonal 56.5 mm from the floor node at (120, 74, 117). It fits only with the rack cover (the floor of the leg template between x = -120 and +120) at about z = 223 mm or higher (checked at 230 mm), and with the reservoir clocked 120 deg at the chassis end. Rear R2: the team's DF rear redrawn so its pullrod clears its own coil-over (DF at 550 lb/in overlapped it by 32.5 mm): pullrod from the UCA front leg to a low rocker 54.9 mm from the rear box's front lower node, coil-over up and back outboard of the chain line to an eye 58.0 mm from the UCA front node. No evaluator flag on either axle.",
  "springs_lb_in": {
   "front": 550,

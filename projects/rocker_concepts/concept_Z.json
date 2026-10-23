@@ -1,7 +1,7 @@
 {
  "concept_id": "Z",
- "name": "Concept Z: front Z (pullrod, rocker on the front hoop's side node, coil-over up to its upper corner); rear R3 (pushrod, coil-over rearward above the rear box)",
- "summary": "Front Z, a third front: a pullrod from a clevis on the UCA rear leg to a rocker 53.4 mm from the front hoop's side node; the coil-over runs from the rocker, outboard of the hoop, up and inboard to an eye 49.6 mm from the hoop's upper corner node. No evaluator flag; both brackets on nodes; tension rod. Rear R3: pushrod from the LCA rear leg to a rocker 62.1 mm from the UCA front node; the coil-over runs rearward, above the rear box's top rail, to an eye on a bracket on the main-hoop brace 72.2 mm from the UCA rear node. R3 has no physical interference; it is flagged for its node distances (62.1 / 72.2 mm, limit 60) and an eye bracket 60.3 mm from the nearest tube (limit 60).",
+ "name": "front Z (pullrod, rocker on the front hoop's side node, coil-over up to its upper corner); rear R3 (pushrod, coil-over rearward above the rear box)",
+ "summary": "Front Z, a third front, in the family of the earlier concept K (whose rocker hub overlaps the frame and wishbones by 2.4 mm under the hub check added since; Z clears it by 3.4 mm): a pullrod from a clevis on the UCA rear leg to a rocker 53.4 mm from the front hoop's side node; the coil-over runs from the rocker, outboard of the hoop, up and inboard to an eye 49.6 mm from the hoop's upper corner node. No evaluator flag; both brackets on nodes; tension rod. Rear R3: pushrod from the LCA rear leg to a rocker 62.1 mm from the UCA front node; the coil-over runs rearward, above the rear box's top rail, to an eye on a bracket on the main-hoop brace 72.2 mm from the UCA rear node. R3 has no physical interference; it is flagged for its node distances (62.1 / 72.2 mm, limit 60) and an eye bracket 60.3 mm from the nearest tube (limit 60).",
  "springs_lb_in": {
   "front": 550,
   "rear": 550
