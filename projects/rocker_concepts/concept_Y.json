@@ -1,0 +1,76 @@
+{
+ "concept_id": "Y",
+ "name": "Concept Y: front idea Y (pullrod, coil-overs low and transverse ahead of the rack); rear R2 (pullrod, low rocker, coil-over up outboard of the chain line)",
+ "summary": "Front, the team's idea Y: a pullrod from a clevis on the UCA rear leg down to a rocker 59.2 mm from the LCA front pivot node; each coil-over runs low and almost transverse (its axis at x = 57 to 78 mm), just ahead of the rack (x = -30 mm), to an eye on the floor X-diagonal 56.5 mm from the floor node at (120, 74, 117). It fits only with the rack cover (the floor of the leg template between x = -120 and +120) at about z = 223 mm or higher (checked at 230 mm), and with the reservoir clocked 120 deg at the chassis end. Rear R2: the team's DF rear redrawn so its pullrod clears its own coil-over (DF at 550 lb/in overlapped it by 32.5 mm): pullrod from the UCA front leg to a low rocker 54.9 mm from the rear box's front lower node, coil-over up and back outboard of the chain line to an eye 58.0 mm from the UCA front node. No evaluator flag on either axle.",
+ "springs_lb_in": {
+  "front": 550,
+  "rear": 550
+ },
+ "travel_limit_mm": 36.0,
+ "driver_floor_z_mm": 230.0,
+ "front": {
+  "rod_type": "pullrod",
+  "mount_body": "uca",
+  "rod_mount": [
+   -37.4,
+   490.76,
+   341.22
+  ],
+  "pivot": [
+   139.19,
+   250.34,
+   150.5
+  ],
+  "damper_end": [
+   77.84,
+   79.9,
+   155.58
+  ],
+  "rod_arm_mm": 90.19,
+  "damper_clock_deg": -20.27,
+  "target_mr": 0.506
+ },
+ "rear": {
+  "rod_type": "pullrod",
+  "mount_body": "uca",
+  "rod_mount": [
+   -1489.49,
+   502.33,
+   365.62
+  ],
+  "pivot": [
+   -1258.39,
+   263.94,
+   149.5
+  ],
+  "damper_end": [
+   -1366.7,
+   291.68,
+   282.46
+  ],
+  "rod_arm_mm": 114.62,
+  "damper_clock_deg": -6.95,
+  "target_mr": 0.506
+ },
+ "pros": [
+  "Front: the lowest-mounted front of the set (rocker and coil-over between z 116 and 235 mm, moving mass at z 178 mm), and the coil-overs are where the team wanted them, under the rack's cover. Pullrod in tension (no buckling). MR 0.489 / 0.506 / 0.528 (+7.7 %, rising). Rod 1248 N, pivot 2219 N at ride.",
+  "Front: nodes on both brackets (pivot 59.2 mm, eye 56.5 mm). Clear of the rack by 46.9 mm and the column by 92.9 mm; leg template 11.7 mm with the cover at 230 mm.",
+  "Rear R2: no evaluator flag; nodes on both brackets (54.9 / 58.0 mm); pullrod in tension; the lowest rear pivot reaction (1143 N at ride); MR flat 0.505 / 0.506 / 0.506 (+0.1 %). Clear of the drivetrain keep-out by 94.4 mm, the engine features by 89.9 mm and the drive shaft by 78.4 mm."
+ ],
+ "cons": [
+  "Front: needs the cover over the rack (the leg template's floor in the rack zone) at about z = 223 mm or higher: at 230 mm the coil-over is 11.7 mm from it, at 220 mm 2.2 mm (limit 5), at 200 mm it overlaps by 16.6 mm. The coil-over is inside the leg template's bounding box ('Ressalto-extrusão2') by 27.5 mm by design.",
+  "Front: the reservoir fits only clocked 120 deg about the damper axis at the chassis end (its bolt turned 120 deg from the rocker axis): the chassis eye's spherical bearing takes 2.0 deg of misalignment over the range. Unclocked, the best of the four mountings overlaps by 2.4 mm.",
+  "Front: the least robust front of the set to 5 mm moves: pivot 6 of 6 directions broke a threshold (coil-over, rocker or hub vs frame), damper end 4 of 6, rod mount 1 of 6. Tightest gaps: rocker hub 2.6 mm vs the LCA front leg (limit 2), rocker vs the front post 5.4 mm, coil-over vs the post 6.1 mm (limit 5). The UCA rear leg carries the clevis 33.3 mm off its centreline, 68.7 mm from the ball joint: about 56 N·m of bending at ride (106 MPa, hand estimate), the highest front figure of the set.",
+  "Rear R2: the rocker hangs below the frame's bottom tubes: its hardware reaches down to z = 79 mm over the +-36 mm range (the bottom tubes' underside is at about z = 116 mm). Chain 12.0 mm (limit 10, estimate). Sensitive to the damper end: 5 mm moves broke a threshold in 5 of 6 directions there (chain, eyes, linkage, rod), pivot 2, rod mount 0. Tightest gaps: rocker hub 5.9 mm (limit 2), rod vs its own coil-over 7.0 mm, coil-over vs UCA front leg 7.3 mm (limit 5)."
+ ],
+ "not_checked": [
+  "The +-36 mm travel limit is a design input (design_intent): a bump stop and a droop limiter that are not in the project. With them each damper keeps about 10 mm at each end (it uses about 36.5 of its 57 mm stroke, an estimate).",
+  "Damping: the damper moves 0.506 mm per mm of wheel instead of 0.80, so the same valving gives (0.506/0.80)^2 = 40 % of today's damping at the wheel. Damping is outside this tool.",
+  "Structure: no load cases, stress, fatigue or sizing of rockers, brackets, clevises, rods or wishbones. Leg-bending figures are hand estimates (simply supported leg, rod force at ride, 25.4x1.2 tube); bracket couples are upper bounds.",
+  "With no preload the springs come off their seats at -23.7 mm (front) and -30.0 mm (rear) of wheel travel, inside the +-36 mm range.",
+  "Envelopes: spring OD 55 mm, 220 mm eye to eye and 260 mm overall are from the coil-over drawing; the piggyback reservoir (OD 38 mm, 50 mm off the axis) is scaled from that drawing (estimate). Rod, rocker plates and bolts, rocker hub, wishbone and frame tube sizes are estimates. Bodywork, the steering wheel and dash, and the driver beyond the template sketches are not modelled.",
+  "The rack cover's height (230 mm here) is a design input for this concept (driver_floor_z_mm): the cover and the driver's feet and legs above it are not modelled.",
+  "A clocked reservoir assumes the damper shaft can turn in the body and that the chassis eye is a spherical bearing; its misalignment limit (5 deg) is an estimate.",
+  "Drivetrain: the chain, sprockets, differential and drive shafts are estimates (no CAD). The chain estimate itself passes through four rear-box tubes (front post -27.3 mm, top rail -25.0 mm, diagonal -14.2 mm, rear post -10.3 mm), so the real chain path differs from it; each rear here needs a check against the real drivetrain."
+ ]
+}
