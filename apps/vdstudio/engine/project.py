@@ -168,6 +168,17 @@ class DamperSpec:
     bearing_od_mm: float = 40.0
     length_source: Source = "measured"
     stroke_source: Source = "estimate"
+    # envelope for packaging: spring coil OD and overall length (eye end to eye end) from
+    # the team's coil-over drawing; the piggyback reservoir (a canister beside the body,
+    # perpendicular to the eye bolts) is scaled off that drawing
+    spring_od_mm: float = 55.0
+    overall_length_mm: float = 260.0
+    envelope_source: Source = "cad"
+    reservoir_od_mm: float = 38.0
+    reservoir_offset_mm: float = 50.0       # canister axis from the damper axis
+    reservoir_from_eye_mm: float = 30.0     # canister span, from the body-end eye
+    reservoir_to_eye_mm: float = 109.0
+    reservoir_source: Source = "estimate"
 
 
 @dataclass(frozen=True)

@@ -95,6 +95,43 @@ def test_rod_self_gap_sees_a_rod_through_its_own_coilover(rc) -> None:
     assert g > 0.0
 
 
+def test_keepout_prisms(rc) -> None:
+    """Driver space and drivetrain keep-out: signed distances to convex prisms."""
+    sq = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))
+    assert rc._poly_sd(np.array([[5.0, 5.0], [15.0, 5.0]]), np.array(sq)) == \
+        pytest.approx([-5.0, 5.0])
+    assert rc._poly_sd(np.array([[5.0, 5.0], [15.0, 5.0]]), np.array(sq[::-1])) == \
+        pytest.approx([-5.0, 5.0])                           # either winding
+    assert rc.seg_prism((5, 5, 20), (5, 5, 30), 0, (0, 10), sq) == pytest.approx(10.0)
+    assert rc.seg_prism((2, 5, 5), (8, 5, 5), 0, (0, 10), sq) == pytest.approx(-5.0)
+    # concept GH's front coil-over axis at y = 190 is 15 mm outside the leg octagon's side;
+    # with its 27.5 mm radius it is inside (the space problem the team found)
+    assert rc.driver_gap((-150, 190, 300), (-150, 190, 300)) == (pytest.approx(15.0),
+                                                                 "leg template")
+    # a covered rack zone: the template's floor raised to 200 mm between x = -120 and +120
+    assert rc.driver_gap((-30, 0, 160), (-30, 0, 160))[0] == pytest.approx(-10.0)
+    assert rc.driver_gap((-30, 0, 160), (-30, 0, 160), floor_z=200.0)[0] == pytest.approx(40.0)
+    # concept H's rear coil-over sat inside the drivetrain zone
+    assert rc.drivetrain_gap((-1460, 115, 250), (-1460, 115, 250)) == pytest.approx(-45.0)
+
+
+def test_reservoir_sits_beside_the_body_either_side(rc, ctx) -> None:
+    """The piggyback canister is beside the chassis-end body, perpendicular to the eye bolts
+    (the rocker axis), on one side or the other as the damper is turned round."""
+    lk = rc.Linkage(0.0, np.array([0.0, 300.0, 0.0]), np.array([50.0, 0.0, 0.0]),
+                    np.array([0.0, 60.0, 0.0]), np.zeros(3), np.array([0.0, 250.0, 0.0]),
+                    np.array([0.0, 0.0, 1.0]))
+    d = ctx.project.damper
+    for side in (1.0, -1.0):
+        p, q, r = lk.reservoir(d, side)
+        assert r == pytest.approx(d.reservoir_od_mm / 2.0)
+        assert p[2] == pytest.approx(0.0) and q[2] == pytest.approx(0.0)   # in the rocker plane
+        assert abs(p[0]) == pytest.approx(d.reservoir_offset_mm)          # beside the axis
+        assert np.sign(p[0]) == -side                                      # u x a, signed
+        assert 250.0 - p[1] == pytest.approx(d.reservoir_from_eye_mm + r / 2.0)
+        assert 250.0 - q[1] == pytest.approx(d.reservoir_to_eye_mm - r / 2.0)
+
+
 def test_concept_springs_and_travel_limit(rc, ctx) -> None:
     """A concept can fit other springs and cap the packaging range (bump stop and droop
     limiter): wheel rates scale with k, the MR and the damper end stops do not move."""
