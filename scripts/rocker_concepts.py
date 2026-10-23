@@ -828,15 +828,18 @@ class Linkage:
                 ("coil-over eye at the rocker", self.rd, self.rd, 0.0),
                 ("coil-over chassis eye", self.dc, self.dc, 0.0)]
 
-    def reservoir(self, damper, side: float) -> tuple[np.ndarray, np.ndarray, float]:
-        """The piggyback canister beside the body (at the chassis eye), perpendicular to the
-        eye bolts (the rocker axis); ``side`` +1 / -1: the damper mounted either way round."""
-        u = _unit(self.rd - self.dc)
+    def reservoir(self, damper, side: float, at_rocker: bool = False
+                  ) -> tuple[np.ndarray, np.ndarray, float]:
+        """The piggyback canister beside the damper body, perpendicular to the eye bolts (the
+        rocker axis). ``side`` +1 / -1 and ``at_rocker`` (body at the rocker end instead of the
+        chassis end): the four ways the damper can be mounted."""
+        base, other = (self.rd, self.dc) if at_rocker else (self.dc, self.rd)
+        u = _unit(other - base)
         w = _unit(np.cross(u, self.axis)) * side * float(damper.reservoir_offset_mm)
         r = 0.5 * float(damper.reservoir_od_mm)
         # a capsule whose core stops r/2 short of each flat end
-        return (self.dc + (float(damper.reservoir_from_eye_mm) + 0.5 * r) * u + w,
-                self.dc + (float(damper.reservoir_to_eye_mm) - 0.5 * r) * u + w, r)
+        return (base + (float(damper.reservoir_from_eye_mm) + 0.5 * r) * u + w,
+                base + (float(damper.reservoir_to_eye_mm) - 0.5 * r) * u + w, r)
 
     def hub(self) -> tuple[np.ndarray, np.ndarray, float]:
         E = ESTIMATES
@@ -942,7 +945,8 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
         keep("gap_rod_linkage", g, f"{name} at {st.z:+.0f} mm")
     # ---- driver space (front) or drivetrain keep-out (rear): both are symmetric
     dmp = ctx.project.damper
-    res_worst = {1.0: (math.inf, ""), -1.0: (math.inf, "")}
+    MOUNTS = ((1.0, False), (-1.0, False), (1.0, True), (-1.0, True))
+    res_worst: dict = {m: (math.inf, "") for m in MOUNTS}
 
     def res_keep(sgn: float, gap: float, where: str) -> None:
         if gap < res_worst[sgn][0]:
@@ -950,9 +954,9 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
 
     for st in left:
         parts = [(n, p_, q_, eye_r if n == "eyes" else r_) for n, p_, q_, r_ in st.elements()]
-        parts += [("reservoir", *st.reservoir(dmp, sgn)) for sgn in (1.0, -1.0)]
+        parts += [("reservoir", *st.reservoir(dmp, *mt)) for mt in MOUNTS]
         for i, (name, p_, q_, rad) in enumerate(parts):
-            sgn = (1.0, -1.0)[i - len(parts) + 2] if name == "reservoir" else None
+            sgn = MOUNTS[i - len(parts) + 4] if name == "reservoir" else None
             if axle == "front":
                 g, what = driver_gap(p_, q_, driver_floor_z_mm)
                 g, where = g - rad, f"{name} vs {what} at {st.z:+.0f} mm"
@@ -965,8 +969,8 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
             else:
                 res_keep(sgn, g, f"{key[4:]}: {where}")
         r0, r1 = trim(st.mount, st.rr, 30.0, E["rod_end_trim_mm"])
-        for sgn in (1.0, -1.0):
-            rp, rq, rr_ = st.reservoir(dmp, sgn)
+        for sgn in MOUNTS:
+            rp, rq, rr_ = st.reservoir(dmp, *sgn)
             res_keep(sgn, seg_seg(rp, rq, r0, r1) - rr_ - E["rod_od_mm"] / 2.0,
                      f"rod at {st.z:+.0f} mm")
     # ---- the reservoir and the rocker hub against the frame (both corners)
@@ -978,15 +982,15 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
                     continue
                 keep("gap_hub", seg_seg(hp, hq, m.a, m.b) - hr - tube_r,
                      f"{m.name} {_pt(m.a, '.0f')}->{_pt(m.b, '.0f')} ({side})")
-                for sgn in (1.0, -1.0):
-                    rp, rq, rr_ = st.reservoir(dmp, sgn)
+                for sgn in MOUNTS:
+                    rp, rq, rr_ = st.reservoir(dmp, *sgn)
                     res_keep(sgn, seg_seg(rp, rq, m.a, m.b) - rr_ - tube_r,
                              f"{m.name} {_pt(m.a, '.0f')}->{_pt(m.b, '.0f')}, {side} at "
                              f"{st.z:+.0f} mm")
             if axle == "rear":
                 for h in ctx.engine:
-                    for sgn in (1.0, -1.0):
-                        rp, rq, rr_ = st.reservoir(dmp, sgn)
+                    for sgn in MOUNTS:
+                        rp, rq, rr_ = st.reservoir(dmp, *sgn)
                         res_keep(sgn, h.gap(rp, rq) - rr_, f"{h.name}, {side} at {st.z:+.0f} mm")
     # ---- left vs right, heave and roll pairs
     for sl in left:
@@ -1059,8 +1063,8 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
             for mname, ma, mb, mr in moving:
                 keep("gap_hub", seg_seg(hp, hq, ma, mb) - hr - mr,
                      f"vs {mname} at {z:+.0f} mm, rack {rack:+.0f}")
-                for sgn in (1.0, -1.0):
-                    rp, rq, rr_ = lk_s.reservoir(dmp, sgn)
+                for sgn in MOUNTS:
+                    rp, rq, rr_ = lk_s.reservoir(dmp, *sgn)
                     res_keep(sgn, seg_seg(rp, rq, ma, mb) - rr_ - mr,
                              f"{mname} at {z:+.0f} mm, rack {rack:+.0f}")
             # rim: rod points inside the wheel's width must stay inside the rim
@@ -1110,11 +1114,15 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
                 keep("gap_driveshaft", seg_seg(p, q, wc, inner) - rad
                      - E["driveshaft_od_mm"] / 2.0, f"{name} at {z:+.0f} mm")
     # the reservoir: the better of the damper's two mounting sides
-    sgn = max(res_worst, key=lambda k: res_worst[k][0])
-    worst["gap_reservoir"] = (res_worst[sgn][0],
-                              f"side {'+' if sgn > 0 else '-'}: {res_worst[sgn][1]} (other side "
-                              f"{res_worst[-sgn][0]:.1f} mm)")
-    out["reservoir_side"] = sgn
+    best = max(res_worst, key=lambda k: res_worst[k][0])
+
+    def label(mt) -> str:
+        return (f"body at the {'rocker' if mt[1] else 'chassis'} end, "
+                f"side {'+' if mt[0] > 0 else '-'}")
+    others = ", ".join(f"{label(mt)} {res_worst[mt][0]:.1f}" for mt in MOUNTS if mt != best)
+    worst["gap_reservoir"] = (res_worst[best][0],
+                              f"{label(best)}: {res_worst[best][1]} (others: {others} mm)")
+    out["reservoir_mount"] = label(best)
     for k, (g, w) in worst.items():
         out[k], out[k + "_where"] = g, w
     out["damper_steer_change_mm"] = steer_dl
