@@ -153,6 +153,14 @@ ESTIMATES = {
     "rocker_kg": 0.3,
 }
 
+# The piggyback canister's clock about the damper axis. At 0 its offset is perpendicular to
+# the eye bolts (both parallel to the rocker axis). With the body at the chassis end, the body
+# and its chassis bolt can be turned about the damper axis (the shaft turns in the body; the
+# rocker-end bolt stays parallel to the rocker axis): the damper's swing over travel is then
+# taken partly as misalignment by the chassis eye's spherical bearing
+# (``damper_eye_misalign_deg``). Tried only when no unclocked mounting clears.
+RESERVOIR_CLOCKS_DEG = (30.0, 60.0, 90.0, 120.0, 150.0)
+
 # Air-gap thresholds (mm) and limits. Information for the flags, not requirements.
 # (key, axle or None, "min"/"max", limit, label)
 THRESHOLDS = (
@@ -180,6 +188,8 @@ THRESHOLDS = (
     ("gap_reservoir", None, "min", 5.0,
      "damper reservoir (the better of its two sides) vs frame, wishbones, rod"),
     ("gap_hub", None, "min", 2.0, "rocker hub vs frame and moving wishbones"),
+    ("damper_eye_misalign_deg", None, "max", 5.0,
+     "chassis eye misalignment over the packaging range (spherical bearing, estimate)"),
     ("pivot_bracket_mm", None, "max", 60.0, "rocker pivot to nearest bodied tube"),
     ("damper_bracket_mm", None, "max", 60.0, "coil-over chassis end to nearest bodied tube"),
     ("pivot_node_mm", None, "max", 60.0, "rocker pivot to the nearest frame node (3+ tubes)"),
@@ -265,6 +275,14 @@ def _unit(v) -> np.ndarray:
     if n < 1e-12:
         raise ValueError("zero-length direction")
     return v / n
+
+
+def _clocked(u: np.ndarray, v: np.ndarray, clock_deg: float) -> np.ndarray:
+    """``v`` (perpendicular to ``u``) turned ``clock_deg`` about ``u``."""
+    if not clock_deg:
+        return v
+    a = math.radians(clock_deg)
+    return v * math.cos(a) + np.cross(u, v) * math.sin(a)
 
 
 def _rot(axis: np.ndarray, angle: float) -> np.ndarray:
@@ -828,14 +846,16 @@ class Linkage:
                 ("coil-over eye at the rocker", self.rd, self.rd, 0.0),
                 ("coil-over chassis eye", self.dc, self.dc, 0.0)]
 
-    def reservoir(self, damper, side: float, at_rocker: bool = False
+    def reservoir(self, damper, side: float, at_rocker: bool = False, clock_deg: float = 0.0
                   ) -> tuple[np.ndarray, np.ndarray, float]:
         """The piggyback canister beside the damper body, perpendicular to the eye bolts (the
         rocker axis). ``side`` +1 / -1 and ``at_rocker`` (body at the rocker end instead of the
-        chassis end): the four ways the damper can be mounted."""
+        chassis end): the four ways the damper can be mounted. ``clock_deg`` turns the body
+        (and its chassis bolt) about the damper axis: see ``RESERVOIR_CLOCKS_DEG``."""
         base, other = (self.rd, self.dc) if at_rocker else (self.dc, self.rd)
         u = _unit(other - base)
-        w = _unit(np.cross(u, self.axis)) * side * float(damper.reservoir_offset_mm)
+        w = _clocked(u, _unit(np.cross(u, self.axis)), clock_deg) \
+            * side * float(damper.reservoir_offset_mm)
         r = 0.5 * float(damper.reservoir_od_mm)
         # a capsule whose core stops r/2 short of each flat end
         return (base + (float(damper.reservoir_from_eye_mm) + 0.5 * r) * u + w,
@@ -945,7 +965,8 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
         keep("gap_rod_linkage", g, f"{name} at {st.z:+.0f} mm")
     # ---- driver space (front) or drivetrain keep-out (rear): both are symmetric
     dmp = ctx.project.damper
-    MOUNTS = ((1.0, False), (-1.0, False), (1.0, True), (-1.0, True))
+    MOUNTS = ((1.0, False, 0.0), (-1.0, False, 0.0), (1.0, True, 0.0), (-1.0, True, 0.0)) \
+        + tuple((s, False, c) for c in RESERVOIR_CLOCKS_DEG for s in (1.0, -1.0))
     res_worst: dict = {m: (math.inf, "") for m in MOUNTS}
 
     def res_keep(sgn: float, gap: float, where: str) -> None:
@@ -956,7 +977,7 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
         parts = [(n, p_, q_, eye_r if n == "eyes" else r_) for n, p_, q_, r_ in st.elements()]
         parts += [("reservoir", *st.reservoir(dmp, *mt)) for mt in MOUNTS]
         for i, (name, p_, q_, rad) in enumerate(parts):
-            sgn = MOUNTS[i - len(parts) + 4] if name == "reservoir" else None
+            sgn = MOUNTS[i - len(parts) + len(MOUNTS)] if name == "reservoir" else None
             if axle == "front":
                 g, what = driver_gap(p_, q_, driver_floor_z_mm)
                 g, where = g - rad, f"{name} vs {what} at {st.z:+.0f} mm"
@@ -1113,16 +1134,38 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
                 rad = eye_r if name == "eyes" else rad
                 keep("gap_driveshaft", seg_seg(p, q, wc, inner) - rad
                      - E["driveshaft_od_mm"] / 2.0, f"{name} at {z:+.0f} mm")
-    # the reservoir: the better of the damper's two mounting sides
-    best = max(res_worst, key=lambda k: res_worst[k][0])
+    # the reservoir: the best unclocked mounting; a clocked one only if none clears, and then
+    # the least clock that does (or the best gap if none does)
+    lim_res = next(t[3] for t in THRESHOLDS if t[0] == "gap_reservoir")
+    plain = [m for m in MOUNTS if not m[2]]
+    best = max(plain, key=lambda k: res_worst[k][0])
+    if res_worst[best][0] < lim_res:
+        ok = [m for m in MOUNTS if m[2] and res_worst[m][0] >= lim_res]
+        best = (min(ok, key=lambda k: (k[2], -res_worst[k][0])) if ok
+                else max(MOUNTS, key=lambda k: res_worst[k][0]))
 
     def label(mt) -> str:
         return (f"body at the {'rocker' if mt[1] else 'chassis'} end, "
-                f"side {'+' if mt[0] > 0 else '-'}")
-    others = ", ".join(f"{label(mt)} {res_worst[mt][0]:.1f}" for mt in MOUNTS if mt != best)
+                f"side {'+' if mt[0] > 0 else '-'}"
+                + (f", clocked {mt[2]:.0f} deg" if mt[2] else ""))
+    others = ", ".join(f"{label(mt)} {res_worst[mt][0]:.1f}" for mt in plain if mt != best)
     worst["gap_reservoir"] = (res_worst[best][0],
-                              f"{label(best)}: {res_worst[best][1]} (others: {others} mm)")
+                              f"{label(best)}: {res_worst[best][1]} (unclocked: {others} mm)")
     out["reservoir_mount"] = label(best)
+    out["reservoir_clock_deg"] = float(best[2])
+    # chassis eye: the damper's rotation over the range that is not about its bolt (the rocker
+    # axis, turned with a clocked body)
+    u0 = _unit(min(left, key=lambda st: abs(st.z)).rd - dc)
+    bolt = _clocked(u0, _unit(axis - (axis @ u0) * u0), best[2])
+    mis = 0.0
+    for st in left:
+        wv = np.cross(u0, _unit(st.rd - dc))
+        sn = float(np.linalg.norm(wv))
+        if sn > 1e-12:
+            wh = wv / sn
+            mis = max(mis, math.degrees(math.asin(min(sn, 1.0)))
+                      * float(np.linalg.norm(wh - (wh @ bolt) * bolt)))
+    out["damper_eye_misalign_deg"] = mis
     for k, (g, w) in worst.items():
         out[k], out[k + "_where"] = g, w
     out["damper_steer_change_mm"] = steer_dl
@@ -1458,7 +1501,11 @@ ROWS = (  # (label, key, format)
     ("Gap: linkage and reservoir vs driver space (leg / cockpit templates) [mm]", "gap_driver",
      ".1f"),
     ("Gap: linkage and reservoir vs drivetrain keep-out [mm] (estimate)", "gap_drivetrain", ".1f"),
-    ("Gap: damper reservoir, the better side [mm]", "gap_reservoir", ".1f"),
+    ("Gap: damper reservoir, the best mounting [mm]", "gap_reservoir", ".1f"),
+    ("Reservoir clock about the damper axis at the chassis end [deg]", "reservoir_clock_deg",
+     ".0f"),
+    ("Chassis eye misalignment over the packaging range [deg]", "damper_eye_misalign_deg",
+     ".1f"),
     ("Gap: rocker hub vs frame and wishbones [mm]", "gap_hub", ".1f"),
     ("Gap: linkage vs chain and sprockets [mm] (estimate)", "gap_chain", ".1f"),
     ("Damper length change over the rack travel at fixed wheel-centre height [mm] "

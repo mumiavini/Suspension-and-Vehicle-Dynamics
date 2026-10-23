@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 from pathlib import Path
 
@@ -130,6 +131,14 @@ def test_reservoir_sits_beside_the_body_either_side(rc, ctx) -> None:
         assert np.sign(p[0]) == -side                                      # u x a, signed
         assert 250.0 - p[1] == pytest.approx(d.reservoir_from_eye_mm + r / 2.0)
         assert 250.0 - q[1] == pytest.approx(d.reservoir_to_eye_mm - r / 2.0)
+    # clocked: the body turned about the damper axis at the chassis end; at 90 deg the canister
+    # is out of the rocker plane, along the rocker axis (u x (u x a) = -a for u ⟂ a)
+    p, q, r = lk.reservoir(d, 1.0, clock_deg=90.0)
+    assert p[0] == pytest.approx(0.0) and p[2] == pytest.approx(-d.reservoir_offset_mm)
+    assert 250.0 - p[1] == pytest.approx(d.reservoir_from_eye_mm + r / 2.0)
+    p30, _, _ = lk.reservoir(d, 1.0, clock_deg=30.0)
+    assert np.hypot(p30[0], p30[2]) == pytest.approx(d.reservoir_offset_mm)
+    assert math.degrees(math.atan2(-p30[2], -p30[0])) == pytest.approx(30.0)
 
 
 def test_concept_springs_and_travel_limit(rc, ctx) -> None:
