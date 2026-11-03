@@ -87,7 +87,8 @@ _GROUPS = {
                "rocker_bolt_rod", "rocker_bolt_damper"),
     "chassis_mounts": ("rocker_bracket_a", "rocker_bracket_b", "coilover_bracket_a",
                        "coilover_bracket_b"),
-    "damper_body": ("coilover_eye_chassis", "coilover_body", "coilover_spring"),
+    "damper_body": ("coilover_eye_chassis", "coilover_body", "coilover_spring",
+                    "coilover_reservoir"),
     "damper_shaft": ("coilover_eye_rocker", "coilover_shaft"),
 }
 _MOUNT_GROUP = {"lca": "LCA", "uca": "UCA", "upright": "upright"}
@@ -243,13 +244,14 @@ def corner_mates(cid: str, rod: str, mount_body: str) -> list[Mate]:
 
 
 def build_model(project: Project, arb: dict | None = None,
-                asm_name: str = "SUSP_2027") -> Model:
+                asm_name: str = "SUSP_2027",
+                reservoir: dict[str, tuple[float, float]] | None = None) -> Model:
     if arb:
         # the arms and drop links would sit in one fixed part, torn off the moving rockers
         raise ValueError("an anti-roll bar is not jointed in the assembly export yet; "
                          "use export_suspension_solids.py --arb for the single part")
     geo = G.resolve(project)
-    parts = SS.all_parts(project, arb)
+    parts = SS.all_parts(project, arb, reservoir)
     comps: dict[str, Component] = {}
 
     def comp(name: str, corner: str | None) -> Component:
@@ -1255,9 +1257,11 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=REPO / "projects" / "cad", help="output folder")
     ap.add_argument("--name", default="suspension_assembly")
     ap.add_argument("--asm-name", default="SUSP_2027", help="top assembly file name")
+    ap.add_argument("--reservoir", nargs="*", default=[], metavar="AXLE=SIDE,CLOCK",
+                    help=SS.RESERVOIR_HELP)
     args = ap.parse_args()
     project = load_project(args.project)
-    model = build_model(project, None, args.asm_name)
+    model = build_model(project, None, args.asm_name, SS.parse_reservoir(args.reservoir))
     for asm in model.mates:
         mob = mobility(model, asm)
         print(f"{asm}: {len(model.corner_parts[asm])} parts, {mob.rows} mate constraints, "

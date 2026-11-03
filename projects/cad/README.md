@@ -5,6 +5,41 @@ writes `<model>_survey.json` and an isometric `.png` here: the model's sketches,
 reference geometry and bounding boxes in its own frame, in mm. Analysed by
 anyone, without SolidWorks. See `docs/VD_STUDIO.md`, "Checking the chassis CAD".
 
+## Concepts X, Y and Z (layouts to compare, not the team project)
+
+The three layouts of `projects/rocker_concepts/concept_xyz.md`, each with its
+own macros, built from the variant projects
+`projects/FSAE_2027_rocker_concept_{X,Y,Z}.vdproj.json` (550 lb/in springs,
+MR 0.506, packaging checked to +-36 mm):
+
+| Concept | Front | Rear | Reservoir drawn (side, clock at the chassis end) |
+|---|---|---|---|
+| X | idea X: pushrod, coil-overs across the top of the front hoop | R1: pushrod, coil-over forward along the upper side rail | front +1, 0 deg; rear +1, 0 deg |
+| Y | idea Y: pullrod, coil-overs low and transverse ahead of the rack | R2: pullrod, low rocker, coil-over up outboard of the chain line | front +1, 120 deg; rear -1, 0 deg |
+| Z | Z: pullrod, rocker on the front hoop's side node, coil-over up to its upper corner | R3: pushrod, coil-over rearward above the rear box | front +1, 0 deg; rear -1, 60 deg |
+
+- `suspension_{X,Y,Z}_solids_Xasis_33.3.bas` / `..._iso.bas`: one part with the
+  primitive solids, used as described for GH below. Each run makes a new part:
+  save each concept under its own name and show one at a time in the assembly.
+- `suspension_{X,Y,Z}_assembly_Xasis_33.3.bas`: the mated assembly, as described
+  for GH below. Its top assembly and default folder are `SUSP_X`, `SUSP_Y`,
+  `SUSP_Z`, so the three builds do not overwrite each other. Their parts share
+  names (`SUSP_FL_UCA`, ...) in different folders: open one concept at a time,
+  as SolidWorks keeps one document of a given name open.
+
+The coil-over has the drawing's 55 mm spring and the damper's piggyback
+reservoir (OD 38 mm, 50 mm off the axis, 30-109 mm from the chassis-end eye;
+scaled from the drawing, an estimate), placed where the evaluator checked it.
+Concept Y's front and Z's rear need it clocked (the body turned about its axis,
+its chassis bolt with it), which assumes the shaft turns in the body and a
+spherical bearing at the chassis eye. No interference between the solids or
+with the frame tubes in any of the three. Concept Y's front fits only with the
+rack cover at about z = 223 mm or higher (230 checked); the cover is not drawn.
+Regenerate with, for example,
+`uv run python scripts/export_suspension_solids.py --project projects/FSAE_2027_rocker_concept_Y.vdproj.json --name suspension_Y_solids --reservoir front=1,120 rear=-1,0`
+and `scripts/export_suspension_assembly.py` with the same `--project` and
+`--reservoir`, plus `--name suspension_Y_assembly --asm-name SUSP_Y`.
+
 ## Suspension solids for SolidWorks (concept GH: front of G, rear of H)
 
 The team project's rocker layout (`projects/rocker_concepts/`; earlier

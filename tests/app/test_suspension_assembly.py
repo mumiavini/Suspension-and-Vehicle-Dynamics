@@ -244,3 +244,10 @@ def test_construction_lines_cross_only_where_meant(sa, project, model) -> None:
                 ta = sorted((0.0, float((a1 - a0) @ da)))
                 tb = sorted((float((b0 - a0) @ da), float((b1 - a0) @ da)))
                 assert min(ta[1], tb[1]) - max(ta[0], tb[0]) < 1e-6, f"{c.name}: {na} / {nb}"
+
+
+def test_the_reservoir_goes_with_the_damper_body(sa, project) -> None:
+    m = sa.build_model(project, None, "SUSP_T", {"front": (1.0, 0.0), "rear": (-1.0, 60.0)})
+    for cid in sa.CORNERS:
+        names = [b.name for b in m.components[f"{sa.PREFIX}{cid}_damper_body"].bodies]
+        assert f"{sa.PREFIX}{cid}_coilover_reservoir" in names
