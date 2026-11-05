@@ -14,7 +14,7 @@ MR 0.506, packaging checked to +-36 mm):
 
 | Concept | Front | Rear | Reservoir drawn (side, clock at the chassis end) |
 |---|---|---|---|
-| X | idea X: pushrod, coil-overs across the top of the front hoop | R1: pushrod, coil-over forward along the upper side rail | front +1, 0 deg; rear +1, 0 deg |
+| X | idea X moved ahead of the front hoop and tucked onto the frame: pushrod, coil-overs across the car just in front of the hoop's top bar, low on the front triangle | R1: pushrod, coil-over forward along the upper side rail | front +1, 0 deg; rear +1, 0 deg |
 | Y | idea Y: pullrod, coil-overs low and transverse ahead of the rack | R2: pullrod, low rocker, coil-over up outboard of the chain line | front +1, 120 deg; rear -1, 0 deg |
 | Z | Z: pullrod, rocker on the front hoop's side node, coil-over up to its upper corner | R3: pushrod, coil-over rearward above the rear box | front +1, 0 deg; rear -1, 60 deg |
 

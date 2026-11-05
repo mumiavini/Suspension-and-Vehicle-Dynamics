@@ -52,47 +52,47 @@ Information, not requirements.
 |---|---|---|---|---|
 | Rod type / mounted on | pushrod / LCA | pushrod / LCA | pullrod / UCA | pullrod / UCA |
 | Rod in | compression | compression | tension | tension |
-| MR droop / ride / bump (±25 mm) | 0.487 / 0.506 / 0.512 | 0.479 / 0.506 / 0.538 | 0.489 / 0.506 / 0.528 | 0.476 / 0.506 / 0.536 |
-| MR progression, droop to bump [%] | +4.9 | +11.5 | +7.7 | +11.8 |
+| MR droop / ride / bump (±25 mm) | 0.487 / 0.506 / 0.512 | 0.496 / 0.506 / 0.513 | 0.489 / 0.506 / 0.528 | 0.476 / 0.506 / 0.536 |
+| MR progression, droop to bump [%] | +4.9 | +3.5 | +7.7 | +11.8 |
 | Damper stroke used in ±25 mm [mm] (of 57, estimate) | 25.2 | 25.3 | 25.3 | 25.3 |
 | Spring [lb/in] / wheel rate at ride [N/mm] / ride frequency [Hz] | 550.0 / 24.7 / 3.2 | 550.0 / 24.7 / 3.2 | 550.0 / 24.7 / 3.2 | 550.0 / 24.7 / 3.2 |
-| Damper end stops, wheel travel [mm] | -58.7 .. +57.0 | -59.1 .. +53.4 | -58.0 .. +54.2 | -59.8 .. +53.7 |
+| Damper end stops, wheel travel [mm] | -58.7 .. +57.0 | -57.4 .. +56.1 | -58.0 .. +54.2 | -59.8 .. +53.7 |
 | Packaging range, wheel travel [mm] (end stops, or the concept's travel limit) | -36.0 .. +36.0 | -36.0 .. +36.0 | -36.0 .. +36.0 | -36.0 .. +36.0 |
 | Spring unseats at wheel travel [mm] (fitted spring, no preload) | -23.7 | -23.7 | -23.7 | -23.7 |
-| Rocker rotation over the packaging range [deg] | -23.7 .. +23.1 | -12.8 .. +12.5 | -10.8 .. +10.8 | -6.4 .. +6.9 |
-| Rocker arms rod / damper [mm] | 55 / 45 | 127 / 87 | 90 / 104 | 94 / 157 |
-| Transmission angle max, rod / damper [deg] | 20.3 / 23.8 | 12.1 / 28.1 | 10.3 / 28.7 | 2.3 / 6.8 |
-| Rod length [mm] | 369 | 507 | 342 | 228 |
-| Rod inclination from horizontal / plan sweep [deg] | 40 / 21 | 57 / 34 | 37 / 54 | 28 / 34 |
-| Rod force / wheel load | 1.64 | 1.30 | 2.13 | 3.30 |
-| Rod force at ride [N] | 959 | 758 | 1248 | 1928 |
-| Wheel load to buckle the rod [N] (16×1 steel) | 12037 | 8076 | n/a | n/a |
-| Rocker pivot reaction at ride [N] | 1902 | 959 | 2219 | 2644 |
-| Bracket couple at ride, pivot / coil-over end [N·m] (upper bound: force × stand-off) | 60 / 51 | 36 / 68 | 95 / 54 | 97 / 47 |
-| Gap: rod vs frame [mm] | 26.7 | 114.7 | 97.5 | 81.4 |
-| Gap: rocker vs frame [mm] | 6.7 | 15.2 | 5.4 | 13.9 |
-| Gap: coil-over body vs frame [mm] | 9.2 | 14.2 | 6.1 | 12.1 |
-| Gap: coil-over eyes vs frame [mm] | 7.5 | 26.3 | 14.1 | 8.1 |
-| Gap: rod vs wishbones / tie rod / toe link, with steer [mm] | 9.9 | 8.3 | 31.0 | 14.2 |
-| Gap: rod vs rim, with steer [mm] (to the 13" bead-seat radius) | 34.8 | 49.3 | 32.0 | 18.9 |
-| Gap: left vs right, heave and roll [mm] | 313.2 | 65.0 | 114.2 | 365.1 |
-| Gap: linkage vs rack, inner tie-rod joint and boot [mm] | 73.9 | 141.1 | 46.9 | 91.8 |
-| Gap: linkage vs steering column [mm] (estimate) | 145.0 | 168.3 | 92.9 | 216.9 |
-| Gap: linkage vs solid bodies' bounding boxes [mm] | 3.7 | 3.8 | **-27.5** ⚠ | 12.1 |
-| Rocker pivot to nearest bodied tube [mm] | 31.4 | 37.9 | 42.9 | 36.6 |
-| Coil-over chassis end to nearest bodied tube [mm] | 43.8 | 59.0 | 46.8 | 40.8 |
-| Rocker pivot to the nearest frame node (3+ tubes) [mm] | 47.4 | 48.4 | 59.2 | 53.4 |
-| Coil-over chassis end to the nearest frame node (3+ tubes) [mm] | 55.6 | **144.4** ✗ | 56.4 | 49.6 |
-| Gap: rocker / coil-over vs wishbones, tie rod / toe link, with steer [mm] | 25.6 | 212.5 | 20.2 | 8.1 |
-| Gap: rod vs its own rocker (away from its pickup) and coil-over [mm] | 10.5 | 13.5 | 14.3 | 17.3 |
-| Gap: linkage and reservoir vs driver space (leg / cockpit templates) [mm] | **-17.2** ✗ | 17.8 | 11.7 | 61.5 |
-| Gap: damper reservoir, the best mounting [mm] | 10.1 | 13.1 | 12.6 | 84.1 |
+| Rocker rotation over the packaging range [deg] | -23.7 .. +23.1 | -17.2 .. +16.7 | -10.8 .. +10.8 | -6.4 .. +6.9 |
+| Rocker arms rod / damper [mm] | 55 / 45 | 100 / 62 | 90 / 104 | 94 / 157 |
+| Transmission angle max, rod / damper [deg] | 20.3 / 23.8 | 15.7 / 18.1 | 10.3 / 28.7 | 2.3 / 6.8 |
+| Rod length [mm] | 369 | 489 | 342 | 228 |
+| Rod inclination from horizontal / plan sweep [deg] | 40 / 21 | 62 / 5 | 37 / 54 | 28 / 34 |
+| Rod force / wheel load | 1.64 | 1.23 | 2.13 | 3.30 |
+| Rod force at ride [N] | 959 | 722 | 1248 | 1928 |
+| Wheel load to buckle the rod [N] (16×1 steel) | 12037 | 9117 | n/a | n/a |
+| Rocker pivot reaction at ride [N] | 1902 | 1031 | 2219 | 2644 |
+| Bracket couple at ride, pivot / coil-over end [N·m] (upper bound: force × stand-off) | 60 / 51 | 62 / 76 | 95 / 54 | 97 / 47 |
+| Gap: rod vs frame [mm] | 26.7 | 124.6 | 97.5 | 81.4 |
+| Gap: rocker vs frame [mm] | 6.7 | 33.5 | 5.4 | 13.9 |
+| Gap: coil-over body vs frame [mm] | 9.2 | 9.2 | 6.1 | 12.1 |
+| Gap: coil-over eyes vs frame [mm] | 7.5 | 32.8 | 14.1 | 8.1 |
+| Gap: rod vs wishbones / tie rod / toe link, with steer [mm] | 9.9 | 13.5 | 31.0 | 14.2 |
+| Gap: rod vs rim, with steer [mm] (to the 13" bead-seat radius) | 34.8 | 64.4 | 32.0 | 18.9 |
+| Gap: left vs right, heave and roll [mm] | 313.2 | 18.6 | 114.2 | 365.1 |
+| Gap: linkage vs rack, inner tie-rod joint and boot [mm] | 73.9 | 142.1 | 46.9 | 91.8 |
+| Gap: linkage vs steering column [mm] (estimate) | 145.0 | 217.3 | 92.9 | 216.9 |
+| Gap: linkage vs solid bodies' bounding boxes [mm] | 3.7 | 22.8 | **-27.5** ⚠ | 12.1 |
+| Rocker pivot to nearest bodied tube [mm] | 31.4 | 59.9 | 42.9 | 36.6 |
+| Coil-over chassis end to nearest bodied tube [mm] | 43.8 | **65.8** ✗ | 46.8 | 40.8 |
+| Rocker pivot to the nearest frame node (3+ tubes) [mm] | 47.4 | **94.7** ✗ | 59.2 | 53.4 |
+| Coil-over chassis end to the nearest frame node (3+ tubes) [mm] | 55.6 | **152.9** ✗ | 56.4 | 49.6 |
+| Gap: rocker / coil-over vs wishbones, tie rod / toe link, with steer [mm] | 25.6 | 212.7 | 20.2 | 8.1 |
+| Gap: rod vs its own rocker (away from its pickup) and coil-over [mm] | 10.5 | 12.3 | 14.3 | 17.3 |
+| Gap: linkage and reservoir vs driver space (leg / cockpit templates) [mm] | **-17.2** ✗ | 79.7 | 11.7 | 61.5 |
+| Gap: damper reservoir, the best mounting [mm] | 10.1 | 51.2 | 12.6 | 84.1 |
 | Reservoir clock about the damper axis at the chassis end [deg] | 30 | 0 | 120 | 0 |
 | Chassis eye misalignment over the packaging range [deg] | 0.6 | 0.0 | 2.0 | 0.0 |
-| Gap: rocker hub vs frame and wishbones [mm] | **-0.3** ✗ | 6.7 | 2.6 | 3.4 |
-| Damper length change over the rack travel at fixed wheel-centre height [mm] (steering jacking + any mount coupling; information) | 2.70 | 2.98 | 2.90 | 2.95 |
-| Rocker / coil-over centreline height range z [mm] | 158 .. 398 | 548 .. 658 | 126 .. 215 | 245 .. 556 |
-| Coil-over + rocker mass height z [mm] | 271 | 619 | 178 | 470 |
+| Gap: rocker hub vs frame and wishbones [mm] | **-0.3** ✗ | 25.8 | 2.6 | 3.4 |
+| Damper length change over the rack travel at fixed wheel-centre height [mm] (steering jacking + any mount coupling; information) | 2.70 | 2.75 | 2.90 | 2.95 |
+| Rocker / coil-over centreline height range z [mm] | 158 .. 398 | 545 .. 615 | 126 .. 215 | 245 .. 556 |
+| Coil-over + rocker mass height z [mm] | 271 | 597 | 178 | 470 |
 
 ## Rear axle
 
@@ -148,8 +148,8 @@ Information, not requirements.
 |---|---|---|---|---|
 | Springs-only roll gradient [deg/g] (each column's springs) | 1.21 | 1.21 | 1.21 | 1.21 |
 | ARB needed for 1.0 deg/g at 50/50, F / R [N·m/deg] | 57 / 78 | 57 / 78 | 57 / 78 | 57 / 78 |
-| CG height change vs seed [mm] (estimate) | +0.0 | +4.8 | -1.5 | +3.2 |
-| Tilt-table tip angle [deg] (seed 62.13) | 62.13 | 61.77 | 62.24 | 61.90 |
+| CG height change vs seed [mm] (estimate) | +0.0 | +4.6 | -1.5 | +3.2 |
+| Tilt-table tip angle [deg] (seed 62.13) | 62.13 | 61.79 | 62.24 | 61.90 |
 
 Wheel rates, frequencies and the roll budget follow from each column's springs and ride MR; where those match, they only move with the MR progression and are listed to show that, not as a difference between the layouts. The spring unseating row is the same story: with no preload the spring comes off its seat at its static compression divided by the MR, whatever the layout.
 
@@ -200,38 +200,38 @@ Wheel rates, frequencies and the roll budget follow from each column's springs a
 
 **Outside the thresholds:** front linkage and reservoir vs driver space (leg template octagon, cockpit template) -17.2 (limit ≥ 5); front rocker hub vs frame and moving wishbones -0.3 (limit ≥ 2); rear linkage and reservoir vs drivetrain keep-out (estimate) -95.7 (limit ≥ 10); rear damper reservoir (the better of its two sides) vs frame, wishbones, rod -18.1 (limit ≥ 5); rear rocker hub vs frame and moving wishbones 0.4 (limit ≥ 2)
 
-## Concept X: front idea X (pushrod, coil-overs across the top of the front hoop); rear R1 (pushrod, coil-over forward along the upper side rail)
+## Concept X: front idea X, moved ahead of the front hoop (pushrod, coil-overs across the car just ahead of the hoop's top bar); rear R1 (pushrod, coil-over forward along the upper side rail)
 
 ![views](concept_X_views.svg)
 
-Front, the team's idea X: a steep pushrod (57 deg from horizontal) from a clevis on the LCA rear leg to a rocker 48.4 mm from the front hoop's upper corner node; each coil-over lies across the top of the hoop toward the centreline, to an eye on a bracket on the hoop's top bar, 32 mm from its bend and 144 mm from the nearest node. Rear R1: pushrod from the LCA rear leg to a rocker on a bracket on the upper side rail (Tri_Tras), 118 mm from the UCA front node; the coil-over runs forward along the top of that rail to a second bracket on it, 150 mm from its front node. No physical interference on either axle; the evaluator's only flags are the node distances (front eye 144 mm; rear pivot 118 mm and eye 150 mm, limit 60 mm).
+Front, the team's idea X moved in front of the front hoop and tucked down onto the frame: a steep pushrod (62 deg from horizontal, 5 deg of plan sweep) from a clevis on the LCA rear leg to a rocker whose axis runs fore-aft, 65 mm ahead of the hoop's top bar (pivot x = -20 mm, 220 mm off the centreline, z = 545 mm, on a 60 mm bracket off the Tri_Frente diagonal); each coil-over lies across the car toward the centreline, 545-615 mm high, just above the top of the front triangle, to an eye on a bracket off the front face of the hoop's top bar (65.8 mm stand-off, 56 mm from its bend). Rear R1: pushrod from the LCA rear leg to a rocker on a bracket on the upper side rail (Tri_Tras), 118 mm from the UCA front node; the coil-over runs forward along the top of that rail to a second bracket on it, 150 mm from its front node. No physical interference on either axle; the evaluator's only flags are node distances and the coil-over eye's stand-off (front pivot 94.7 mm and eye 152.9 mm from a node, eye 65.8 mm from the hoop's top bar; rear pivot 118 mm and eye 150 mm from nodes; limit 60 mm).
 
 | point (LEFT corner) | front | rear |
 |---|---|---|
 | rod outer end (on the mount body) | (-5.9, 535.6, 158.2) | (-1532.4, 504.8, 152.5) |
-| rocker pivot | (-103.6, 200.9, 548.0) | (-1232.3, 289.4, 382.9) |
-| rocker axis (unit) | (-0.8487, -0.2769, -0.4506) | (0.1345, -0.6303, -0.7646) |
-| rocker rod pickup | (-158.8, 308.8, 585.5) | (-1291.3, 252.7, 402.8) |
-| rocker damper pickup | (-149.8, 235.6, 613.5) | (-1197.2, 246.8, 424.2) |
-| coil-over chassis end | (-113.6, 52.5, 658.0) | (-1027.3, 327.3, 387.8) |
+| rocker pivot | (-20.0, 220.0, 545.0) | (-1232.3, 289.4, 382.9) |
+| rocker axis (unit) | (-0.9984, -0.0194, -0.0523) | (0.1345, -0.6303, -0.7646) |
+| rocker rod pickup | (-24.1, 308.6, 591.3) | (-1291.3, 252.7, 402.8) |
+| rocker damper pickup | (-23.3, 220.9, 607.4) | (-1197.2, 246.8, 424.2) |
+| coil-over chassis end | (-19.7, 29.3, 610.2) | (-1027.3, 327.3, 387.8) |
 | rod type / mount body | pushrod / lca | pushrod / lca |
 
 **Where the tightest numbers are:**
 
-- front gap rod frame: 114.7 mm — Tri_Meio (-88, 156, 563)->(-884, 350, 348), L at +36 mm
-- front gap rocker frame: 15.2 mm — FRONTO HO (-104, 245, 344)->(-89, 159, 556), L at -36 mm
-- front gap coilover frame: 14.2 mm — FRONTO HO (-85, 85, 606)->(-85, -85, 606), R at -36 mm
-- front gap rod members: 8.3 mm — UCA rear leg at -36 mm, rack -38
-- front gap rod linkage: 13.5 mm — rocker arm to the rod pickup at +36 mm
-- front gap rod rim: 49.3 mm — at +5 mm, rack +38
-- front gap solid bodies: 3.8 mm — coil-over vs 'Size_a_1pol_2,65mm SIZE_A_1POL-2,65MM(16)[4]' box, L at -36 mm
-- front gap driver: 17.8 mm — coil-over vs cockpit template at +21 mm
-- front gap reservoir: 13.1 mm — body at the chassis end, side +: driver: reservoir vs cockpit template at +36 mm (unclocked: body at the chassis end, side - -21.7, body at the rocker end, side + -7.2, body at the rocker end, side - 4.2 mm)
-- front gap hub: 6.7 mm — Tri_Meio (-88, 156, 563)->(-884, 350, 348) (L)
-- front pivot bracket: 37.9 mm — FRONTO HO (-104, 245, 344)->(-89, 159, 556) (L), foot 24 mm from its nearer end
-- front damper bracket: 59.0 mm — FRONTO HO (-85, 85, 606)->(-85, -85, 606) (L), foot 32 mm from its nearer end
-- front pivot node: 48.4 mm — node (-89, 157, 561) (L), 4 tube ends: FRONTO HO, Tri_Frente, Tri_Meio
-- front damper node: 144.4 mm — node (-89, 157, 561) (L), 4 tube ends: FRONTO HO, Tri_Frente, Tri_Meio
+- front gap rod frame: 124.6 mm — Tri_Frente (560, 175, 500)->(-88, 156, 563) (sketch only), L at +36 mm
+- front gap rocker frame: 33.5 mm — Tri_Frente (560, 175, 500)->(-88, 156, 563) (sketch only), L at +36 mm
+- front gap coilover frame: 9.2 mm — Tri_Frente (560, 175, 500)->(-88, 156, 563) (sketch only), L at +36 mm
+- front gap rod members: 13.5 mm — UCA rear leg at -36 mm, rack +38
+- front gap rod linkage: 12.3 mm — rocker arm to the rod pickup at +36 mm
+- front gap rod rim: 64.4 mm — at +36 mm, rack +38
+- front gap solid bodies: 22.8 mm — coil-over vs 'Size_a_1pol_2,65mm SIZE_A_1POL-2,65MM(16)[4]' box, L at -5 mm
+- front gap driver: 79.7 mm — coil-over vs leg template at +36 mm
+- front gap reservoir: 51.2 mm — body at the rocker end, side -: FRONTO HO (-85, 85, 606)->(-85, -85, 606), L at +36 mm (unclocked: body at the chassis end, side + 49.4, body at the chassis end, side - -30.5, body at the rocker end, side + -31.7 mm)
+- front gap hub: 25.8 mm — Tri_Frente (101, 255, 330)->(-88, 156, 563) (L)
+- front pivot bracket: 59.9 mm — Tri_Frente (101, 255, 330)->(-88, 156, 563) (L), foot 74 mm from its nearer end
+- front damper bracket: 65.8 mm — FRONTO HO (-85, 85, 606)->(-85, -85, 606) (L), foot 56 mm from its nearer end
+- front pivot node: 94.7 mm — node (-89, 157, 561) (L), 4 tube ends: FRONTO HO, Tri_Frente, Tri_Meio
+- front damper node: 152.9 mm — node (-89, 157, 561) (L), 4 tube ends: FRONTO HO, Tri_Frente, Tri_Meio
 - rear gap rod frame: 20.0 mm — Tri_Tras (-1336, 255, 337)->(-884, 350, 348), L at -36 mm
 - rear gap rocker frame: 7.6 mm — 3DSketch8 (-1063, 194, 399)->(-1336, 255, 337), L at -36 mm
 - rear gap coilover frame: 7.0 mm — Tri_Tras (-1336, 255, 337)->(-884, 350, 348), L at +36 mm
@@ -248,19 +248,19 @@ Front, the team's idea X: a steep pushrod (57 deg from horizontal) from a clevis
 - rear pivot node: 118.2 mm — node (-1336, 255, 337) (L), 4 tube ends: 3DSketch8, PST, Tri_Tras
 - rear damper node: 149.9 mm — node (-884, 349, 348) (L), 7 tube ends: 3DSketch8, MH esb, Tri_Meio, Tri_Tras
 
-**Outside the thresholds:** front coil-over chassis end to the nearest frame node (3+ tubes) 144.4 (limit ≤ 60); rear rocker pivot to the nearest frame node (3+ tubes) 118.2 (limit ≤ 60); rear coil-over chassis end to the nearest frame node (3+ tubes) 149.9 (limit ≤ 60)
+**Outside the thresholds:** front coil-over chassis end to nearest bodied tube 65.8 (limit ≤ 60); front rocker pivot to the nearest frame node (3+ tubes) 94.7 (limit ≤ 60); front coil-over chassis end to the nearest frame node (3+ tubes) 152.9 (limit ≤ 60); rear rocker pivot to the nearest frame node (3+ tubes) 118.2 (limit ≤ 60); rear coil-over chassis end to the nearest frame node (3+ tubes) 149.9 (limit ≤ 60)
 
 **Pros**
 
-- Front: the lowest front loads of the set: rod 758 N at ride (1.30x the wheel load), pivot reaction 959 N. MR 0.479 / 0.506 / 0.538 over +-25 mm (+11.5 %, rising in bump). The pushrod buckles at 8.1 kN of wheel load.
-- Front: everything sits high, away from the driver templates (17.8 mm, coil-over vs the cockpit template), the rack (141.1 mm) and the column (168.3 mm). The most robust front of the set to 5 mm moves: pivot 1 of 6 directions broke a threshold (rod vs wishbones), damper end 0, rod mount 0 (node distances left out).
+- Front: low loads: rod 722 N at ride (1.23x the wheel load), pivot reaction 1031 N. MR nearly linear: 0.496 / 0.506 / 0.513 over +-25 mm (+3.5 %). Transmission angles 15.7 / 18.1 deg, rocker rotation +-17 deg over +-36 mm. The pushrod buckles at 9.1 kN of wheel load.
+- Front: ahead of the front hoop and low on the frame: rocker and coil-over between z 545 and 615 mm (moving mass at z 597 mm), the rocker pivot on a 60 mm bracket off the Tri_Frente diagonal (couple 62 N·m). Away from the driver templates (79.7 mm), the rack (142.1 mm), the column (217.3 mm, estimate) and the frame (rocker 33.5 mm, coil-over body 9.2 mm, eyes 32.8 mm, rocker hub 25.8 mm). Reservoir 51.2 mm at its best mounting, 49.4 mm with the body at the chassis end, unclocked (the mounting drawn in the macros).
 - Rear R1: the furthest of the set from the chain estimate (35.4 mm) and the drivetrain keep-out (111.5 mm); engine features 25.9 mm, drive shaft 30.8 mm. MR flat: 0.504 / 0.506 / 0.505 (+0.1 %). Rod 1390 N, pivot 1870 N at ride.
 - Rear R1: rocker and coil-over between z 367 and 447 mm and outboard of |y| = 217 mm: above the chain estimate and outboard of the engine.
 
 **Cons**
 
-- Front: the coil-over chassis eye is on a bracket on the hoop's top bar, 144 mm from the nearest node (flagged, limit 60 mm): the coil-over force goes into the front hoop in bending (bracket couple up to 68 N·m). The front hoop is primary structure; a bracket there is the chassis team's and the rules' call.
-- Front: mounted high. Rocker and coil-over between z 532 and 678 mm (moving mass at z 619 mm); the coil-over top is about 60 mm above the hoop's top tube, so the bodywork over the hoop has to clear it. It sits behind the hoop's top bar (x = -85 mm), between x = -104 and -183 mm, on the cockpit side, where the steering wheel, dash and the driver's sight line are (not modelled). Long pushrod (507 mm). The coil-over is 3.8 mm from a CAD box near the hoop's upper corner ('Size_a_1pol_2,65mm (16)').
+- Front: the coil-over eye is on a 65.8 mm stand-off from the front face of the hoop's top bar (76 N·m), 152.9 mm from a node, so the coil-over force goes into the front hoop in bending; the rocker pivot is 94.7 mm from a node. Front-hoop brackets are the chassis team's and the rules' call. The coil-over's tightest gap (9.2 mm) and the rocker's (33.5 mm) are to the front triangle's top rail, which has no body in the CAD; to the bodied X-brace below it the coil-over keeps more than that.
+- Front: still wide and above the frame. The rocker's rod pickup is 309 mm off the centreline, outboard of the top of the front triangle (|y| 156-175 mm), so the nose bodywork has to cover it. The coil-overs set that width: with the pivot at |y| = 205 mm (tried) the left and right linkages overlap by 25-44 mm at the centreline; as drawn they are 18.6 mm apart. Pushrod 489 mm long; rod vs UCA rear leg 13.5 mm with full rack.
 - Rear R1: rocker and coil-over eye both on brackets at mid-span of the upper side rail, 118 and 150 mm from nodes (flagged, limit 60 mm), with bracket couples up to 84 / 64 N·m into that rail. The LCA rear leg carries the clevis 58.8 mm from the ball joint: about 46 N·m of bending at ride (87 MPa, hand estimate). Tightest gaps: rocker hub 4.2 mm (limit 2), coil-over vs the rail 7.0 mm, rod vs UCA front leg 7.0 mm. 5 mm moves: pivot 3 of 6 directions broke a threshold, damper end 1, rod mount 0 (node distances left out).
 
 **Not checked**
