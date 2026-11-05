@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 from pathlib import Path
 
@@ -73,8 +74,106 @@ def test_equal_damper_margins_and_seed_metrics(rc, ctx) -> None:
     # the physical range reaches past the +-25 mm design travel to the damper end stops
     z_ext, z_comp = f["end_stops_mm"]
     assert z_ext < -25.0 < 25.0 < z_comp
-    # the seed's pushrod is in compression
-    assert res["rear"]["rod_in_tension"] is False
+    # the team project's rear rod: a pullrod is in tension, a pushrod in compression
+    assert res["rear"]["rod_in_tension"] is (ctx.project.rocker_rear.rod_type == "pullrod")
+
+
+def test_rod_self_gap_sees_a_rod_through_its_own_coilover(rc) -> None:
+    """The rear rod of concept DF ran through its own coil-over in SolidWorks; no check
+    looked at the rod against its own linkage. Rocker in the XY plane: rod arm along +x,
+    damper arm along +y, coil-over on along +y."""
+    def link(mount):
+        return rc.Linkage(0.0, np.array(mount, float), np.array([50.0, 0.0, 0.0]),
+                          np.array([0.0, 60.0, 0.0]), np.zeros(3), np.array([0.0, 250.0, 0.0]),
+                          np.array([0.0, 0.0, 1.0]))
+    clear, _ = link((50.0, -300.0, 0.0)).rod_self_gap(20.0)       # rod leaves away from it
+    assert clear > 10.0
+    gap, name = link((-60.0, 300.0, 0.0)).rod_self_gap(20.0)       # rod crosses x = 0 at y 136
+    assert gap < 0.0 and name == "coil-over body"
+    # the rod end at its own pickup is not a clash: a rod straight out along the arm's
+    # tangent clears the arm it hangs on
+    g, _ = link((50.0, -60.0, 0.0)).rod_self_gap(20.0)
+    assert g > 0.0
+
+
+def test_keepout_prisms(rc) -> None:
+    """Driver space and drivetrain keep-out: signed distances to convex prisms."""
+    sq = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))
+    assert rc._poly_sd(np.array([[5.0, 5.0], [15.0, 5.0]]), np.array(sq)) == \
+        pytest.approx([-5.0, 5.0])
+    assert rc._poly_sd(np.array([[5.0, 5.0], [15.0, 5.0]]), np.array(sq[::-1])) == \
+        pytest.approx([-5.0, 5.0])                           # either winding
+    assert rc.seg_prism((5, 5, 20), (5, 5, 30), 0, (0, 10), sq) == pytest.approx(10.0)
+    assert rc.seg_prism((2, 5, 5), (8, 5, 5), 0, (0, 10), sq) == pytest.approx(-5.0)
+    # concept GH's front coil-over axis at y = 190 is 15 mm outside the leg octagon's side;
+    # with its 27.5 mm radius it is inside (the space problem the team found)
+    assert rc.driver_gap((-150, 190, 300), (-150, 190, 300)) == (pytest.approx(15.0),
+                                                                 "leg template")
+    # a covered rack zone: the template's floor raised to 200 mm between x = -120 and +120
+    assert rc.driver_gap((-30, 0, 160), (-30, 0, 160))[0] == pytest.approx(-10.0)
+    assert rc.driver_gap((-30, 0, 160), (-30, 0, 160), floor_z=200.0)[0] == pytest.approx(40.0)
+    # concept H's rear coil-over sat inside the drivetrain zone
+    assert rc.drivetrain_gap((-1460, 115, 250), (-1460, 115, 250)) == pytest.approx(-45.0)
+
+
+def test_reservoir_sits_beside_the_body_either_side(rc, ctx) -> None:
+    """The piggyback canister is beside the chassis-end body, perpendicular to the eye bolts
+    (the rocker axis), on one side or the other as the damper is turned round."""
+    lk = rc.Linkage(0.0, np.array([0.0, 300.0, 0.0]), np.array([50.0, 0.0, 0.0]),
+                    np.array([0.0, 60.0, 0.0]), np.zeros(3), np.array([0.0, 250.0, 0.0]),
+                    np.array([0.0, 0.0, 1.0]))
+    d = ctx.project.damper
+    for side in (1.0, -1.0):
+        p, q, r = lk.reservoir(d, side)
+        assert r == pytest.approx(d.reservoir_od_mm / 2.0)
+        assert p[2] == pytest.approx(0.0) and q[2] == pytest.approx(0.0)   # in the rocker plane
+        assert abs(p[0]) == pytest.approx(d.reservoir_offset_mm)          # beside the axis
+        assert np.sign(p[0]) == -side                                      # u x a, signed
+        assert 250.0 - p[1] == pytest.approx(d.reservoir_from_eye_mm + r / 2.0)
+        assert 250.0 - q[1] == pytest.approx(d.reservoir_to_eye_mm - r / 2.0)
+    # clocked: the body turned about the damper axis at the chassis end; at 90 deg the canister
+    # is out of the rocker plane, along the rocker axis (u x (u x a) = -a for u ⟂ a)
+    p, q, r = lk.reservoir(d, 1.0, clock_deg=90.0)
+    assert p[0] == pytest.approx(0.0) and p[2] == pytest.approx(-d.reservoir_offset_mm)
+    assert 250.0 - p[1] == pytest.approx(d.reservoir_from_eye_mm + r / 2.0)
+    p30, _, _ = lk.reservoir(d, 1.0, clock_deg=30.0)
+    assert np.hypot(p30[0], p30[2]) == pytest.approx(d.reservoir_offset_mm)
+    assert math.degrees(math.atan2(-p30[2], -p30[0])) == pytest.approx(30.0)
+    # the other corner is the mirror image, clocked canister included (mirroring turns a
+    # rotation the other way round)
+    lk = rc.Linkage(0.0, np.array([10.0, 300.0, 20.0]), np.array([50.0, 40.0, 0.0]),
+                    np.array([5.0, 60.0, 30.0]), np.zeros(3), np.array([30.0, 250.0, 60.0]),
+                    rc._unit(np.array([0.2, 0.3, 1.0])))
+    for side in (1.0, -1.0):
+        for clk in (0.0, 30.0, 90.0, 150.0):
+            pl, ql, _ = lk.reservoir(d, side, clock_deg=clk)
+            pr, qr, _ = lk.mirrored().reservoir(d, side, clock_deg=clk)
+            assert pr == pytest.approx(rc.mirror(pl)) and qr == pytest.approx(rc.mirror(ql))
+
+
+def test_concept_springs_and_travel_limit(rc, ctx) -> None:
+    """A concept can fit other springs and cap the packaging range (bump stop and droop
+    limiter): wheel rates scale with k, the MR and the damper end stops do not move."""
+    specs = {"front": ctx.project.rocker_front, "rear": ctx.project.rocker_rear}
+    opts = rc.concept_options({"springs_lb_in": {"front": 550, "rear": 550},
+                               "travel_limit_mm": 30})
+    assert opts == {"springs_lb_in": {"front": 550.0, "rear": 550.0}, "travel_limit_mm": 30.0}
+    base = rc.evaluate(ctx, specs)
+    res = rc.evaluate(ctx, specs, **opts)
+    for ax in ("front", "rear"):
+        b, r = base[ax], res[ax]
+        assert r["spring_lb_in"] == 550.0
+        k0 = ctx.project.springs.front_lb_in if ax == "front" else ctx.project.springs.rear_lb_in
+        assert r["wheel_rate_fitted_n_mm"] == pytest.approx(
+            b["wheel_rate_fitted_n_mm"] * 550.0 / k0, rel=1e-9)
+        assert r["mr_ride"] == pytest.approx(b["mr_ride"], abs=1e-12)
+        assert r["end_stops_mm"] == pytest.approx(b["end_stops_mm"], abs=1e-9)
+        lo, hi = r["packaging_range_mm"]
+        assert lo == pytest.approx(-30.0) and hi == pytest.approx(30.0)
+        assert b["packaging_range_mm"] == pytest.approx(b["end_stops_mm"], abs=1e-9)
+        # the rocker turns less over the narrower range
+        assert max(map(abs, r["psi_range_deg"])) < max(map(abs, b["psi_range_deg"]))
+    assert rc.with_springs(ctx.project, None) is ctx.project
 
 
 def test_frame_model_flags_sketch_only_lines(rc, ctx) -> None:
@@ -119,3 +218,29 @@ def test_clearance_helpers(rc) -> None:
     assert rc.pt_seg((0, 1, 0), (-1, 0, 0), (1, 0, 0)) == pytest.approx(1.0)
     a, b = rc.trim((0, 0, 0), (100, 0, 0), 10.0, 35.0)
     assert a[0] == pytest.approx(10.0) and b[0] == pytest.approx(65.0)
+
+
+def test_frame_nodes_are_the_welded_joints(rc, ctx) -> None:
+    """Nodes are joints of 3+ bodied tube ends. The front hoop's foot has 7: the CAD
+    models its lower leg and the bottom cross tube twice (PSD and FRONTO HO sketches),
+    and a tube is counted once."""
+    assert all(n.valence >= 3 for n in ctx.nodes)
+    d, n = rc.nearest_node(ctx, (-120.4, 205.0, 117.4))
+    assert d < 1.0 and n.valence == 7
+    # the floor X brace crosses at the centre line: a node with no tube end in it
+    d, n = rc.nearest_node(ctx, (0.0, 0.0, 117.4))
+    assert d < 1.0 and n.valence == 4
+    # a mid-span point is far from every node
+    assert rc.nearest_node(ctx, (330.0, 215.0, 415.0))[0] > 150.0
+
+
+def test_damper_end_aims_the_coilover_through_a_point(rc, ctx) -> None:
+    end = (-105.9, 251.0, 319.5)
+    c = rc.AxleConcept("pushrod", "upright", (5.5, 572.75, 182.49), (67.2, 274.3, 414.8),
+                       (461.9, 311.7, 362.1), 62.8, damper_end=end)
+    sp = rc.make_spec(ctx.geo, ctx.project, "front", c)
+    rd, dc = np.asarray(sp.rocker_damper), np.asarray(sp.damper_chassis)
+    u = (dc - rd) / np.linalg.norm(dc - rd)
+    assert np.linalg.norm(np.cross(np.asarray(end) - rd, u)) < 0.01
+    sw = rocker_sweep(ctx.geo.corner("FL"), rc.S.layout_for(sp, "FL"), [0.0])
+    assert sw.motion_ratio[0] == pytest.approx(0.80, abs=1e-6)

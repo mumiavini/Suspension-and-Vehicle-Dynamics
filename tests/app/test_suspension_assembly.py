@@ -44,15 +44,18 @@ def test_every_solid_is_in_exactly_one_part(sa, project, model) -> None:
     for cid in sa.CORNERS:
         asm = f"{sa.PREFIX}{cid}"
         link = "tie_rod" if cid in ("FL", "FR") else "toe_link"
+        spec = project.rocker_front if cid in ("FL", "FR") else project.rocker_rear
+        rod = spec.rod_type
         want = {f"{asm}_{g}" for g in ("chassis_mounts", "UCA", "LCA", "upright", link,
-                                       "pushrod", "rocker", "damper_body", "damper_shaft",
+                                       rod, "rocker", "damper_body", "damper_shaft",
                                        "wheel")}
         assert set(model.corner_parts[asm]) == want
-        # the rear rod sits on the LCA: its bracket goes with it (the front rod is on the
-        # kingpin axis, no bracket)
-        if cid in ("RL", "RR"):
-            names = [b.name for b in model.components[f"{asm}_LCA"].bodies]
-            assert f"{asm}_pushrod_mount_bracket" in names
+        # the rod's mount bracket goes with the member the rod sits on (none when the
+        # mount is on that member's own axis)
+        bracket = f"{asm}_{rod}_mount_bracket"
+        if bracket in [p.name for p in sa.SS.all_parts(project)]:
+            body = {"lca": "LCA", "uca": "UCA", "upright": "upright"}[spec.mount_body]
+            assert bracket in [b.name for b in model.components[f"{asm}_{body}"].bodies]
     assert all(model.components[c].ground for c in model.top_parts)
     assert [c for c in model.components.values() if c.ground and c.corner] == \
         [model.components[f"{sa.PREFIX}{cid}_chassis_mounts"] for cid in sa.CORNERS]
@@ -184,6 +187,27 @@ def test_main_is_the_last_argumentless_sub(sa, project, model) -> None:
     assert text.startswith('Attribute VB_Name = "SUSP_2027_build"')
 
 
+def test_assemblies_are_built_visible_and_active(sa, project, model) -> None:
+    """AddComponent inserts nothing into a hidden assembly: a run with the corners
+    built hidden left all four empty (every add failed, so did all 68 mates)."""
+    text = sa.render_macro(model, sa.X.cad_frame(project), "test")
+    main = text[text.index("Sub main()"):]
+    assert "DocumentVisible False, 2" not in text
+    assert main.index("DocumentVisible True, 2") < main.index("    BuildCorners")
+    # parts hidden only while they are built; insertions run with both flags on
+    assert (main.index("DocumentVisible False, 1") < main.index("    BuildParts")
+            < main.index("DocumentVisible True, 1") < main.index("    BuildCorners"))
+    begin = text[text.index("Private Function BeginAsm("):]
+    begin = begin[:begin.index("End Function")]
+    assert "ActivateAsm" in begin
+    add = text[text.index("Private Sub AddComp("):]
+    add = add[:add.index("End Sub")]
+    # loaded first; three insertion routes; a failure says why
+    assert add.index("LoadDoc p, ext") < add.index("AddComponent5")
+    assert "AddByList(p)" in add and "gOtherFailed = gOtherFailed + 1" in add
+    assert "ActiveTitle()" in add
+
+
 def test_the_anti_roll_bar_is_refused_until_it_is_jointed(sa, project) -> None:
     with pytest.raises(ValueError, match="anti-roll bar"):
         sa.build_model(project, arb={"front": {}})
@@ -220,3 +244,10 @@ def test_construction_lines_cross_only_where_meant(sa, project, model) -> None:
                 ta = sorted((0.0, float((a1 - a0) @ da)))
                 tb = sorted((float((b0 - a0) @ da), float((b1 - a0) @ da)))
                 assert min(ta[1], tb[1]) - max(ta[0], tb[0]) < 1e-6, f"{c.name}: {na} / {nb}"
+
+
+def test_the_reservoir_goes_with_the_damper_body(sa, project) -> None:
+    m = sa.build_model(project, None, "SUSP_T", {"front": (1.0, 0.0), "rear": (-1.0, 60.0)})
+    for cid in sa.CORNERS:
+        names = [b.name for b in m.components[f"{sa.PREFIX}{cid}_damper_body"].bodies]
+        assert f"{sa.PREFIX}{cid}_coilover_reservoir" in names

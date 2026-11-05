@@ -87,7 +87,8 @@ _GROUPS = {
                "rocker_bolt_rod", "rocker_bolt_damper"),
     "chassis_mounts": ("rocker_bracket_a", "rocker_bracket_b", "coilover_bracket_a",
                        "coilover_bracket_b"),
-    "damper_body": ("coilover_eye_chassis", "coilover_body", "coilover_spring"),
+    "damper_body": ("coilover_eye_chassis", "coilover_body", "coilover_spring",
+                    "coilover_reservoir"),
     "damper_shaft": ("coilover_eye_rocker", "coilover_shaft"),
 }
 _MOUNT_GROUP = {"lca": "LCA", "uca": "UCA", "upright": "upright"}
@@ -243,13 +244,14 @@ def corner_mates(cid: str, rod: str, mount_body: str) -> list[Mate]:
 
 
 def build_model(project: Project, arb: dict | None = None,
-                asm_name: str = "SUSP_2027") -> Model:
+                asm_name: str = "SUSP_2027",
+                reservoir: dict[str, tuple[float, float]] | None = None) -> Model:
     if arb:
         # the arms and drop links would sit in one fixed part, torn off the moving rockers
         raise ValueError("an anti-roll bar is not jointed in the assembly export yet; "
                          "use export_suspension_solids.py --arb for the single part")
     geo = G.resolve(project)
-    parts = SS.all_parts(project, arb)
+    parts = SS.all_parts(project, arb, reservoir)
     comps: dict[str, Component] = {}
 
     def comp(name: str, corner: str | None) -> Component:
@@ -693,14 +695,14 @@ def render_macro(model: Model, frame, source: str) -> str:
     add("    gRefMade = 0: gRefFailed = 0: gMateMade = 0: gMateFailed = 0: gOtherFailed = 0")
     add("    Calibrate")
     add("    LogLine \"CreateBodyFromCyl point is the centre: \" & gCentred")
-    add("    ' parts and corner assemblies are built without windows")
+    add("    ' parts are built without windows. Components go in with both flags on, as in")
+    add("    ' the top assembly that worked: built hidden, the corners came out empty")
     add("    swApp.DocumentVisible False, 1")
-    add("    swApp.DocumentVisible False, 2")
+    add("    swApp.DocumentVisible True, 2")
     add("    On Error GoTo stopped")
     add("    BuildParts")
-    add("    BuildCorners")
     add("    swApp.DocumentVisible True, 1")
-    add("    swApp.DocumentVisible True, 2")
+    add("    BuildCorners")
     add("    BuildTop")
     add("    ReopenTop")
     add("    On Error GoTo 0")
@@ -711,7 +713,7 @@ def render_macro(model: Model, frame, source: str) -> str:
     add("    LogLine msg")
     add("    WriteLog")
     add("    If gOtherFailed > 0 Then msg = msg & vbCrLf & gOtherFailed & _")
-    add("        \" placement / flexible / save step(s) failed.\"")
+    add("        \" add / placement / flexible / save step(s) failed.\"")
     add("    If gFailed + gRefFailed + gMateFailed + gOtherFailed > 0 Then")
     add("        msg = msg & vbCrLf & \"Some steps failed: see \" & gDir & ASM_NAME & _")
     add("              \"_log.txt\"")
@@ -979,7 +981,49 @@ def _vba_assembly_helpers() -> list[str]:
         "    ' saved first: the fallback selection names end in @<assembly name>",
         "    If Not SaveAsFile(nm & \".SLDASM\") Then Exit Function",
         "    gAsmTitle = nm",
+        "    ActivateAsm",
         "    BeginAsm = True",
+        "End Function",
+        "",
+        "' AddComponent works on the active, visible assembly.",
+        "Private Sub ActivateAsm()",
+        "    Dim e As Long, d As Object",
+        "    On Error Resume Next",
+        "    Set d = swApp.ActivateDoc3(swModel.GetTitle, False, 1, e)",
+        "    If Not d Is Nothing Then Set swModel = d",
+        "End Sub",
+        "",
+        "Private Function ActiveTitle() As String",
+        "    On Error Resume Next",
+        "    ActiveTitle = swApp.ActiveDoc.GetTitle",
+        "End Function",
+        "",
+        "' AddComponent needs the file loaded in memory. The parts are (built in this run);",
+        "' a part that is not is opened without a window, then the assembly is active again.",
+        "Private Sub LoadDoc(ByVal p As String, ByVal ext As String)",
+        "    Dim e As Long, w As Long, t As Long, d As Object",
+        "    On Error Resume Next",
+        "    Set d = swApp.GetOpenDocumentByName(p)",
+        "    If Not d Is Nothing Then Exit Sub",
+        "    t = 1",
+        "    If ext = \".SLDASM\" Then t = 2",
+        "    Set d = swApp.OpenDoc6(p, t, 1, \"\", e, w)",
+        "    On Error GoTo 0",
+        "    LogLine \"loaded \" & FileOf(p) & \" from disk (error \" & e & \")\"",
+        "    ActivateAsm",
+        "End Sub",
+        "",
+        "' The same insertion through the list method, at the identity.",
+        "Private Function AddByList(ByVal p As String) As Object",
+        "    Dim nms(0) As String, tr(15) As Double, cs(0) As String",
+        "    Dim vn As Variant, vt As Variant, vc As Variant, res As Variant",
+        "    nms(0) = p",
+        "    tr(0) = 1: tr(4) = 1: tr(8) = 1: tr(12) = 1",
+        "    cs(0) = \"\"",
+        "    vn = nms: vt = tr: vc = cs",
+        "    On Error Resume Next",
+        "    res = swModel.AddComponents3((vn), (vt), (vc))",
+        "    If IsArray(res) Then Set AddByList = res(LBound(res))",
         "End Function",
         "",
         "' Every part was modelled in place and every mate holds there: a component that is",
@@ -1018,17 +1062,26 @@ def _vba_assembly_helpers() -> list[str]:
         "",
         "' Every part is modelled in the assembly's coordinates: it goes in at the identity.",
         "Private Sub AddComp(ByVal nm As String, ByVal ext As String, ByVal fixIt As Boolean)",
-        "    Dim c As Object, p As String",
+        "    Dim c As Object, p As String, why As String",
         "    p = gDir & nm & ext",
+        "    LoadDoc p, ext",
         "    On Error Resume Next",
         "    Set c = swModel.AddComponent5(p, 0, \"\", False, \"\", 0, 0, 0)",
         "    If c Is Nothing Then",
+        "        If Err.Number <> 0 Then why = \"; AddComponent5: \" & Err.Description",
         "        Err.Clear",
         "        Set c = swModel.AddComponent4(p, \"\", 0, 0, 0)",
         "    End If",
+        "    If c Is Nothing Then",
+        "        If Err.Number <> 0 Then why = why & \"; AddComponent4: \" & Err.Description",
+        "        Err.Clear",
+        "        Set c = AddByList(p)",
+        "    End If",
         "    On Error GoTo 0",
         "    If c Is Nothing Then",
-        "        LogLine \"FAIL add component \" & nm & \" to \" & gCur",
+        "        gOtherFailed = gOtherFailed + 1",
+        "        LogLine \"FAIL add component \" & nm & \" to \" & gCur & \" (file found: \" & _",
+        "            (Len(Dir(p)) > 0) & \"; active document: \" & ActiveTitle() & why & \")\"",
         "        Exit Sub",
         "    End If",
         "    PlaceAtOrigin c, nm",
@@ -1101,8 +1154,8 @@ def _vba_assembly_helpers() -> list[str]:
         "    End If",
         "End Sub",
         "",
-        "' The parts and corners were made without windows (such documents cannot be shown",
-        "' later): close all of them and open the top assembly again, visible.",
+        "' The parts were made without windows (such documents cannot be shown later):",
+        "' close everything this macro made and open the top assembly again.",
         "Private Sub ReopenTop()",
         "    Dim e As Long, w As Long, doc As Object, still As String",
         "    gCur = ASM_NAME",
@@ -1202,11 +1255,13 @@ def main() -> int:
     ap.add_argument("--frame", choices=("chassis", "iso"), default="chassis",
                     help="chassis: the chassis part's coordinates (Xasis 33.3); iso: ISO 8855")
     ap.add_argument("--out", type=Path, default=REPO / "projects" / "cad", help="output folder")
-    ap.add_argument("--name", default="suspension_A_refined_assembly")
+    ap.add_argument("--name", default="suspension_assembly")
     ap.add_argument("--asm-name", default="SUSP_2027", help="top assembly file name")
+    ap.add_argument("--reservoir", nargs="*", default=[], metavar="AXLE=SIDE,CLOCK",
+                    help=SS.RESERVOIR_HELP)
     args = ap.parse_args()
     project = load_project(args.project)
-    model = build_model(project, None, args.asm_name)
+    model = build_model(project, None, args.asm_name, SS.parse_reservoir(args.reservoir))
     for asm in model.mates:
         mob = mobility(model, asm)
         print(f"{asm}: {len(model.corner_parts[asm])} parts, {mob.rows} mate constraints, "

@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -209,8 +210,32 @@ def corner_parts(geo, cid: str) -> list[Cyl]:
     return out
 
 
-def linkage_parts(geo, project: Project, members, cid: str) -> list[Cyl]:
-    """Rod, rocker, coil-over and their brackets of one corner (static, ride height)."""
+def reservoir_part(project: Project, cid: str, side: float, clock_deg: float) -> Cyl:
+    """The damper's piggyback canister at ride, body at the chassis end, as
+    ``rocker_concepts.Linkage.reservoir``: offset perpendicular to the eye bolts (the rocker
+    axis) on ``side`` (+1 / -1), turned ``clock_deg`` about the damper axis. Built on the left
+    corner and mirrored, so the right one is its mirror image."""
+    axle = "front" if cid in ("FL", "FR") else "rear"
+    spec = project.rocker_front if axle == "front" else project.rocker_rear
+    lay = S.layout_for(spec, "FL" if axle == "front" else "RL")
+    d = project.damper
+    dc, rd, a = _v(lay.damper_chassis), _v(lay.rocker_damper), _unit(lay.rocker_axis)
+    u = _unit(rd - dc)
+    w0 = _unit(np.cross(u, a))
+    c = math.radians(clock_deg)
+    w = (w0 * math.cos(c) + np.cross(u, w0) * math.sin(c)) * side * float(d.reservoir_offset_mm)
+    p = dc + float(d.reservoir_from_eye_mm) * u + w
+    q = dc + float(d.reservoir_to_eye_mm) * u + w
+    if cid in ("FR", "RR"):
+        p, q = _mirror(p), _mirror(q)
+    return Cyl(f"{PREFIX}{cid}_coilover_reservoir", _t(p), _t(q), float(d.reservoir_od_mm),
+               "coilover")
+
+
+def linkage_parts(geo, project: Project, members, cid: str,
+                  reservoir: dict[str, tuple[float, float]] | None = None) -> list[Cyl]:
+    """Rod, rocker, coil-over and their brackets of one corner (static, ride height).
+    ``reservoir``: per axle, (side, clock_deg) of the damper's canister (none: not drawn)."""
     axle = "front" if cid in ("FL", "FR") else "rear"
     spec = project.rocker_front if axle == "front" else project.rocker_rear
     if not spec.enabled:
@@ -263,8 +288,11 @@ def linkage_parts(geo, project: Project, members, cid: str) -> list[Cyl]:
                    _t(dc - body_len * u), Z["damper_body_od"], "coilover"))
     out.append(Cyl(f"{n}coilover_shaft", _t(dc - body_len * u),
                    _t(rd + 0.5 * Z["eye_od"] * u), Z["damper_shaft_od"], "coilover"))
+    spring_od = float(getattr(project.damper, "spring_od_mm", Z["spring_od"]))
     out.append(Cyl(f"{n}coilover_spring", _t(dc - 0.25 * L * u), _t(rd + 0.25 * L * u),
-                   Z["spring_od"], "spring", hollow_id_mm=Z["spring_od"] - 12.0))
+                   spring_od, "spring", hollow_id_mm=spring_od - 12.0))
+    if reservoir and axle in reservoir:
+        out.append(reservoir_part(project, cid, *reservoir[axle]))
     for side, sgn in (("a", 1.0), ("b", -1.0)):
         end = dc + sgn * 0.5 * Z["eye_len"] * a
         f, _tube = nearest_bodied(members, end)
@@ -315,7 +343,8 @@ def rack_part(geo) -> list[Cyl]:
                 "steering")]
 
 
-def all_parts(project: Project, arb: dict | None = None) -> list[Cyl]:
+def all_parts(project: Project, arb: dict | None = None,
+              reservoir: dict[str, tuple[float, float]] | None = None) -> list[Cyl]:
     import rocker_concepts as RC
 
     geo = G.resolve(project)
@@ -323,7 +352,7 @@ def all_parts(project: Project, arb: dict | None = None) -> list[Cyl]:
     parts: list[Cyl] = []
     for cid in CORNERS:
         parts += corner_parts(geo, cid)
-        parts += linkage_parts(geo, project, members, cid)
+        parts += linkage_parts(geo, project, members, cid, reservoir)
     parts += rack_part(geo)
     if arb:
         parts += arb_parts(arb, project)
@@ -332,6 +361,21 @@ def all_parts(project: Project, arb: dict | None = None) -> list[Cyl]:
     if dup:
         raise ValueError(f"duplicate part names: {sorted(dup)}")
     return parts
+
+
+RESERVOIR_HELP = ("draw the damper reservoir on an axle, body at the chassis end: e.g. "
+                  "front=+1,120 rear=-1,0 (side +1/-1 as rocker_concepts' report, clock in deg)")
+
+
+def parse_reservoir(items: list[str]) -> dict[str, tuple[float, float]]:
+    out: dict[str, tuple[float, float]] = {}
+    for it in items:
+        axle, _, val = it.partition("=")
+        side, clock = (float(v) for v in val.split(","))
+        if axle not in ("front", "rear") or side not in (1.0, -1.0):
+            raise SystemExit(f"--reservoir {it!r}: expected front|rear=+1|-1,CLOCK")
+        out[axle] = (side, clock)
+    return out
 
 
 SKELETON = (("UCA_IN_FRONT", "UCA_OUT"), ("UCA_IN_REAR", "UCA_OUT"),
@@ -656,10 +700,12 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=REPO / "projects" / "cad",
                     help="output folder")
     ap.add_argument("--name", default="suspension_solids")
+    ap.add_argument("--reservoir", nargs="*", default=[], metavar="AXLE=SIDE,CLOCK",
+                    help=RESERVOIR_HELP)
     args = ap.parse_args()
     project = load_project(args.project)
     arb = json.loads(args.arb.read_text(encoding="utf-8")) if args.arb else None
-    parts = all_parts(project, arb)
+    parts = all_parts(project, arb, parse_reservoir(args.reservoir))
     sk = skeleton_lines(project)
     frames = {"chassis": X.cad_frame(project), "iso": swx.resolve_frame("iso")}
     todo = ("chassis", "iso") if args.frame == "both" else (args.frame,)

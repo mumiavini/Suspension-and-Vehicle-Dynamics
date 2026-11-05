@@ -1,0 +1,88 @@
+SUSP_Z build log (build_susp.py from suspension_Z_assembly_Xasis_33.3.bas)
+folder: C:\soft\FSAE\Suspension and Vehicle Dynamics\Ultimos conceitos\SUSP_Z\
+saved SUSP_FL_chassis_mounts.SLDPRT
+saved SUSP_FL_UCA.SLDPRT
+saved SUSP_FL_LCA.SLDPRT
+saved SUSP_FL_upright.SLDPRT
+saved SUSP_FL_tie_rod.SLDPRT
+saved SUSP_FL_pullrod.SLDPRT
+saved SUSP_FL_rocker.SLDPRT
+skip Part_SUSP_FL_damper_body: replaced by the real damper
+skip Part_SUSP_FL_damper_shaft: replaced by the real damper
+saved SUSP_FL_wheel.SLDPRT
+saved SUSP_FR_chassis_mounts.SLDPRT
+saved SUSP_FR_UCA.SLDPRT
+saved SUSP_FR_LCA.SLDPRT
+saved SUSP_FR_upright.SLDPRT
+saved SUSP_FR_tie_rod.SLDPRT
+saved SUSP_FR_pullrod.SLDPRT
+saved SUSP_FR_rocker.SLDPRT
+skip Part_SUSP_FR_damper_body: replaced by the real damper
+skip Part_SUSP_FR_damper_shaft: replaced by the real damper
+saved SUSP_FR_wheel.SLDPRT
+saved SUSP_RL_chassis_mounts.SLDPRT
+saved SUSP_RL_UCA.SLDPRT
+saved SUSP_RL_LCA.SLDPRT
+saved SUSP_RL_upright.SLDPRT
+saved SUSP_RL_toe_link.SLDPRT
+saved SUSP_RL_pushrod.SLDPRT
+saved SUSP_RL_rocker.SLDPRT
+skip Part_SUSP_RL_damper_body: replaced by the real damper
+skip Part_SUSP_RL_damper_shaft: replaced by the real damper
+saved SUSP_RL_wheel.SLDPRT
+saved SUSP_RR_chassis_mounts.SLDPRT
+saved SUSP_RR_UCA.SLDPRT
+saved SUSP_RR_LCA.SLDPRT
+saved SUSP_RR_upright.SLDPRT
+saved SUSP_RR_toe_link.SLDPRT
+saved SUSP_RR_pushrod.SLDPRT
+saved SUSP_RR_rocker.SLDPRT
+skip Part_SUSP_RR_damper_body: replaced by the real damper
+skip Part_SUSP_RR_damper_shaft: replaced by the real damper
+saved SUSP_RR_wheel.SLDPRT
+saved SUSP_rack.SLDPRT
+saved SUSP_skeleton.SLDPRT
+AMORTECEDOR_CORPO: body side of Amortecedor.SLDPRT (volume 431814 -> 347903 mm3)
+AMORTECEDOR_HASTE: shaft side (volume 90130 mm3)
+saved SUSP_FL.SLDASM
+loaded SUSP_FL_chassis_mounts.SLDPRT from disk (error 0)
+loaded SUSP_FL_UCA.SLDPRT from disk (error 0)
+loaded SUSP_FL_LCA.SLDPRT from disk (error 0)
+loaded SUSP_FL_upright.SLDPRT from disk (error 0)
+loaded SUSP_FL_tie_rod.SLDPRT from disk (error 0)
+loaded SUSP_FL_pullrod.SLDPRT from disk (error 0)
+loaded SUSP_FL_rocker.SLDPRT from disk (error 0)
+loaded AMORTECEDOR_CORPO.SLDPRT from disk (error 0)
+loaded AMORTECEDOR_HASTE.SLDPRT from disk (error 0)
+loaded SUSP_FL_wheel.SLDPRT from disk (error 0)
+saved SUSP_FR.SLDASM
+loaded SUSP_FR_chassis_mounts.SLDPRT from disk (error 0)
+loaded SUSP_FR_UCA.SLDPRT from disk (error 0)
+loaded SUSP_FR_LCA.SLDPRT from disk (error 0)
+loaded SUSP_FR_upright.SLDPRT from disk (error 0)
+loaded SUSP_FR_tie_rod.SLDPRT from disk (error 0)
+loaded SUSP_FR_pullrod.SLDPRT from disk (error 0)
+loaded SUSP_FR_rocker.SLDPRT from disk (error 0)
+loaded SUSP_FR_wheel.SLDPRT from disk (error 0)
+saved SUSP_RL.SLDASM
+loaded SUSP_RL_chassis_mounts.SLDPRT from disk (error 0)
+loaded SUSP_RL_UCA.SLDPRT from disk (error 0)
+loaded SUSP_RL_LCA.SLDPRT from disk (error 0)
+loaded SUSP_RL_upright.SLDPRT from disk (error 0)
+loaded SUSP_RL_toe_link.SLDPRT from disk (error 0)
+loaded SUSP_RL_pushrod.SLDPRT from disk (error 0)
+loaded SUSP_RL_rocker.SLDPRT from disk (error 0)
+loaded SUSP_RL_wheel.SLDPRT from disk (error 0)
+saved SUSP_RR.SLDASM
+loaded SUSP_RR_chassis_mounts.SLDPRT from disk (error 0)
+loaded SUSP_RR_UCA.SLDPRT from disk (error 0)
+loaded SUSP_RR_LCA.SLDPRT from disk (error 0)
+loaded SUSP_RR_upright.SLDPRT from disk (error 0)
+loaded SUSP_RR_toe_link.SLDPRT from disk (error 0)
+loaded SUSP_RR_pushrod.SLDPRT from disk (error 0)
+loaded SUSP_RR_rocker.SLDPRT from disk (error 0)
+loaded SUSP_RR_wheel.SLDPRT from disk (error 0)
+saved SUSP_Z.SLDASM
+loaded SUSP_rack.SLDPRT from disk (error 0)
+loaded SUSP_skeleton.SLDPRT from disk (error 0)
+SUSP_Z: 129 solids (0 failed), 126 reference points/axes (0 failed), 72 mates (0 failed), 0 other failures, 293 s

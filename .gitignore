@@ -36,3 +36,6 @@ typings/
 
 # Altair MotionSolve cross-check cache (machine-specific, regenerable)
 altair_model/.kpi_cache/
+
+# SolidWorks lock files (open documents)
+~$*

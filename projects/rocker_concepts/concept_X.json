@@ -1,0 +1,73 @@
+{
+ "concept_id": "X",
+ "name": "front idea X, moved ahead of the front hoop (pushrod, coil-overs across the car just ahead of the hoop's top bar); rear R1 (pushrod, coil-over forward along the upper side rail)",
+ "summary": "Front, the team's idea X moved in front of the front hoop and tucked down onto the frame: a steep pushrod (62 deg from horizontal, 5 deg of plan sweep) from a clevis on the LCA rear leg to a rocker whose axis runs fore-aft, 65 mm ahead of the hoop's top bar (pivot x = -20 mm, 220 mm off the centreline, z = 545 mm, on a 60 mm bracket off the Tri_Frente diagonal); each coil-over lies across the car toward the centreline, 545-615 mm high, just above the top of the front triangle, to an eye on a bracket off the front face of the hoop's top bar (65.8 mm stand-off, 56 mm from its bend). Rear R1: pushrod from the LCA rear leg to a rocker on a bracket on the upper side rail (Tri_Tras), 118 mm from the UCA front node; the coil-over runs forward along the top of that rail to a second bracket on it, 150 mm from its front node. No physical interference on either axle; the evaluator's only flags are node distances and the coil-over eye's stand-off (front pivot 94.7 mm and eye 152.9 mm from a node, eye 65.8 mm from the hoop's top bar; rear pivot 118 mm and eye 150 mm from nodes; limit 60 mm).",
+ "springs_lb_in": {
+  "front": 550,
+  "rear": 550
+ },
+ "travel_limit_mm": 36.0,
+ "front": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -5.89,
+   535.6,
+   158.23
+  ],
+  "pivot": [
+   -20.0,
+   220.0,
+   545.0
+  ],
+  "damper_end": [
+   -20.0,
+   45.0,
+   610.0
+  ],
+  "rod_arm_mm": 100.0,
+  "damper_clock_deg": 0.0,
+  "target_mr": 0.506
+ },
+ "rear": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -1532.38,
+   504.83,
+   152.52
+  ],
+  "pivot": [
+   -1232.34,
+   289.38,
+   382.95
+  ],
+  "damper_end": [
+   -1080.58,
+   302.04,
+   399.22
+  ],
+  "rod_arm_mm": 72.21,
+  "damper_clock_deg": -4.5,
+  "target_mr": 0.506
+ },
+ "pros": [
+  "Front: low loads: rod 722 N at ride (1.23x the wheel load), pivot reaction 1031 N. MR nearly linear: 0.496 / 0.506 / 0.513 over +-25 mm (+3.5 %). Transmission angles 15.7 / 18.1 deg, rocker rotation +-17 deg over +-36 mm. The pushrod buckles at 9.1 kN of wheel load.",
+  "Front: ahead of the front hoop and low on the frame: rocker and coil-over between z 545 and 615 mm (moving mass at z 597 mm), the rocker pivot on a 60 mm bracket off the Tri_Frente diagonal (couple 62 N·m). Away from the driver templates (79.7 mm), the rack (142.1 mm), the column (217.3 mm, estimate) and the frame (rocker 33.5 mm, coil-over body 9.2 mm, eyes 32.8 mm, rocker hub 25.8 mm). Reservoir 51.2 mm at its best mounting, 49.4 mm with the body at the chassis end, unclocked (the mounting drawn in the macros).",
+  "Rear R1: the furthest of the set from the chain estimate (35.4 mm) and the drivetrain keep-out (111.5 mm); engine features 25.9 mm, drive shaft 30.8 mm. MR flat: 0.504 / 0.506 / 0.505 (+0.1 %). Rod 1390 N, pivot 1870 N at ride.",
+  "Rear R1: rocker and coil-over between z 367 and 447 mm and outboard of |y| = 217 mm: above the chain estimate and outboard of the engine."
+ ],
+ "cons": [
+  "Front: the coil-over eye is on a 65.8 mm stand-off from the front face of the hoop's top bar (76 N·m), 152.9 mm from a node, so the coil-over force goes into the front hoop in bending; the rocker pivot is 94.7 mm from a node. Front-hoop brackets are the chassis team's and the rules' call. The coil-over's tightest gap (9.2 mm) and the rocker's (33.5 mm) are to the front triangle's top rail, which has no body in the CAD; to the bodied X-brace below it the coil-over keeps more than that.",
+  "Front: still wide and above the frame. The rocker's rod pickup is 309 mm off the centreline, outboard of the top of the front triangle (|y| 156-175 mm), so the nose bodywork has to cover it. The coil-overs set that width: with the pivot at |y| = 205 mm (tried) the left and right linkages overlap by 25-44 mm at the centreline; as drawn they are 18.6 mm apart. Pushrod 489 mm long; rod vs UCA rear leg 13.5 mm with full rack.",
+  "Rear R1: rocker and coil-over eye both on brackets at mid-span of the upper side rail, 118 and 150 mm from nodes (flagged, limit 60 mm), with bracket couples up to 84 / 64 N·m into that rail. The LCA rear leg carries the clevis 58.8 mm from the ball joint: about 46 N·m of bending at ride (87 MPa, hand estimate). Tightest gaps: rocker hub 4.2 mm (limit 2), coil-over vs the rail 7.0 mm, rod vs UCA front leg 7.0 mm. 5 mm moves: pivot 3 of 6 directions broke a threshold, damper end 1, rod mount 0 (node distances left out)."
+ ],
+ "not_checked": [
+  "The +-36 mm travel limit is a design input (design_intent): a bump stop and a droop limiter that are not in the project. With them each damper keeps about 10 mm at each end (it uses about 36.5 of its 57 mm stroke, an estimate).",
+  "Damping: the damper moves 0.506 mm per mm of wheel instead of 0.80, so the same valving gives (0.506/0.80)^2 = 40 % of today's damping at the wheel. Damping is outside this tool.",
+  "Structure: no load cases, stress, fatigue or sizing of rockers, brackets, clevises, rods or wishbones. Leg-bending figures are hand estimates (simply supported leg, rod force at ride, 25.4x1.2 tube); bracket couples are upper bounds.",
+  "With no preload the springs come off their seats at -23.7 mm (front) and -30.0 mm (rear) of wheel travel, inside the +-36 mm range.",
+  "Envelopes: spring OD 55 mm, 220 mm eye to eye and 260 mm overall are from the coil-over drawing; the piggyback reservoir (OD 38 mm, 50 mm off the axis) is scaled from that drawing (estimate). Rod, rocker plates and bolts, rocker hub, wishbone and frame tube sizes are estimates. Bodywork, the steering wheel and dash, and the driver beyond the template sketches are not modelled.",
+  "Drivetrain: the chain, sprockets, differential and drive shafts are estimates (no CAD). The chain estimate itself passes through four rear-box tubes (front post -27.3 mm, top rail -25.0 mm, diagonal -14.2 mm, rear post -10.3 mm), so the real chain path differs from it; each rear here needs a check against the real drivetrain."
+ ]
+}

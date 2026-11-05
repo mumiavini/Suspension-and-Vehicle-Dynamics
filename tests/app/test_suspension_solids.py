@@ -99,3 +99,32 @@ def test_macro_text(ss, project, parts) -> None:
     assert text.count("\nSub ") + text.count("\nPrivate Sub ") == text.count("\nEnd Sub")
     for proc in re.split(r"\r\nEnd (?:Sub|Function)", text):
         assert len(proc) < 60_000
+
+
+def test_reservoir_is_drawn_where_the_evaluator_checks_it(ss, project) -> None:
+    """``--reservoir``: the canister beside the chassis-end body, the same capsule axis as
+    ``rocker_concepts.Linkage.reservoir`` on the left, its mirror image on the right."""
+    import rocker_concepts as RC
+
+    from apps.vdstudio.engine import suspension as S
+
+    assert ss.parse_reservoir(["front=+1,120", "rear=-1,0"]) == {"front": (1.0, 120.0),
+                                                                  "rear": (-1.0, 0.0)}
+    with pytest.raises(SystemExit):
+        ss.parse_reservoir(["front=2,0"])
+    res = {"front": (1.0, 120.0), "rear": (-1.0, 30.0)}
+    parts = {p.name: p for p in ss.all_parts(project, None, res)}
+    assert not any("reservoir" in n for n in (p.name for p in ss.all_parts(project)))
+    d = project.damper
+    for cid, axle in (("FL", "front"), ("RL", "rear")):
+        spec = project.rocker_front if axle == "front" else project.rocker_rear
+        lay = S.layout_for(spec, cid)
+        lk = RC.Linkage(0.0, np.array(lay.rod_mount), np.array(lay.rocker_rod),
+                        np.array(lay.rocker_damper), np.array(lay.rocker_pivot),
+                        np.array(lay.damper_chassis), RC._unit(lay.rocker_axis))
+        right = "FR" if cid == "FL" else "RR"
+        for c, link in ((cid, lk), (right, lk.mirrored())):
+            a, b, _r = link.reservoir(d, res[axle][0], False, res[axle][1])
+            q = parts[f"{ss.PREFIX}{c}_coilover_reservoir"]
+            assert q.od_mm == pytest.approx(d.reservoir_od_mm)
+            assert (np.array(q.a) + np.array(q.b)) / 2 == pytest.approx((a + b) / 2, abs=1e-9)

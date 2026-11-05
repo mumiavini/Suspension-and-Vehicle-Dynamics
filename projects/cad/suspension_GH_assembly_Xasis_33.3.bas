@@ -15,7 +15,7 @@ Attribute VB_Name = "SUSP_2027_build"
 Option Explicit
 
 Const ASM_NAME As String = "SUSP_2027"
-Const N_BODIES As Long = 147
+Const N_BODIES As Long = 149
 Const N_REFS As Long = 136
 Const N_MATES As Long = 68
 
@@ -501,7 +501,49 @@ Private Function BeginAsm(ByVal nm As String) As Boolean
     ' saved first: the fallback selection names end in @<assembly name>
     If Not SaveAsFile(nm & ".SLDASM") Then Exit Function
     gAsmTitle = nm
+    ActivateAsm
     BeginAsm = True
+End Function
+
+' AddComponent works on the active, visible assembly.
+Private Sub ActivateAsm()
+    Dim e As Long, d As Object
+    On Error Resume Next
+    Set d = swApp.ActivateDoc3(swModel.GetTitle, False, 1, e)
+    If Not d Is Nothing Then Set swModel = d
+End Sub
+
+Private Function ActiveTitle() As String
+    On Error Resume Next
+    ActiveTitle = swApp.ActiveDoc.GetTitle
+End Function
+
+' AddComponent needs the file loaded in memory. The parts are (built in this run);
+' a part that is not is opened without a window, then the assembly is active again.
+Private Sub LoadDoc(ByVal p As String, ByVal ext As String)
+    Dim e As Long, w As Long, t As Long, d As Object
+    On Error Resume Next
+    Set d = swApp.GetOpenDocumentByName(p)
+    If Not d Is Nothing Then Exit Sub
+    t = 1
+    If ext = ".SLDASM" Then t = 2
+    Set d = swApp.OpenDoc6(p, t, 1, "", e, w)
+    On Error GoTo 0
+    LogLine "loaded " & FileOf(p) & " from disk (error " & e & ")"
+    ActivateAsm
+End Sub
+
+' The same insertion through the list method, at the identity.
+Private Function AddByList(ByVal p As String) As Object
+    Dim nms(0) As String, tr(15) As Double, cs(0) As String
+    Dim vn As Variant, vt As Variant, vc As Variant, res As Variant
+    nms(0) = p
+    tr(0) = 1: tr(4) = 1: tr(8) = 1: tr(12) = 1
+    cs(0) = ""
+    vn = nms: vt = tr: vc = cs
+    On Error Resume Next
+    res = swModel.AddComponents3((vn), (vt), (vc))
+    If IsArray(res) Then Set AddByList = res(LBound(res))
 End Function
 
 ' Every part was modelled in place and every mate holds there: a component that is
@@ -540,17 +582,26 @@ End Sub
 
 ' Every part is modelled in the assembly's coordinates: it goes in at the identity.
 Private Sub AddComp(ByVal nm As String, ByVal ext As String, ByVal fixIt As Boolean)
-    Dim c As Object, p As String
+    Dim c As Object, p As String, why As String
     p = gDir & nm & ext
+    LoadDoc p, ext
     On Error Resume Next
     Set c = swModel.AddComponent5(p, 0, "", False, "", 0, 0, 0)
     If c Is Nothing Then
+        If Err.Number <> 0 Then why = "; AddComponent5: " & Err.Description
         Err.Clear
         Set c = swModel.AddComponent4(p, "", 0, 0, 0)
     End If
+    If c Is Nothing Then
+        If Err.Number <> 0 Then why = why & "; AddComponent4: " & Err.Description
+        Err.Clear
+        Set c = AddByList(p)
+    End If
     On Error GoTo 0
     If c Is Nothing Then
-        LogLine "FAIL add component " & nm & " to " & gCur
+        gOtherFailed = gOtherFailed + 1
+        LogLine "FAIL add component " & nm & " to " & gCur & " (file found: " & _
+            (Len(Dir(p)) > 0) & "; active document: " & ActiveTitle() & why & ")"
         Exit Sub
     End If
     PlaceAtOrigin c, nm
@@ -623,8 +674,8 @@ Private Sub MakeFlexible(ByVal nm As String)
     End If
 End Sub
 
-' The parts and corners were made without windows (such documents cannot be shown
-' later): close all of them and open the top assembly again, visible.
+' The parts were made without windows (such documents cannot be shown later):
+' close everything this macro made and open the top assembly again.
 Private Sub ReopenTop()
     Dim e As Long, w As Long, doc As Object, still As String
     gCur = ASM_NAME
@@ -763,19 +814,19 @@ End Sub
 
 Private Sub Part_SUSP_FL_chassis_mounts()
     If Not BeginPart("SUSP_FL_chassis_mounts") Then Exit Sub
-    Cyl "SUSP_FL_rocker_bracket_a", -0.233339821, -0.17998534, -0.305616242, -0.260671496, -0.186590237, -0.322559227, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_FL_rocker_bracket_b", -0.228431625, -0.170584918, -0.317198501, -0.287928504, -0.188609763, -0.357040773, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_FL_coilover_bracket_a", -0.223895455, -0.399749585, -0.320793394, -0.226468825, -0.388188517, -0.353092885, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_FL_coilover_bracket_b", -0.223211089, -0.403672119, -0.322251925, -0.238858375, -0.389106483, -0.368766315, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_FL_rocker_bracket_a", -0.258163099, 0.0423618155, -0.246567387, -0.243538091, 0.0433700943, -0.269614046, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_FL_rocker_bracket_b", -0.242456444, -0.0167179422, -0.275707536, -0.229361909, 0.00176990572, -0.271725954, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_FL_coilover_bracket_a", -0.205, 0.0125, -0.054883, -0.18619256, 0.0407122883, -0.0822950209, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_FL_coilover_bracket_b", -0.205, 0.0125, -0.054883, -0.17974884, 0.0218031117, -0.0832549791, 0.014, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_UCA_IN_FRONT", -0.255, -0.22147, -0.254503
     RefAxis "A_UCA_PIVOT", -0.255, -0.22147, -0.254503, -0.255, -0.0145, -0.244753
     RefPoint "P_LCA_IN_FRONT", -0.205, -0.24084, -0.042383
     RefAxis "A_LCA_PIVOT", -0.205, -0.24084, -0.042383, -0.205, 0, -0.042383
     RefPoint "P_TIE_ROD_IN", -0.27, -0.0904, -0.0823915
-    RefPoint "P_ROCKER_PIVOT", -0.2743, -0.1876, -0.3398
-    RefAxis "A_ROCKER", -0.292884324, -0.18897695, -0.363310145, -0.255715676, -0.18622305, -0.316289855
-    RefPoint "P_DAMPER_CHASSIS", -0.2326636, -0.3886475, -0.3609296
+    RefPoint "P_ROCKER_PIVOT", -0.23645, 0.02257, -0.27067
+    RefAxis "A_ROCKER", -0.226784421, -0.00579376493, -0.272109937, -0.246115579, 0.0509337649, -0.269230063
+    RefPoint "P_DAMPER_CHASSIS", -0.1829707, 0.0312577, -0.082775
     EndPart "SUSP_FL_chassis_mounts"
 End Sub
 
@@ -798,10 +849,12 @@ Private Sub Part_SUSP_FL_LCA()
     Cyl "SUSP_FL_LCA_rear_leg", -0.205, 0, -0.042383, -0.582, -0.130461196, -0.055, 0.01905, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_FL_LCA_bush_front", -0.205, -0.25584, -0.042383, -0.205, -0.22584, -0.042383, 0.028, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_FL_LCA_bush_rear", -0.205, -0.015, -0.042383, -0.205, 0.015, -0.042383, 0.028, 0, 0.15, 0.39, 0.92
+    Cyl "SUSP_FL_pushrod_mount_bracket", -0.52647569, -0.111246958, -0.0531417766, -0.5336, -0.08868, -0.07361, 0.016, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_IN_FRONT", -0.205, -0.24084, -0.042383
     RefPoint "P_IN_REAR", -0.205, 0, -0.042383
     RefPoint "P_OUT", -0.582, -0.130461196, -0.055
+    RefPoint "P_ROD_MOUNT", -0.5336, -0.08868, -0.07361
     EndPart "SUSP_FL_LCA"
 End Sub
 
@@ -819,7 +872,6 @@ Private Sub Part_SUSP_FL_upright()
     RefPoint "P_TIE_ROD_OUT", -0.590293517, -0.204990503, -0.103750386
     RefPoint "P_WHEEL_CENTER", -0.613584449, -0.1204, -0.17
     RefAxis "A_SPIN", -0.583594729, -0.1204, -0.169214692, -0.643574169, -0.1204, -0.170785308
-    RefPoint "P_ROD_MOUNT", -0.57275, -0.1259, -0.10749
     EndPart "SUSP_FL_upright"
 End Sub
 
@@ -836,49 +888,49 @@ End Sub
 
 Private Sub Part_SUSP_FL_pushrod()
     If Not BeginPart("SUSP_FL_pushrod") Then Exit Sub
-    Cyl "SUSP_FL_pushrod", -0.57275, -0.1259, -0.10749, -0.2762237, -0.1248665, -0.3419564, 0.016, 0, 0.92, 0.35, 0.05
-    Cyl "SUSP_FL_pushrod_rod_end_mount", -0.577086342, -0.126221288, -0.1129757, -0.568413658, -0.125578712, -0.1020043, 0.022, 0, 0.92, 0.35, 0.05
-    Cyl "SUSP_FL_pushrod_rod_end_rocker", -0.280560042, -0.125187788, -0.3474421, -0.271887358, -0.124545212, -0.3364707, 0.022, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_FL_pushrod", -0.5336, -0.08868, -0.07361, -0.2706098, 0.0130458, -0.3123566, 0.016, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_FL_pushrod_rod_end_mount", -0.531344698, -0.0952982118, -0.0739459854, -0.535855302, -0.0820617882, -0.0732740146, 0.022, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_FL_pushrod_rod_end_rocker", -0.268354498, 0.00642758818, -0.312692585, -0.272865102, 0.0196640118, -0.312020615, 0.022, 0, 0.92, 0.35, 0.05
     RefOpen
-    RefPoint "P_MOUNT", -0.57275, -0.1259, -0.10749
-    RefPoint "P_ROCKER", -0.2762237, -0.1248665, -0.3419564
+    RefPoint "P_MOUNT", -0.5336, -0.08868, -0.07361
+    RefPoint "P_ROCKER", -0.2706098, 0.0130458, -0.3123566
     EndPart "SUSP_FL_pushrod"
 End Sub
 
 Private Sub Part_SUSP_FL_rocker()
     If Not BeginPart("SUSP_FL_rocker") Then Exit Sub
-    Cyl "SUSP_FL_rocker_boss", -0.287928504, -0.188609763, -0.357040773, -0.260671496, -0.186590237, -0.322559227, 0.032, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FL_rocker_arm_rod", -0.2743, -0.1876, -0.3398, -0.2762237, -0.1248665, -0.3419564, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FL_rocker_arm_damper", -0.2743, -0.1876, -0.3398, -0.214735, -0.1994384, -0.3861926, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FL_rocker_edge", -0.2762237, -0.1248665, -0.3419564, -0.214735, -0.1994384, -0.3861926, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FL_rocker_bolt_rod", -0.288613249, -0.125784467, -0.35762983, -0.263834151, -0.123948533, -0.32628297, 0.01, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FL_rocker_bolt_damper", -0.227124549, -0.200356367, -0.40186603, -0.202345451, -0.198520433, -0.37051917, 0.01, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FL_rocker_boss", -0.229361909, 0.00176990572, -0.271725954, -0.243538091, 0.0433700943, -0.269614046, 0.032, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FL_rocker_arm_rod", -0.23645, 0.02257, -0.27067, -0.2706098, 0.0130458, -0.3123566, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FL_rocker_arm_damper", -0.23645, 0.02257, -0.27067, -0.1936315, 0.0373313, -0.2740491, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FL_rocker_edge", -0.2706098, 0.0130458, -0.3123566, -0.1936315, 0.0373313, -0.2740491, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FL_rocker_bolt_rod", -0.264166081, -0.00586337662, -0.313316558, -0.277053519, 0.0319549766, -0.311396642, 0.01, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FL_rocker_bolt_damper", -0.187187781, 0.0184221234, -0.275009058, -0.200075219, 0.0562404766, -0.273089142, 0.01, 0, 0.49, 0.23, 0.93
     RefOpen
-    RefPoint "P_PIVOT", -0.2743, -0.1876, -0.3398
-    RefPoint "P_PIVOT_B", -0.261910451, -0.186682033, -0.32412657
-    RefPoint "P_ROD", -0.2762237, -0.1248665, -0.3419564
-    RefPoint "P_DAMPER", -0.214735, -0.1994384, -0.3861926
+    RefPoint "P_PIVOT", -0.23645, 0.02257, -0.27067
+    RefPoint "P_PIVOT_B", -0.242893719, 0.0414791766, -0.269710042
+    RefPoint "P_ROD", -0.2706098, 0.0130458, -0.3123566
+    RefPoint "P_DAMPER", -0.1936315, 0.0373313, -0.2740491
     EndPart "SUSP_FL_rocker"
 End Sub
 
 Private Sub Part_SUSP_FL_damper_body()
     If Not BeginPart("SUSP_FL_damper_body") Then Exit Sub
-    Cyl "SUSP_FL_coilover_eye_chassis", -0.238858375, -0.389106483, -0.368766315, -0.226468825, -0.388188517, -0.353092885, 0.04, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_FL_coilover_body", -0.230793391, -0.368910288, -0.363564892, -0.22280287, -0.284582495, -0.37482425, 0.046, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_FL_coilover_spring", -0.22818145, -0.341345225, -0.36724535, -0.21921715, -0.246740675, -0.37987685, 0.06, 0.048, 0.95, 0.75, 0.1
+    Cyl "SUSP_FL_coilover_eye_chassis", -0.17974884, 0.0218031117, -0.0832549791, -0.18619256, 0.0407122883, -0.0822950209, 0.04, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_FL_coilover_body", -0.184083128, 0.0318914651, -0.102733979, -0.18883414, 0.03459818, -0.187975755, 0.046, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_FL_coilover_spring", -0.1856359, 0.0327761, -0.130593525, -0.1909663, 0.0358129, -0.226230575, 0.06, 0.048, 0.95, 0.75, 0.1
     RefOpen
-    RefPoint "P_EYE", -0.2326636, -0.3886475, -0.3609296
-    RefAxis "A_AXIS", -0.2326636, -0.3886475, -0.3609296, -0.214735, -0.1994384, -0.3861926
+    RefPoint "P_EYE", -0.1829707, 0.0312577, -0.082775
+    RefAxis "A_AXIS", -0.1829707, 0.0312577, -0.082775, -0.1936315, 0.0373313, -0.2740491
     EndPart "SUSP_FL_damper_body"
 End Sub
 
 Private Sub Part_SUSP_FL_damper_shaft()
     If Not BeginPart("SUSP_FL_damper_shaft") Then Exit Sub
-    Cyl "SUSP_FL_coilover_eye_rocker", -0.220929775, -0.199897383, -0.394029315, -0.208540225, -0.198979417, -0.378355885, 0.04, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_FL_coilover_shaft", -0.22280287, -0.284582495, -0.37482425, -0.216605209, -0.219175612, -0.383557308, 0.014, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_FL_coilover_eye_rocker", -0.19040964, 0.0278767117, -0.274529079, -0.19685336, 0.0467858883, -0.273569121, 0.04, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_FL_coilover_shaft", -0.18883414, 0.03459818, -0.187975755, -0.192519072, 0.0366975349, -0.254090121, 0.014, 0, 0.09, 0.64, 0.29
     RefOpen
-    RefPoint "P_EYE", -0.214735, -0.1994384, -0.3861926
-    RefAxis "A_AXIS", -0.214735, -0.1994384, -0.3861926, -0.2326636, -0.3886475, -0.3609296
+    RefPoint "P_EYE", -0.1936315, 0.0373313, -0.2740491
+    RefAxis "A_AXIS", -0.1936315, 0.0373313, -0.2740491, -0.1829707, 0.0312577, -0.082775
     EndPart "SUSP_FL_damper_shaft"
 End Sub
 
@@ -893,19 +945,19 @@ End Sub
 
 Private Sub Part_SUSP_FR_chassis_mounts()
     If Not BeginPart("SUSP_FR_chassis_mounts") Then Exit Sub
-    Cyl "SUSP_FR_rocker_bracket_a", 0.228431625, -0.170584918, -0.317198501, 0.287928504, -0.188609763, -0.357040773, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_FR_rocker_bracket_b", 0.233339821, -0.17998534, -0.305616242, 0.260671496, -0.186590237, -0.322559227, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_FR_coilover_bracket_a", 0.223211089, -0.403672119, -0.322251925, 0.238858375, -0.389106483, -0.368766315, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_FR_coilover_bracket_b", 0.223895455, -0.399749585, -0.320793394, 0.226468825, -0.388188517, -0.353092885, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_FR_rocker_bracket_a", 0.242456444, -0.0167179422, -0.275707536, 0.229361909, 0.00176990572, -0.271725954, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_FR_rocker_bracket_b", 0.258163099, 0.0423618155, -0.246567387, 0.243538091, 0.0433700943, -0.269614046, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_FR_coilover_bracket_a", 0.212663726, -0.00222248482, -0.0734011676, 0.17974884, 0.0218031117, -0.0832549791, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_FR_coilover_bracket_b", 0.181411527, 0.0321416785, -0.038654862, 0.18619256, 0.0407122883, -0.0822950209, 0.014, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_UCA_IN_FRONT", 0.255, -0.22147, -0.254503
     RefAxis "A_UCA_PIVOT", 0.255, -0.22147, -0.254503, 0.255, -0.0145, -0.244753
     RefPoint "P_LCA_IN_FRONT", 0.205, -0.24084, -0.042383
     RefAxis "A_LCA_PIVOT", 0.205, -0.24084, -0.042383, 0.205, 0, -0.042383
     RefPoint "P_TIE_ROD_IN", 0.27, -0.0904, -0.0823915
-    RefPoint "P_ROCKER_PIVOT", 0.2743, -0.1876, -0.3398
-    RefAxis "A_ROCKER", 0.255715676, -0.18622305, -0.316289855, 0.292884324, -0.18897695, -0.363310145
-    RefPoint "P_DAMPER_CHASSIS", 0.2326636, -0.3886475, -0.3609296
+    RefPoint "P_ROCKER_PIVOT", 0.23645, 0.02257, -0.27067
+    RefAxis "A_ROCKER", 0.246115579, 0.0509337649, -0.269230063, 0.226784421, -0.00579376493, -0.272109937
+    RefPoint "P_DAMPER_CHASSIS", 0.1829707, 0.0312577, -0.082775
     EndPart "SUSP_FR_chassis_mounts"
 End Sub
 
@@ -928,10 +980,12 @@ Private Sub Part_SUSP_FR_LCA()
     Cyl "SUSP_FR_LCA_rear_leg", 0.205, 0, -0.042383, 0.582, -0.130461196, -0.055, 0.01905, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_FR_LCA_bush_front", 0.205, -0.25584, -0.042383, 0.205, -0.22584, -0.042383, 0.028, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_FR_LCA_bush_rear", 0.205, -0.015, -0.042383, 0.205, 0.015, -0.042383, 0.028, 0, 0.15, 0.39, 0.92
+    Cyl "SUSP_FR_pushrod_mount_bracket", 0.52647569, -0.111246958, -0.0531417766, 0.5336, -0.08868, -0.07361, 0.016, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_IN_FRONT", 0.205, -0.24084, -0.042383
     RefPoint "P_IN_REAR", 0.205, 0, -0.042383
     RefPoint "P_OUT", 0.582, -0.130461196, -0.055
+    RefPoint "P_ROD_MOUNT", 0.5336, -0.08868, -0.07361
     EndPart "SUSP_FR_LCA"
 End Sub
 
@@ -949,7 +1003,6 @@ Private Sub Part_SUSP_FR_upright()
     RefPoint "P_TIE_ROD_OUT", 0.590293517, -0.204990503, -0.103750386
     RefPoint "P_WHEEL_CENTER", 0.613584449, -0.1204, -0.17
     RefAxis "A_SPIN", 0.583594729, -0.1204, -0.169214692, 0.643574169, -0.1204, -0.170785308
-    RefPoint "P_ROD_MOUNT", 0.57275, -0.1259, -0.10749
     EndPart "SUSP_FR_upright"
 End Sub
 
@@ -966,49 +1019,49 @@ End Sub
 
 Private Sub Part_SUSP_FR_pushrod()
     If Not BeginPart("SUSP_FR_pushrod") Then Exit Sub
-    Cyl "SUSP_FR_pushrod", 0.57275, -0.1259, -0.10749, 0.2762237, -0.1248665, -0.3419564, 0.016, 0, 0.92, 0.35, 0.05
-    Cyl "SUSP_FR_pushrod_rod_end_mount", 0.568413658, -0.125578712, -0.1020043, 0.577086342, -0.126221288, -0.1129757, 0.022, 0, 0.92, 0.35, 0.05
-    Cyl "SUSP_FR_pushrod_rod_end_rocker", 0.271887358, -0.124545212, -0.3364707, 0.280560042, -0.125187788, -0.3474421, 0.022, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_FR_pushrod", 0.5336, -0.08868, -0.07361, 0.2706098, 0.0130458, -0.3123566, 0.016, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_FR_pushrod_rod_end_mount", 0.535855302, -0.0820617882, -0.0732740146, 0.531344698, -0.0952982118, -0.0739459854, 0.022, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_FR_pushrod_rod_end_rocker", 0.272865102, 0.0196640118, -0.312020615, 0.268354498, 0.00642758818, -0.312692585, 0.022, 0, 0.92, 0.35, 0.05
     RefOpen
-    RefPoint "P_MOUNT", 0.57275, -0.1259, -0.10749
-    RefPoint "P_ROCKER", 0.2762237, -0.1248665, -0.3419564
+    RefPoint "P_MOUNT", 0.5336, -0.08868, -0.07361
+    RefPoint "P_ROCKER", 0.2706098, 0.0130458, -0.3123566
     EndPart "SUSP_FR_pushrod"
 End Sub
 
 Private Sub Part_SUSP_FR_rocker()
     If Not BeginPart("SUSP_FR_rocker") Then Exit Sub
-    Cyl "SUSP_FR_rocker_boss", 0.260671496, -0.186590237, -0.322559227, 0.287928504, -0.188609763, -0.357040773, 0.032, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FR_rocker_arm_rod", 0.2743, -0.1876, -0.3398, 0.2762237, -0.1248665, -0.3419564, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FR_rocker_arm_damper", 0.2743, -0.1876, -0.3398, 0.214735, -0.1994384, -0.3861926, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FR_rocker_edge", 0.2762237, -0.1248665, -0.3419564, 0.214735, -0.1994384, -0.3861926, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FR_rocker_bolt_rod", 0.263834151, -0.123948533, -0.32628297, 0.288613249, -0.125784467, -0.35762983, 0.01, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_FR_rocker_bolt_damper", 0.202345451, -0.198520433, -0.37051917, 0.227124549, -0.200356367, -0.40186603, 0.01, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FR_rocker_boss", 0.243538091, 0.0433700943, -0.269614046, 0.229361909, 0.00176990572, -0.271725954, 0.032, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FR_rocker_arm_rod", 0.23645, 0.02257, -0.27067, 0.2706098, 0.0130458, -0.3123566, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FR_rocker_arm_damper", 0.23645, 0.02257, -0.27067, 0.1936315, 0.0373313, -0.2740491, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FR_rocker_edge", 0.2706098, 0.0130458, -0.3123566, 0.1936315, 0.0373313, -0.2740491, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FR_rocker_bolt_rod", 0.277053519, 0.0319549766, -0.311396642, 0.264166081, -0.00586337662, -0.313316558, 0.01, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_FR_rocker_bolt_damper", 0.200075219, 0.0562404766, -0.273089142, 0.187187781, 0.0184221234, -0.275009058, 0.01, 0, 0.49, 0.23, 0.93
     RefOpen
-    RefPoint "P_PIVOT", 0.2743, -0.1876, -0.3398
-    RefPoint "P_PIVOT_B", 0.286689549, -0.188517967, -0.35547343
-    RefPoint "P_ROD", 0.2762237, -0.1248665, -0.3419564
-    RefPoint "P_DAMPER", 0.214735, -0.1994384, -0.3861926
+    RefPoint "P_PIVOT", 0.23645, 0.02257, -0.27067
+    RefPoint "P_PIVOT_B", 0.230006281, 0.00366082338, -0.271629958
+    RefPoint "P_ROD", 0.2706098, 0.0130458, -0.3123566
+    RefPoint "P_DAMPER", 0.1936315, 0.0373313, -0.2740491
     EndPart "SUSP_FR_rocker"
 End Sub
 
 Private Sub Part_SUSP_FR_damper_body()
     If Not BeginPart("SUSP_FR_damper_body") Then Exit Sub
-    Cyl "SUSP_FR_coilover_eye_chassis", 0.226468825, -0.388188517, -0.353092885, 0.238858375, -0.389106483, -0.368766315, 0.04, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_FR_coilover_body", 0.230793391, -0.368910288, -0.363564892, 0.22280287, -0.284582495, -0.37482425, 0.046, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_FR_coilover_spring", 0.22818145, -0.341345225, -0.36724535, 0.21921715, -0.246740675, -0.37987685, 0.06, 0.048, 0.95, 0.75, 0.1
+    Cyl "SUSP_FR_coilover_eye_chassis", 0.18619256, 0.0407122883, -0.0822950209, 0.17974884, 0.0218031117, -0.0832549791, 0.04, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_FR_coilover_body", 0.184083128, 0.0318914651, -0.102733979, 0.18883414, 0.03459818, -0.187975755, 0.046, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_FR_coilover_spring", 0.1856359, 0.0327761, -0.130593525, 0.1909663, 0.0358129, -0.226230575, 0.06, 0.048, 0.95, 0.75, 0.1
     RefOpen
-    RefPoint "P_EYE", 0.2326636, -0.3886475, -0.3609296
-    RefAxis "A_AXIS", 0.2326636, -0.3886475, -0.3609296, 0.214735, -0.1994384, -0.3861926
+    RefPoint "P_EYE", 0.1829707, 0.0312577, -0.082775
+    RefAxis "A_AXIS", 0.1829707, 0.0312577, -0.082775, 0.1936315, 0.0373313, -0.2740491
     EndPart "SUSP_FR_damper_body"
 End Sub
 
 Private Sub Part_SUSP_FR_damper_shaft()
     If Not BeginPart("SUSP_FR_damper_shaft") Then Exit Sub
-    Cyl "SUSP_FR_coilover_eye_rocker", 0.208540225, -0.198979417, -0.378355885, 0.220929775, -0.199897383, -0.394029315, 0.04, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_FR_coilover_shaft", 0.22280287, -0.284582495, -0.37482425, 0.216605209, -0.219175612, -0.383557308, 0.014, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_FR_coilover_eye_rocker", 0.19685336, 0.0467858883, -0.273569121, 0.19040964, 0.0278767117, -0.274529079, 0.04, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_FR_coilover_shaft", 0.18883414, 0.03459818, -0.187975755, 0.192519072, 0.0366975349, -0.254090121, 0.014, 0, 0.09, 0.64, 0.29
     RefOpen
-    RefPoint "P_EYE", 0.214735, -0.1994384, -0.3861926
-    RefAxis "A_AXIS", 0.214735, -0.1994384, -0.3861926, 0.2326636, -0.3886475, -0.3609296
+    RefPoint "P_EYE", 0.1936315, 0.0373313, -0.2740491
+    RefAxis "A_AXIS", 0.1936315, 0.0373313, -0.2740491, 0.1829707, 0.0312577, -0.082775
     EndPart "SUSP_FR_damper_shaft"
 End Sub
 
@@ -1023,19 +1076,19 @@ End Sub
 
 Private Sub Part_SUSP_RL_chassis_mounts()
     If Not BeginPart("SUSP_RL_chassis_mounts") Then Exit Sub
-    Cyl "SUSP_RL_rocker_bracket_a", -0.271059739, 1.13890186, -0.263789414, -0.285167139, 1.14253194, -0.2898845, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_RL_rocker_bracket_b", -0.271648875, 1.13610327, -0.26386023, -0.314832861, 1.14666806, -0.3221155, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_RL_coilover_bracket_a", -0.312661144, 0.941280998, -0.268789991, -0.303019191, 0.940440071, -0.315771373, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_RL_coilover_bracket_b", -0.312928933, 0.940008909, -0.26882218, -0.316503609, 0.942320129, -0.330421827, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_RL_rocker_bracket_a", -0.207680512, 1.32773745, -0.272171291, -0.192000381, 1.37706938, -0.302542206, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_RL_rocker_bracket_b", -0.205415781, 1.31545086, -0.290959328, -0.200039619, 1.33381062, -0.302317794, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_RL_coilover_bracket_a", -0.1393451, 1.3203211, -0.053599, -0.1393451, 1.35621924, -0.0835071028, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_RL_coilover_bracket_b", -0.1429993, 1.3203211, -0.053599, -0.1429993, 1.33655616, -0.0834050972, 0.014, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_UCA_IN_FRONT", -0.255, 1.2151911, -0.261859
     RefAxis "A_UCA_PIVOT", -0.255, 1.2151911, -0.261859, -0.21, 1.3403211, -0.252929
     RefPoint "P_LCA_IN_FRONT", -0.215, 1.1516011, -0.053649
     RefAxis "A_LCA_PIVOT", -0.215, 1.1516011, -0.053649, -0.175, 1.3203211, -0.053599
     RefPoint "P_TIE_ROD_IN", -0.175, 1.3196, -0.094
-    RefPoint "P_ROCKER_PIVOT", -0.3, 1.1446, -0.306
-    RefAxis "A_ROCKER", -0.320226628, 1.14742009, -0.327975682, -0.279773372, 1.14177991, -0.284024318
-    RefPoint "P_DAMPER_CHASSIS", -0.3097614, 0.9413801, -0.3230966
+    RefPoint "P_ROCKER_PIVOT", -0.19602, 1.35544, -0.30243
+    RefAxis "A_ROCKER", -0.201501299, 1.32594539, -0.302276992, -0.190538701, 1.38493461, -0.302583008
+    RefPoint "P_DAMPER_CHASSIS", -0.1411722, 1.3463877, -0.0834561
     EndPart "SUSP_RL_chassis_mounts"
 End Sub
 
@@ -1045,10 +1098,12 @@ Private Sub Part_SUSP_RL_UCA()
     Cyl "SUSP_RL_UCA_rear_leg", -0.21, 1.3403211, -0.252929, -0.519692129, 1.4196, -0.315338646, 0.01905, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_RL_UCA_bush_front", -0.260064711, 1.20110783, -0.262864064, -0.249935289, 1.22927437, -0.260853936, 0.028, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_RL_UCA_bush_rear", -0.215064711, 1.32623783, -0.253934064, -0.204935289, 1.35440437, -0.251923936, 0.028, 0, 0.15, 0.39, 0.92
+    Cyl "SUSP_RL_pushrod_mount_bracket", -0.472226326, 1.4074491, -0.305773262, -0.46773, 1.4058, -0.33018, 0.016, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_IN_FRONT", -0.255, 1.2151911, -0.261859
     RefPoint "P_IN_REAR", -0.21, 1.3403211, -0.252929
     RefPoint "P_OUT", -0.519692129, 1.4196, -0.315338646
+    RefPoint "P_ROD_MOUNT", -0.46773, 1.4058, -0.33018
     EndPart "SUSP_RL_UCA"
 End Sub
 
@@ -1058,12 +1113,10 @@ Private Sub Part_SUSP_RL_LCA()
     Cyl "SUSP_RL_LCA_rear_leg", -0.175, 1.3203211, -0.053599, -0.5586, 1.4196, -0.055, 0.01905, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_RL_LCA_bush_front", -0.218460272, 1.13700567, -0.0536533253, -0.211539728, 1.16619653, -0.0536446747, 0.028, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_RL_LCA_bush_rear", -0.178460272, 1.30572567, -0.0536033253, -0.171539728, 1.33491653, -0.0535946747, 0.028, 0, 0.15, 0.39, 0.92
-    Cyl "SUSP_RL_pushrod_mount_bracket", -0.526853644, 1.39483868, -0.0548751766, -0.527, 1.3946, -0.065, 0.016, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_IN_FRONT", -0.215, 1.1516011, -0.053649
     RefPoint "P_IN_REAR", -0.175, 1.3203211, -0.053599
     RefPoint "P_OUT", -0.5586, 1.4196, -0.055
-    RefPoint "P_ROD_MOUNT", -0.527, 1.3946, -0.065
     EndPart "SUSP_RL_LCA"
 End Sub
 
@@ -1097,49 +1150,49 @@ End Sub
 
 Private Sub Part_SUSP_RL_pushrod()
     If Not BeginPart("SUSP_RL_pushrod") Then Exit Sub
-    Cyl "SUSP_RL_pushrod", -0.527, 1.3946, -0.065, -0.2786753, 1.1875665, -0.3201117, 0.016, 0, 0.92, 0.35, 0.05
-    Cyl "SUSP_RL_pushrod_rod_end_mount", -0.531719547, 1.39525802, -0.0701276592, -0.522280453, 1.39394198, -0.0598723408, 0.022, 0, 0.92, 0.35, 0.05
-    Cyl "SUSP_RL_pushrod_rod_end_rocker", -0.283394847, 1.18822452, -0.325239359, -0.273955753, 1.18690848, -0.314984041, 0.022, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_RL_pushrod", -0.46773, 1.4058, -0.33018, -0.2187261, 1.3591832, -0.3938996, 0.016, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_RL_pushrod_rod_end_mount", -0.46900897, 1.39891792, -0.330144298, -0.46645103, 1.41268208, -0.330215702, 0.022, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_RL_pushrod_rod_end_rocker", -0.22000507, 1.35230112, -0.393863898, -0.21744713, 1.36606528, -0.393935302, 0.022, 0, 0.92, 0.35, 0.05
     RefOpen
-    RefPoint "P_MOUNT", -0.527, 1.3946, -0.065
-    RefPoint "P_ROCKER", -0.2786753, 1.1875665, -0.3201117
+    RefPoint "P_MOUNT", -0.46773, 1.4058, -0.33018
+    RefPoint "P_ROCKER", -0.2187261, 1.3591832, -0.3938996
     EndPart "SUSP_RL_pushrod"
 End Sub
 
 Private Sub Part_SUSP_RL_rocker()
     If Not BeginPart("SUSP_RL_rocker") Then Exit Sub
-    Cyl "SUSP_RL_rocker_boss", -0.314832861, 1.14666806, -0.3221155, -0.285167139, 1.14253194, -0.2898845, 0.032, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RL_rocker_arm_rod", -0.3, 1.1446, -0.306, -0.2786753, 1.1875665, -0.3201117, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RL_rocker_arm_damper", -0.3, 1.1446, -0.306, -0.2524324, 1.1218255, -0.3527009, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RL_rocker_edge", -0.2786753, 1.1875665, -0.3201117, -0.2524324, 1.1218255, -0.3527009, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RL_rocker_bolt_rod", -0.292159719, 1.18944656, -0.334762155, -0.265190881, 1.18568644, -0.305461245, 0.01, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RL_rocker_bolt_damper", -0.265916819, 1.12370556, -0.367351355, -0.238947981, 1.11994544, -0.338050445, 0.01, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RL_rocker_boss", -0.200039619, 1.33381062, -0.302317794, -0.192000381, 1.37706938, -0.302542206, 0.032, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RL_rocker_arm_rod", -0.19602, 1.35544, -0.30243, -0.2187261, 1.3591832, -0.3938996, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RL_rocker_arm_damper", -0.19602, 1.35544, -0.30243, -0.0883997, 1.3356188, -0.2673308, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RL_rocker_edge", -0.2187261, 1.3591832, -0.3938996, -0.0883997, 1.3356188, -0.2673308, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RL_rocker_bolt_rod", -0.222380299, 1.33952013, -0.393797594, -0.215071901, 1.37884627, -0.394001606, 0.01, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RL_rocker_bolt_damper", -0.0920538993, 1.31595573, -0.267228794, -0.0847455007, 1.35528187, -0.267432806, 0.01, 0, 0.49, 0.23, 0.93
     RefOpen
-    RefPoint "P_PIVOT", -0.3, 1.1446, -0.306
-    RefPoint "P_PIVOT_B", -0.286515581, 1.14271994, -0.291349545
-    RefPoint "P_ROD", -0.2786753, 1.1875665, -0.3201117
-    RefPoint "P_DAMPER", -0.2524324, 1.1218255, -0.3527009
+    RefPoint "P_PIVOT", -0.19602, 1.35544, -0.30243
+    RefPoint "P_PIVOT_B", -0.192365801, 1.37510307, -0.302532006
+    RefPoint "P_ROD", -0.2187261, 1.3591832, -0.3938996
+    RefPoint "P_DAMPER", -0.0883997, 1.3356188, -0.2673308
     EndPart "SUSP_RL_rocker"
 End Sub
 
 Private Sub Part_SUSP_RL_damper_body()
     If Not BeginPart("SUSP_RL_damper_body") Then Exit Sub
-    Cyl "SUSP_RL_coilover_eye_chassis", -0.316503609, 0.942320129, -0.330421827, -0.303019191, 0.940440071, -0.315771373, 0.04, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_RL_coilover_body", -0.303778222, 0.9602124, -0.326186272, -0.27823045, 1.04062507, -0.339378965, 0.046, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_RL_coilover_spring", -0.29542915, 0.98649145, -0.330497675, -0.26676465, 1.07671415, -0.345299825, 0.06, 0.048, 0.95, 0.75, 0.1
+    Cyl "SUSP_RL_coilover_eye_chassis", -0.1429993, 1.33655616, -0.0834050972, -0.1393451, 1.35621924, -0.0835071028, 0.04, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_RL_coilover_body", -0.135663607, 1.3452636, -0.102649636, -0.112147325, 1.34046481, -0.184587185, 0.046, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_RL_coilover_spring", -0.127979075, 1.34369548, -0.129424775, -0.101592825, 1.33831102, -0.221362125, 0.06, 0.048, 0.95, 0.75, 0.1
     RefOpen
-    RefPoint "P_EYE", -0.3097614, 0.9413801, -0.3230966
-    RefAxis "A_AXIS", -0.3097614, 0.9413801, -0.3230966, -0.2524324, 1.1218255, -0.3527009
+    RefPoint "P_EYE", -0.1411722, 1.3463877, -0.0834561
+    RefAxis "A_AXIS", -0.1411722, 1.3463877, -0.0834561, -0.0883997, 1.3356188, -0.2673308
     EndPart "SUSP_RL_damper_body"
 End Sub
 
 Private Sub Part_SUSP_RL_damper_shaft()
     If Not BeginPart("SUSP_RL_damper_shaft") Then Exit Sub
-    Cyl "SUSP_RL_coilover_eye_rocker", -0.259174609, 1.12276553, -0.360026127, -0.245690191, 1.12088547, -0.345375673, 0.04, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_RL_coilover_shaft", -0.27823045, 1.04062507, -0.339378965, -0.258415578, 1.1029932, -0.349611228, 0.014, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_RL_coilover_eye_rocker", -0.0902267997, 1.32578726, -0.267279797, -0.0865726003, 1.34545034, -0.267381803, 0.04, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_RL_coilover_shaft", -0.112147325, 1.34046481, -0.184587185, -0.0939082928, 1.3367429, -0.248137264, 0.014, 0, 0.09, 0.64, 0.29
     RefOpen
-    RefPoint "P_EYE", -0.2524324, 1.1218255, -0.3527009
-    RefAxis "A_AXIS", -0.2524324, 1.1218255, -0.3527009, -0.3097614, 0.9413801, -0.3230966
+    RefPoint "P_EYE", -0.0883997, 1.3356188, -0.2673308
+    RefAxis "A_AXIS", -0.0883997, 1.3356188, -0.2673308, -0.1411722, 1.3463877, -0.0834561
     EndPart "SUSP_RL_damper_shaft"
 End Sub
 
@@ -1154,19 +1207,19 @@ End Sub
 
 Private Sub Part_SUSP_RR_chassis_mounts()
     If Not BeginPart("SUSP_RR_chassis_mounts") Then Exit Sub
-    Cyl "SUSP_RR_rocker_bracket_a", 0.271648875, 1.13610327, -0.26386023, 0.314832861, 1.14666806, -0.3221155, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_RR_rocker_bracket_b", 0.271059739, 1.13890186, -0.263789414, 0.285167139, 1.14253194, -0.2898845, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_RR_coilover_bracket_a", 0.26786, 0.9131987, -0.3067982, 0.316503609, 0.942320129, -0.330421827, 0.014, 0, 0.6, 0.6, 0.6
-    Cyl "SUSP_RR_coilover_bracket_b", 0.26786, 0.9131987, -0.3067982, 0.303019191, 0.940440071, -0.315771373, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_RR_rocker_bracket_a", 0.205415781, 1.31545086, -0.290959328, 0.200039619, 1.33381062, -0.302317794, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_RR_rocker_bracket_b", 0.207680512, 1.32773745, -0.272171291, 0.192000381, 1.37706938, -0.302542206, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_RR_coilover_bracket_a", 0.1429993, 1.3203211, -0.053599, 0.1429993, 1.33655616, -0.0834050972, 0.014, 0, 0.6, 0.6, 0.6
+    Cyl "SUSP_RR_coilover_bracket_b", 0.1393451, 1.3203211, -0.053599, 0.1393451, 1.35621924, -0.0835071028, 0.014, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_UCA_IN_FRONT", 0.255, 1.2151911, -0.261859
     RefAxis "A_UCA_PIVOT", 0.255, 1.2151911, -0.261859, 0.21, 1.3403211, -0.252929
     RefPoint "P_LCA_IN_FRONT", 0.215, 1.1516011, -0.053649
     RefAxis "A_LCA_PIVOT", 0.215, 1.1516011, -0.053649, 0.175, 1.3203211, -0.053599
     RefPoint "P_TIE_ROD_IN", 0.175, 1.3196, -0.094
-    RefPoint "P_ROCKER_PIVOT", 0.3, 1.1446, -0.306
-    RefAxis "A_ROCKER", 0.279773372, 1.14177991, -0.284024318, 0.320226628, 1.14742009, -0.327975682
-    RefPoint "P_DAMPER_CHASSIS", 0.3097614, 0.9413801, -0.3230966
+    RefPoint "P_ROCKER_PIVOT", 0.19602, 1.35544, -0.30243
+    RefAxis "A_ROCKER", 0.190538701, 1.38493461, -0.302583008, 0.201501299, 1.32594539, -0.302276992
+    RefPoint "P_DAMPER_CHASSIS", 0.1411722, 1.3463877, -0.0834561
     EndPart "SUSP_RR_chassis_mounts"
 End Sub
 
@@ -1176,10 +1229,12 @@ Private Sub Part_SUSP_RR_UCA()
     Cyl "SUSP_RR_UCA_rear_leg", 0.21, 1.3403211, -0.252929, 0.519692129, 1.4196, -0.315338646, 0.01905, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_RR_UCA_bush_front", 0.260064711, 1.20110783, -0.262864064, 0.249935289, 1.22927437, -0.260853936, 0.028, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_RR_UCA_bush_rear", 0.215064711, 1.32623783, -0.253934064, 0.204935289, 1.35440437, -0.251923936, 0.028, 0, 0.15, 0.39, 0.92
+    Cyl "SUSP_RR_pushrod_mount_bracket", 0.472226326, 1.4074491, -0.305773262, 0.46773, 1.4058, -0.33018, 0.016, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_IN_FRONT", 0.255, 1.2151911, -0.261859
     RefPoint "P_IN_REAR", 0.21, 1.3403211, -0.252929
     RefPoint "P_OUT", 0.519692129, 1.4196, -0.315338646
+    RefPoint "P_ROD_MOUNT", 0.46773, 1.4058, -0.33018
     EndPart "SUSP_RR_UCA"
 End Sub
 
@@ -1189,12 +1244,10 @@ Private Sub Part_SUSP_RR_LCA()
     Cyl "SUSP_RR_LCA_rear_leg", 0.175, 1.3203211, -0.053599, 0.5586, 1.4196, -0.055, 0.01905, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_RR_LCA_bush_front", 0.218460272, 1.13700567, -0.0536533253, 0.211539728, 1.16619653, -0.0536446747, 0.028, 0, 0.15, 0.39, 0.92
     Cyl "SUSP_RR_LCA_bush_rear", 0.178460272, 1.30572567, -0.0536033253, 0.171539728, 1.33491653, -0.0535946747, 0.028, 0, 0.15, 0.39, 0.92
-    Cyl "SUSP_RR_pushrod_mount_bracket", 0.526853644, 1.39483868, -0.0548751766, 0.527, 1.3946, -0.065, 0.016, 0, 0.6, 0.6, 0.6
     RefOpen
     RefPoint "P_IN_FRONT", 0.215, 1.1516011, -0.053649
     RefPoint "P_IN_REAR", 0.175, 1.3203211, -0.053599
     RefPoint "P_OUT", 0.5586, 1.4196, -0.055
-    RefPoint "P_ROD_MOUNT", 0.527, 1.3946, -0.065
     EndPart "SUSP_RR_LCA"
 End Sub
 
@@ -1228,49 +1281,49 @@ End Sub
 
 Private Sub Part_SUSP_RR_pushrod()
     If Not BeginPart("SUSP_RR_pushrod") Then Exit Sub
-    Cyl "SUSP_RR_pushrod", 0.527, 1.3946, -0.065, 0.2786753, 1.1875665, -0.3201117, 0.016, 0, 0.92, 0.35, 0.05
-    Cyl "SUSP_RR_pushrod_rod_end_mount", 0.522280453, 1.39394198, -0.0598723408, 0.531719547, 1.39525802, -0.0701276592, 0.022, 0, 0.92, 0.35, 0.05
-    Cyl "SUSP_RR_pushrod_rod_end_rocker", 0.273955753, 1.18690848, -0.314984041, 0.283394847, 1.18822452, -0.325239359, 0.022, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_RR_pushrod", 0.46773, 1.4058, -0.33018, 0.2187261, 1.3591832, -0.3938996, 0.016, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_RR_pushrod_rod_end_mount", 0.46645103, 1.41268208, -0.330215702, 0.46900897, 1.39891792, -0.330144298, 0.022, 0, 0.92, 0.35, 0.05
+    Cyl "SUSP_RR_pushrod_rod_end_rocker", 0.21744713, 1.36606528, -0.393935302, 0.22000507, 1.35230112, -0.393863898, 0.022, 0, 0.92, 0.35, 0.05
     RefOpen
-    RefPoint "P_MOUNT", 0.527, 1.3946, -0.065
-    RefPoint "P_ROCKER", 0.2786753, 1.1875665, -0.3201117
+    RefPoint "P_MOUNT", 0.46773, 1.4058, -0.33018
+    RefPoint "P_ROCKER", 0.2187261, 1.3591832, -0.3938996
     EndPart "SUSP_RR_pushrod"
 End Sub
 
 Private Sub Part_SUSP_RR_rocker()
     If Not BeginPart("SUSP_RR_rocker") Then Exit Sub
-    Cyl "SUSP_RR_rocker_boss", 0.285167139, 1.14253194, -0.2898845, 0.314832861, 1.14666806, -0.3221155, 0.032, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RR_rocker_arm_rod", 0.3, 1.1446, -0.306, 0.2786753, 1.1875665, -0.3201117, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RR_rocker_arm_damper", 0.3, 1.1446, -0.306, 0.2524324, 1.1218255, -0.3527009, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RR_rocker_edge", 0.2786753, 1.1875665, -0.3201117, 0.2524324, 1.1218255, -0.3527009, 0.016, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RR_rocker_bolt_rod", 0.265190881, 1.18568644, -0.305461245, 0.292159719, 1.18944656, -0.334762155, 0.01, 0, 0.49, 0.23, 0.93
-    Cyl "SUSP_RR_rocker_bolt_damper", 0.238947981, 1.11994544, -0.338050445, 0.265916819, 1.12370556, -0.367351355, 0.01, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RR_rocker_boss", 0.192000381, 1.37706938, -0.302542206, 0.200039619, 1.33381062, -0.302317794, 0.032, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RR_rocker_arm_rod", 0.19602, 1.35544, -0.30243, 0.2187261, 1.3591832, -0.3938996, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RR_rocker_arm_damper", 0.19602, 1.35544, -0.30243, 0.0883997, 1.3356188, -0.2673308, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RR_rocker_edge", 0.2187261, 1.3591832, -0.3938996, 0.0883997, 1.3356188, -0.2673308, 0.016, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RR_rocker_bolt_rod", 0.215071901, 1.37884627, -0.394001606, 0.222380299, 1.33952013, -0.393797594, 0.01, 0, 0.49, 0.23, 0.93
+    Cyl "SUSP_RR_rocker_bolt_damper", 0.0847455007, 1.35528187, -0.267432806, 0.0920538993, 1.31595573, -0.267228794, 0.01, 0, 0.49, 0.23, 0.93
     RefOpen
-    RefPoint "P_PIVOT", 0.3, 1.1446, -0.306
-    RefPoint "P_PIVOT_B", 0.313484419, 1.14648006, -0.320650455
-    RefPoint "P_ROD", 0.2786753, 1.1875665, -0.3201117
-    RefPoint "P_DAMPER", 0.2524324, 1.1218255, -0.3527009
+    RefPoint "P_PIVOT", 0.19602, 1.35544, -0.30243
+    RefPoint "P_PIVOT_B", 0.199674199, 1.33577693, -0.302327994
+    RefPoint "P_ROD", 0.2187261, 1.3591832, -0.3938996
+    RefPoint "P_DAMPER", 0.0883997, 1.3356188, -0.2673308
     EndPart "SUSP_RR_rocker"
 End Sub
 
 Private Sub Part_SUSP_RR_damper_body()
     If Not BeginPart("SUSP_RR_damper_body") Then Exit Sub
-    Cyl "SUSP_RR_coilover_eye_chassis", 0.303019191, 0.940440071, -0.315771373, 0.316503609, 0.942320129, -0.330421827, 0.04, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_RR_coilover_body", 0.303778222, 0.9602124, -0.326186272, 0.27823045, 1.04062507, -0.339378965, 0.046, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_RR_coilover_spring", 0.29542915, 0.98649145, -0.330497675, 0.26676465, 1.07671415, -0.345299825, 0.06, 0.048, 0.95, 0.75, 0.1
+    Cyl "SUSP_RR_coilover_eye_chassis", 0.1393451, 1.35621924, -0.0835071028, 0.1429993, 1.33655616, -0.0834050972, 0.04, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_RR_coilover_body", 0.135663607, 1.3452636, -0.102649636, 0.112147325, 1.34046481, -0.184587185, 0.046, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_RR_coilover_spring", 0.127979075, 1.34369548, -0.129424775, 0.101592825, 1.33831102, -0.221362125, 0.06, 0.048, 0.95, 0.75, 0.1
     RefOpen
-    RefPoint "P_EYE", 0.3097614, 0.9413801, -0.3230966
-    RefAxis "A_AXIS", 0.3097614, 0.9413801, -0.3230966, 0.2524324, 1.1218255, -0.3527009
+    RefPoint "P_EYE", 0.1411722, 1.3463877, -0.0834561
+    RefAxis "A_AXIS", 0.1411722, 1.3463877, -0.0834561, 0.0883997, 1.3356188, -0.2673308
     EndPart "SUSP_RR_damper_body"
 End Sub
 
 Private Sub Part_SUSP_RR_damper_shaft()
     If Not BeginPart("SUSP_RR_damper_shaft") Then Exit Sub
-    Cyl "SUSP_RR_coilover_eye_rocker", 0.245690191, 1.12088547, -0.345375673, 0.259174609, 1.12276553, -0.360026127, 0.04, 0, 0.09, 0.64, 0.29
-    Cyl "SUSP_RR_coilover_shaft", 0.27823045, 1.04062507, -0.339378965, 0.258415578, 1.1029932, -0.349611228, 0.014, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_RR_coilover_eye_rocker", 0.0865726003, 1.34545034, -0.267381803, 0.0902267997, 1.32578726, -0.267279797, 0.04, 0, 0.09, 0.64, 0.29
+    Cyl "SUSP_RR_coilover_shaft", 0.112147325, 1.34046481, -0.184587185, 0.0939082928, 1.3367429, -0.248137264, 0.014, 0, 0.09, 0.64, 0.29
     RefOpen
-    RefPoint "P_EYE", 0.2524324, 1.1218255, -0.3527009
-    RefAxis "A_AXIS", 0.2524324, 1.1218255, -0.3527009, 0.3097614, 0.9413801, -0.3230966
+    RefPoint "P_EYE", 0.0883997, 1.3356188, -0.2673308
+    RefAxis "A_AXIS", 0.0883997, 1.3356188, -0.2673308, 0.1411722, 1.3463877, -0.0834561
     EndPart "SUSP_RR_damper_shaft"
 End Sub
 
@@ -1299,10 +1352,10 @@ Private Sub Part_SUSP_skeleton()
     SketchLine -0.27, -0.0904, -0.0823915, -0.590293517, -0.204990503, -0.103750386
     SketchLine -0.582, -0.130461196, -0.055, -0.536966082, -0.108116588, -0.310400043
     SketchLine -0.613584449, -0.1204, -0.17, -0.62, -0.1204, 0.075
-    SketchLine -0.57275, -0.1259, -0.10749, -0.2762237, -0.1248665, -0.3419564
-    SketchLine -0.2743, -0.1876, -0.3398, -0.2762237, -0.1248665, -0.3419564
-    SketchLine -0.2743, -0.1876, -0.3398, -0.214735, -0.1994384, -0.3861926
-    SketchLine -0.214735, -0.1994384, -0.3861926, -0.2326636, -0.3886475, -0.3609296
+    SketchLine -0.5336, -0.08868, -0.07361, -0.2706098, 0.0130458, -0.3123566
+    SketchLine -0.23645, 0.02257, -0.27067, -0.2706098, 0.0130458, -0.3123566
+    SketchLine -0.23645, 0.02257, -0.27067, -0.1936315, 0.0373313, -0.2740491
+    SketchLine -0.1936315, 0.0373313, -0.2740491, -0.1829707, 0.0312577, -0.082775
     SketchClose "SUSP_SKELETON_FL"
     SketchOpen
     SketchLine 0.255, -0.22147, -0.254503, 0.536966082, -0.108116588, -0.310400043
@@ -1312,10 +1365,10 @@ Private Sub Part_SUSP_skeleton()
     SketchLine 0.27, -0.0904, -0.0823915, 0.590293517, -0.204990503, -0.103750386
     SketchLine 0.582, -0.130461196, -0.055, 0.536966082, -0.108116588, -0.310400043
     SketchLine 0.613584449, -0.1204, -0.17, 0.62, -0.1204, 0.075
-    SketchLine 0.57275, -0.1259, -0.10749, 0.2762237, -0.1248665, -0.3419564
-    SketchLine 0.2743, -0.1876, -0.3398, 0.2762237, -0.1248665, -0.3419564
-    SketchLine 0.2743, -0.1876, -0.3398, 0.214735, -0.1994384, -0.3861926
-    SketchLine 0.214735, -0.1994384, -0.3861926, 0.2326636, -0.3886475, -0.3609296
+    SketchLine 0.5336, -0.08868, -0.07361, 0.2706098, 0.0130458, -0.3123566
+    SketchLine 0.23645, 0.02257, -0.27067, 0.2706098, 0.0130458, -0.3123566
+    SketchLine 0.23645, 0.02257, -0.27067, 0.1936315, 0.0373313, -0.2740491
+    SketchLine 0.1936315, 0.0373313, -0.2740491, 0.1829707, 0.0312577, -0.082775
     SketchClose "SUSP_SKELETON_FR"
     SketchOpen
     SketchLine -0.255, 1.2151911, -0.261859, -0.519692129, 1.4196, -0.315338646
@@ -1325,10 +1378,10 @@ Private Sub Part_SUSP_skeleton()
     SketchLine -0.175, 1.3196, -0.094, -0.52081, 1.4742, -0.10853
     SketchLine -0.5586, 1.4196, -0.055, -0.519692129, 1.4196, -0.315338646
     SketchLine -0.593584449, 1.4196, -0.17, -0.6, 1.4196, 0.075
-    SketchLine -0.527, 1.3946, -0.065, -0.2786753, 1.1875665, -0.3201117
-    SketchLine -0.3, 1.1446, -0.306, -0.2786753, 1.1875665, -0.3201117
-    SketchLine -0.3, 1.1446, -0.306, -0.2524324, 1.1218255, -0.3527009
-    SketchLine -0.2524324, 1.1218255, -0.3527009, -0.3097614, 0.9413801, -0.3230966
+    SketchLine -0.46773, 1.4058, -0.33018, -0.2187261, 1.3591832, -0.3938996
+    SketchLine -0.19602, 1.35544, -0.30243, -0.2187261, 1.3591832, -0.3938996
+    SketchLine -0.19602, 1.35544, -0.30243, -0.0883997, 1.3356188, -0.2673308
+    SketchLine -0.0883997, 1.3356188, -0.2673308, -0.1411722, 1.3463877, -0.0834561
     SketchClose "SUSP_SKELETON_RL"
     SketchOpen
     SketchLine 0.255, 1.2151911, -0.261859, 0.519692129, 1.4196, -0.315338646
@@ -1338,10 +1391,10 @@ Private Sub Part_SUSP_skeleton()
     SketchLine 0.175, 1.3196, -0.094, 0.52081, 1.4742, -0.10853
     SketchLine 0.5586, 1.4196, -0.055, 0.519692129, 1.4196, -0.315338646
     SketchLine 0.593584449, 1.4196, -0.17, 0.6, 1.4196, 0.075
-    SketchLine 0.527, 1.3946, -0.065, 0.2786753, 1.1875665, -0.3201117
-    SketchLine 0.3, 1.1446, -0.306, 0.2786753, 1.1875665, -0.3201117
-    SketchLine 0.3, 1.1446, -0.306, 0.2524324, 1.1218255, -0.3527009
-    SketchLine 0.2524324, 1.1218255, -0.3527009, 0.3097614, 0.9413801, -0.3230966
+    SketchLine 0.46773, 1.4058, -0.33018, 0.2187261, 1.3591832, -0.3938996
+    SketchLine 0.19602, 1.35544, -0.30243, 0.2187261, 1.3591832, -0.3938996
+    SketchLine 0.19602, 1.35544, -0.30243, 0.0883997, 1.3356188, -0.2673308
+    SketchLine 0.0883997, 1.3356188, -0.2673308, 0.1411722, 1.3463877, -0.0834561
     SketchClose "SUSP_SKELETON_RR"
     EndPart "SUSP_skeleton"
 End Sub
@@ -1375,7 +1428,7 @@ Private Sub Asm_SUSP_FL()
     MateRef "SUSP_FL_tie_rod", "P_IN", "SUSP_FL_chassis_mounts", "P_TIE_ROD_IN", "FL tie_rod inner"
     MateRef "SUSP_FL_rocker", "P_PIVOT", "SUSP_FL_chassis_mounts", "P_ROCKER_PIVOT", "FL rocker pivot"
     MateRef "SUSP_FL_rocker", "P_PIVOT_B", "SUSP_FL_chassis_mounts", "A_ROCKER", "FL rocker axis"
-    MateRef "SUSP_FL_pushrod", "P_MOUNT", "SUSP_FL_upright", "P_ROD_MOUNT", "FL pushrod lower end"
+    MateRef "SUSP_FL_pushrod", "P_MOUNT", "SUSP_FL_LCA", "P_ROD_MOUNT", "FL pushrod lower end"
     MateRef "SUSP_FL_pushrod", "P_ROCKER", "SUSP_FL_rocker", "P_ROD", "FL pushrod rocker end"
     MateRef "SUSP_FL_damper_body", "P_EYE", "SUSP_FL_chassis_mounts", "P_DAMPER_CHASSIS", "FL damper chassis eye"
     MateRef "SUSP_FL_damper_shaft", "P_EYE", "SUSP_FL_rocker", "P_DAMPER", "FL damper rocker eye"
@@ -1407,7 +1460,7 @@ Private Sub Asm_SUSP_FR()
     MateRef "SUSP_FR_tie_rod", "P_IN", "SUSP_FR_chassis_mounts", "P_TIE_ROD_IN", "FR tie_rod inner"
     MateRef "SUSP_FR_rocker", "P_PIVOT", "SUSP_FR_chassis_mounts", "P_ROCKER_PIVOT", "FR rocker pivot"
     MateRef "SUSP_FR_rocker", "P_PIVOT_B", "SUSP_FR_chassis_mounts", "A_ROCKER", "FR rocker axis"
-    MateRef "SUSP_FR_pushrod", "P_MOUNT", "SUSP_FR_upright", "P_ROD_MOUNT", "FR pushrod lower end"
+    MateRef "SUSP_FR_pushrod", "P_MOUNT", "SUSP_FR_LCA", "P_ROD_MOUNT", "FR pushrod lower end"
     MateRef "SUSP_FR_pushrod", "P_ROCKER", "SUSP_FR_rocker", "P_ROD", "FR pushrod rocker end"
     MateRef "SUSP_FR_damper_body", "P_EYE", "SUSP_FR_chassis_mounts", "P_DAMPER_CHASSIS", "FR damper chassis eye"
     MateRef "SUSP_FR_damper_shaft", "P_EYE", "SUSP_FR_rocker", "P_DAMPER", "FR damper rocker eye"
@@ -1439,7 +1492,7 @@ Private Sub Asm_SUSP_RL()
     MateRef "SUSP_RL_toe_link", "P_IN", "SUSP_RL_chassis_mounts", "P_TIE_ROD_IN", "RL toe_link inner"
     MateRef "SUSP_RL_rocker", "P_PIVOT", "SUSP_RL_chassis_mounts", "P_ROCKER_PIVOT", "RL rocker pivot"
     MateRef "SUSP_RL_rocker", "P_PIVOT_B", "SUSP_RL_chassis_mounts", "A_ROCKER", "RL rocker axis"
-    MateRef "SUSP_RL_pushrod", "P_MOUNT", "SUSP_RL_LCA", "P_ROD_MOUNT", "RL pushrod lower end"
+    MateRef "SUSP_RL_pushrod", "P_MOUNT", "SUSP_RL_UCA", "P_ROD_MOUNT", "RL pushrod lower end"
     MateRef "SUSP_RL_pushrod", "P_ROCKER", "SUSP_RL_rocker", "P_ROD", "RL pushrod rocker end"
     MateRef "SUSP_RL_damper_body", "P_EYE", "SUSP_RL_chassis_mounts", "P_DAMPER_CHASSIS", "RL damper chassis eye"
     MateRef "SUSP_RL_damper_shaft", "P_EYE", "SUSP_RL_rocker", "P_DAMPER", "RL damper rocker eye"
@@ -1471,7 +1524,7 @@ Private Sub Asm_SUSP_RR()
     MateRef "SUSP_RR_toe_link", "P_IN", "SUSP_RR_chassis_mounts", "P_TIE_ROD_IN", "RR toe_link inner"
     MateRef "SUSP_RR_rocker", "P_PIVOT", "SUSP_RR_chassis_mounts", "P_ROCKER_PIVOT", "RR rocker pivot"
     MateRef "SUSP_RR_rocker", "P_PIVOT_B", "SUSP_RR_chassis_mounts", "A_ROCKER", "RR rocker axis"
-    MateRef "SUSP_RR_pushrod", "P_MOUNT", "SUSP_RR_LCA", "P_ROD_MOUNT", "RR pushrod lower end"
+    MateRef "SUSP_RR_pushrod", "P_MOUNT", "SUSP_RR_UCA", "P_ROD_MOUNT", "RR pushrod lower end"
     MateRef "SUSP_RR_pushrod", "P_ROCKER", "SUSP_RR_rocker", "P_ROD", "RR pushrod rocker end"
     MateRef "SUSP_RR_damper_body", "P_EYE", "SUSP_RR_chassis_mounts", "P_DAMPER_CHASSIS", "RR damper chassis eye"
     MateRef "SUSP_RR_damper_shaft", "P_EYE", "SUSP_RR_rocker", "P_DAMPER", "RR damper rocker eye"
@@ -1526,14 +1579,14 @@ Sub main()
     gRefMade = 0: gRefFailed = 0: gMateMade = 0: gMateFailed = 0: gOtherFailed = 0
     Calibrate
     LogLine "CreateBodyFromCyl point is the centre: " & gCentred
-    ' parts and corner assemblies are built without windows
+    ' parts are built without windows. Components go in with both flags on, as in
+    ' the top assembly that worked: built hidden, the corners came out empty
     swApp.DocumentVisible False, 1
-    swApp.DocumentVisible False, 2
+    swApp.DocumentVisible True, 2
     On Error GoTo stopped
     BuildParts
-    BuildCorners
     swApp.DocumentVisible True, 1
-    swApp.DocumentVisible True, 2
+    BuildCorners
     BuildTop
     ReopenTop
     On Error GoTo 0
@@ -1544,7 +1597,7 @@ Sub main()
     LogLine msg
     WriteLog
     If gOtherFailed > 0 Then msg = msg & vbCrLf & gOtherFailed & _
-        " placement / flexible / save step(s) failed."
+        " add / placement / flexible / save step(s) failed."
     If gFailed + gRefFailed + gMateFailed + gOtherFailed > 0 Then
         msg = msg & vbCrLf & "Some steps failed: see " & gDir & ASM_NAME & _
               "_log.txt"

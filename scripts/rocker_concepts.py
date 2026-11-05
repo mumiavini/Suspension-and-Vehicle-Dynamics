@@ -114,6 +114,8 @@ ESTIMATES = {
     "rod_od_mm": 16.0,                 # push/pull rod tube
     "rod_wall_mm": 1.0,
     "rod_E_N_mm2": 205e3,              # steel
+    # the coil-over envelope; load_ctx() replaces both with the project's damper envelope
+    # (spring coil OD; (overall length - eye to eye) / 2 from each eye: the team's drawing)
     "coilover_od_mm": 60.0,            # damper body with the spring over it
     "coilover_body_from_eye_mm": 30.0,  # the full OD starts this far from each eye
     "rocker_half_mm": 10.0,            # rocker plate / pickup hardware half-envelope
@@ -121,6 +123,15 @@ ESTIMATES = {
     "wishbone_od_mm": 20.0,
     "tie_rod_od_mm": 16.0,
     "rack_housing_od_mm": 40.0,
+    # the inner tie-rod joint and its boot, which travel with the rack past the housing:
+    # a 50 mm envelope from 60 mm inboard of the joint (at centre) to 20 mm past it at
+    # full travel
+    "rack_boot_od_mm": 50.0,
+    "rack_boot_inboard_mm": 60.0,
+    "rack_boot_past_joint_mm": 20.0,
+    # the rod end and its pickup hardware at the rocker: the rod is checked against its own
+    # rocker and coil-over from this far off the rocker pickup
+    "rod_end_trim_mm": 25.0,
     "column_od_mm": 40.0,              # steering column with its U-joints
     # column from the pinion (rack centre) up and back to the wheel behind the front hoop
     "column_mm": ((-30.0, 0.0, 157.0), (-300.0, 0.0, 560.0)),
@@ -131,9 +142,24 @@ ESTIMATES = {
     "front_sprocket_r_mm": 45.0,
     "rear_sprocket_r_mm": 120.0,
     "chain_half_width_mm": 15.0,
+    # rear drivetrain keep-out: differential, sprocket carriers and their mounts around the
+    # rear axle line, as a box: (x range), |y| half width, (z range). The drivetrain is not in
+    # the CAD survey; this covers where the 550 lb/in rears G, H, I conflicted with it
+    "drivetrain_box_mm": ((-1700.0, -1380.0), 160.0, (90.0, 400.0)),
+    # rocker hub (bearing housing) around the pivot, as the SolidWorks solids model it
+    "hub_od_mm": 32.0,
+    "hub_len_mm": 44.0,
     "coilover_kg": 1.3,                # moving masses per corner (CG effect only)
     "rocker_kg": 0.3,
 }
+
+# The piggyback canister's clock about the damper axis. At 0 its offset is perpendicular to
+# the eye bolts (both parallel to the rocker axis). With the body at the chassis end, the body
+# and its chassis bolt can be turned about the damper axis (the shaft turns in the body; the
+# rocker-end bolt stays parallel to the rocker axis): the damper's swing over travel is then
+# taken partly as misalignment by the chassis eye's spherical bearing
+# (``damper_eye_misalign_deg``). Tried only when no unclocked mounting clears.
+RESERVOIR_CLOCKS_DEG = (30.0, 60.0, 90.0, 120.0, 150.0)
 
 # Air-gap thresholds (mm) and limits. Information for the flags, not requirements.
 # (key, axle or None, "min"/"max", limit, label)
@@ -145,20 +171,102 @@ THRESHOLDS = (
     ("gap_rod_members", None, "min", 5.0, "rod vs wishbones / tie rod / toe link (with steer)"),
     ("gap_rod_rim", None, "min", 15.0, "rod vs rim (13\", steered)"),
     ("gap_left_right", None, "min", 5.0, "left vs right linkage (heave and roll)"),
-    ("gap_rack", "front", "min", 5.0, "linkage vs steering rack"),
+    ("gap_rack", "front", "min", 5.0,
+     "linkage vs steering rack (housing, inner tie-rod joint and boot)"),
     ("gap_column", "front", "min", 5.0, "linkage vs steering column (estimate)"),
     ("gap_driveshaft", "rear", "min", 10.0, "linkage vs drive shaft (estimate)"),
     ("gap_engine", "rear", "min", 10.0, "linkage vs engine (MOTOR_FIXADO features, placed)"),
     ("gap_chain", "rear", "min", 10.0, "linkage vs chain and sprockets (estimate)"),
     ("gap_linkage_members", None, "min", 5.0,
      "rocker / coil-over vs wishbones, tie rod / toe link (with steer)"),
+    ("gap_rod_linkage", None, "min", 5.0,
+     "rod vs its own rocker (away from its pickup) and coil-over"),
+    ("gap_driver", "front", "min", 5.0,
+     "linkage and reservoir vs driver space (leg template octagon, cockpit template)"),
+    ("gap_drivetrain", "rear", "min", 10.0,
+     "linkage and reservoir vs drivetrain keep-out (estimate)"),
+    ("gap_reservoir", None, "min", 5.0,
+     "damper reservoir (the better of its two sides) vs frame, wishbones, rod"),
+    ("gap_hub", None, "min", 2.0, "rocker hub vs frame and moving wishbones"),
+    ("damper_eye_misalign_deg", None, "max", 5.0,
+     "chassis eye misalignment over the packaging range (spherical bearing, estimate)"),
     ("pivot_bracket_mm", None, "max", 60.0, "rocker pivot to nearest bodied tube"),
     ("damper_bracket_mm", None, "max", 60.0, "coil-over chassis end to nearest bodied tube"),
-    ("rod_angle_max_deg", None, "max", 30.0, "rod transmission angle (to the end stops)"),
+    ("pivot_node_mm", None, "max", 60.0, "rocker pivot to the nearest frame node (3+ tubes)"),
+    ("damper_node_mm", None, "max", 60.0,
+     "coil-over chassis end to the nearest frame node (3+ tubes)"),
+    ("rod_angle_max_deg", None, "max", 30.0,
+     "rod transmission angle (over the packaging range)"),
     ("damper_angle_max_deg", None, "max", 30.0,
-     "coil-over transmission angle (to the end stops)"),
-    ("psi_abs_max_deg", None, "max", 35.0, "rocker rotation (to the end stops)"),
+     "coil-over transmission angle (over the packaging range)"),
+    ("psi_abs_max_deg", None, "max", 35.0, "rocker rotation (over the packaging range)"),
 )
+
+
+# Driver space, from the chassis CAD's layout sketches: the leg template octagon
+# (Esboço10, drawn in the front-hoop plane x = -120.4) swept from just behind the hoop to the
+# front of the footwell box ('Ressalto-extrusão2', x = 438), and the cockpit template
+# hexagon (Esboço6, plan view at z = 75) as a vertical prism up to the cockpit box's top.
+# (axis of the prism, (lo, hi) along it, polygon in the other two coordinates, CCW)
+DRIVER_SPACE = (
+    ("leg template", 0, (-200.0, 438.0),
+     ((125.0, 150.0), (175.0, 200.0), (175.0, 450.0), (125.0, 500.0), (-125.0, 500.0),
+      (-175.0, 450.0), (-175.0, 200.0), (-125.0, 150.0))),
+    ("cockpit template", 2, (75.0, 762.0),
+     ((-190.0, -200.0), (-190.0, 200.0), (-690.0, 275.0), (-790.0, 175.0), (-790.0, -175.0),
+      (-690.0, -275.0))),
+)
+
+
+def _poly_sd(pts: np.ndarray, poly: np.ndarray) -> np.ndarray:
+    """Signed distance of 2D points (N, 2) to a convex polygon (negative inside)."""
+    a, b = poly, np.roll(poly, -1, axis=0)
+    e = b - a
+    n = np.stack([e[:, 1], -e[:, 0]], axis=1) / np.linalg.norm(e, axis=1)[:, None]
+    if float(np.sum(a[:, 0] * np.roll(a[:, 1], -1) - np.roll(a[:, 0], -1) * a[:, 1])) < 0:
+        n = -n                                  # (e_y, -e_x) is outward for a CCW polygon
+    plane = np.einsum("nkj,kj->nk", pts[:, None, :] - a[None], n)
+    inside = np.all(plane <= 0.0, axis=1)
+    t = np.clip(np.einsum("nkj,kj->nk", pts[:, None, :] - a[None], e) / np.sum(e * e, 1), 0, 1)
+    near = a[None] + t[..., None] * e[None]
+    d_edge = np.linalg.norm(pts[:, None, :] - near, axis=2).min(axis=1)
+    return np.where(inside, plane.max(axis=1), d_edge)
+
+
+def seg_prism(p, q, axis: int, rng, poly, n: int = 41) -> float:
+    """Smallest signed distance from a segment to a convex prism (negative = inside)."""
+    p, q = np.asarray(p, float), np.asarray(q, float)
+    s = np.linspace(0.0, 1.0, n)[:, None]
+    pts = p + s * (q - p)
+    other = [i for i in range(3) if i != axis]
+    d2 = _poly_sd(pts[:, other], np.asarray(poly, float))
+    dx = np.maximum(rng[0] - pts[:, axis], pts[:, axis] - rng[1])
+    out = np.hypot(np.maximum(d2, 0.0), np.maximum(dx, 0.0))
+    sd = np.where((d2 <= 0.0) & (dx <= 0.0), np.maximum(d2, dx), out)
+    return float(sd.min())
+
+
+def driver_gap(p, q, floor_z: float | None = None) -> tuple[float, str]:
+    """Distance to the driver space; ``floor_z`` raises the leg template's floor to that height
+    between x = -120 and +120 (a covered rack zone the team accepts under the legs)."""
+    best = (math.inf, "")
+    for name, axis, rng, poly in DRIVER_SPACE:
+        if name == "leg template" and floor_z is not None:
+            parts = [((rng[0], -120.0), poly), ((120.0, rng[1]), poly),
+                     ((-120.0, 120.0), tuple((y, max(z, floor_z)) if z < floor_z else (y, z)
+                                             for y, z in poly))]
+        else:
+            parts = [(rng, poly)]
+        for r, pl in parts:
+            d = seg_prism(p, q, axis, r, pl)
+            if d < best[0]:
+                best = (d, name)
+    return best
+
+
+def drivetrain_gap(p, q) -> float:
+    (x0, x1), hw, (z0, z1) = ESTIMATES["drivetrain_box_mm"]
+    return seg_prism(p, q, 0, (x0, x1), ((-hw, z0), (hw, z0), (hw, z1), (-hw, z1)))
 
 
 def _unit(v) -> np.ndarray:
@@ -167,6 +275,14 @@ def _unit(v) -> np.ndarray:
     if n < 1e-12:
         raise ValueError("zero-length direction")
     return v / n
+
+
+def _clocked(u: np.ndarray, v: np.ndarray, clock_deg: float) -> np.ndarray:
+    """``v`` (perpendicular to ``u``) turned ``clock_deg`` about ``u``."""
+    if not clock_deg:
+        return v
+    a = math.radians(clock_deg)
+    return v * math.cos(a) + np.cross(u, v) * math.sin(a)
 
 
 def _rot(axis: np.ndarray, angle: float) -> np.ndarray:
@@ -217,9 +333,32 @@ class AxleConcept:
     rod_arm_mm: float
     target_mr: float = 0.80
     damper_clock_deg: float = 0.0
+    # a point the coil-over's line must pass through (its chassis bracket, e.g. at a frame
+    # node): damper_toward is then iterated so that the line from the damper pickup goes
+    # through it; the chassis eye lands on that line at the ride length
+    damper_end: tuple[float, float, float] | None = None
 
 
 def make_spec(geo, project: Project, axle: str, c: AxleConcept) -> RockerSpec:
+    """Damper arm for the target MR, equal damper margins; with ``damper_end``, the
+    coil-over's line aimed through that point."""
+    if c.damper_end is None:
+        return _make_spec(geo, project, axle, c)
+    o, end = np.asarray(c.pivot, float), np.asarray(c.damper_end, float)
+    toward = np.asarray(c.damper_toward, float)
+    sp = None
+    for _ in range(12):
+        sp = _make_spec(geo, project, axle, replace(c, damper_toward=_t4(toward),
+                                                    damper_end=None))
+        new = o + (end - np.asarray(sp.rocker_damper, float))
+        if float(np.linalg.norm(_unit(new - o) - _unit(toward - o))) < 1e-5:
+            break
+        toward = new
+    assert sp is not None
+    return sp
+
+
+def _make_spec(geo, project: Project, axle: str, c: AxleConcept) -> RockerSpec:
     """Damper arm for the target MR (bisection on 10-200 mm), then equal damper margins."""
     cid = S.AXLE_CORNER[axle]
     corner = geo.corner(cid)
@@ -238,6 +377,8 @@ def make_spec(geo, project: Project, axle: str, c: AxleConcept) -> RockerSpec:
                          f"10-200 mm (MR {flo + c.target_mr:.3f} .. {fhi + c.target_mr:.3f}); "
                          "change the rod arm")
     for _ in range(60):
+        if hi - lo < 1e-6:
+            break
         mid = 0.5 * (lo + hi)
         fm = mr(mid, flip) - c.target_mr
         if flo * fm <= 0:
@@ -329,6 +470,86 @@ def frame_model(project: Project) -> tuple[list[Member], list[Box]]:
                 continue
         boxes.append(Box(name, lo, hi))
     return members, boxes
+
+
+# Welded joints of the frame. A bracket at a node loads the tubes at a joint; one at
+# mid-span bends a tube.
+NODE_MERGE_MM = 30.0       # tube ends this close are one welded cluster (about one tube OD)
+NODE_MIN_TUBE_MM = 50.0    # shorter bodied pieces (tabs, profile sketches) make no node
+NODE_CROSS_MM = 10.0       # two tubes' interiors this close cross at a welded node
+
+
+@dataclass(frozen=True)
+class Node:
+    """A frame node: where three or more bodied tube ends meet (a tube passing through
+    the joint, or a crossing, counts as two ends)."""
+
+    p: np.ndarray
+    tubes: tuple[str, ...]
+    valence: int
+
+
+def frame_nodes(members: list[Member]) -> list[Node]:
+    tubes: list[Member] = []
+    for m in members:
+        if not m.bodied or float(np.linalg.norm(m.b - m.a)) < NODE_MIN_TUBE_MM:
+            continue
+        # the CAD models some tubes twice (two sketches on one tube): count them once
+        if any(max(_foot(m.a, t.a, t.b)[0], _foot(m.b, t.a, t.b)[0]) < 2.0 or
+               max(_foot(t.a, m.a, m.b)[0], _foot(t.b, m.a, m.b)[0]) < 2.0 for t in tubes):
+            continue
+        tubes.append(m)
+    ends = [(np.asarray(e, float), i) for i, m in enumerate(tubes) for e in (m.a, m.b)]
+    clusters: list[list[int]] = []
+    for k, (p, _i) in enumerate(ends):           # single-linkage clusters of tube ends
+        hit = [c for c in clusters
+               if any(float(np.linalg.norm(ends[j][0] - p)) < NODE_MERGE_MM for j in c)]
+        clusters = [c for c in clusters if c not in hit] + [[k] + [j for c in hit for j in c]]
+    nodes = []
+    for c in clusters:
+        centre = np.mean([ends[j][0] for j in c], axis=0)
+        inc = [ends[j][1] for j in c]
+        for i, m in enumerate(tubes):            # a tube passing through the joint
+            if i in inc:
+                continue
+            d, from_end = _foot(centre, m.a, m.b)
+            if d < 0.5 * NODE_MERGE_MM and from_end > NODE_MERGE_MM:
+                inc += [i, i]
+        if len(inc) >= 3:
+            nodes.append(Node(centre, tuple(sorted({tubes[i].name for i in inc})), len(inc)))
+    for i, m in enumerate(tubes):                # crossings (X braces)
+        for j in range(i + 1, len(tubes)):
+            n = tubes[j]
+            p, q = _closest(m.a, m.b, n.a, n.b)
+            if float(np.linalg.norm(p - q)) > NODE_CROSS_MM:
+                continue
+            c = 0.5 * (p + q)
+            if min(_foot(c, m.a, m.b)[1], _foot(c, n.a, n.b)[1]) <= NODE_MERGE_MM:
+                continue                         # at an end: a cluster above
+            if all(float(np.linalg.norm(x.p - c)) > NODE_MERGE_MM for x in nodes):
+                nodes.append(Node(c, tuple(sorted({m.name, n.name})), 4))
+    return nodes
+
+
+def _closest(p1, q1, p2, q2) -> tuple[np.ndarray, np.ndarray]:
+    """Closest points of two segments."""
+    p1, q1, p2, q2 = (np.asarray(v, float) for v in (p1, q1, p2, q2))
+    d1, d2, r = q1 - p1, q2 - p2, p1 - p2
+    a, e, f = d1 @ d1, d2 @ d2, d2 @ r
+    c, b = d1 @ r, d1 @ d2
+    den = a * e - b * b
+    s = float(np.clip((b * f - c * e) / den, 0, 1)) if den > 1e-12 else 0.0
+    t = (b * s + f) / e
+    if t < 0:
+        t, s = 0.0, float(np.clip(-c / a, 0, 1))
+    elif t > 1:
+        t, s = 1.0, float(np.clip((b - c) / a, 0, 1))
+    return p1 + s * d1, p2 + t * d2
+
+
+def nearest_node(ctx: Ctx, p) -> tuple[float, Node]:
+    p = np.asarray(p, float)
+    return min(((float(np.linalg.norm(n.p - p)), n) for n in ctx.nodes), key=lambda x: x[0])
 
 
 # --------------------------------------------------------------------------- #
@@ -486,6 +707,7 @@ class Ctx:
     boxes: list[Box]
     engine: list[Hull] = None  # type: ignore[assignment]
     engine_fit_mm: float = math.nan
+    nodes: list[Node] = None  # type: ignore[assignment]
 
     @property
     def tubes(self) -> list[tuple[str, np.ndarray, np.ndarray]]:
@@ -499,7 +721,11 @@ def load_ctx() -> Ctx:
     rc = {"front": st.value("front.rc_static"), "rear": st.value("rear.rc_static")}
     members, boxes = frame_model(p)
     engine, fit = engine_model(p)
-    return Ctx(p, g, rc, members, boxes, engine, fit)
+    d = p.damper
+    ESTIMATES["coilover_od_mm"] = float(d.spring_od_mm)
+    ESTIMATES["coilover_body_from_eye_mm"] = 0.5 * (d.overall_length_mm
+                                                    - d.eye_to_eye_extended_mm)
+    return Ctx(p, g, rc, members, boxes, engine, fit, frame_nodes(members))
 
 
 def seg_seg(p1, q1, p2, q2) -> float:
@@ -580,11 +806,13 @@ class Linkage:
     pivot: np.ndarray
     dc: np.ndarray
     axis: np.ndarray
+    hand: float = 1.0      # -1 on a mirrored corner: a clock angle turns the other way
 
     def mirrored(self) -> Linkage:
         a = self.axis
         return Linkage(self.z, mirror(self.mount), mirror(self.rr), mirror(self.rd),
-                       mirror(self.pivot), mirror(self.dc), np.array([-a[0], a[1], -a[2]]))
+                       mirror(self.pivot), mirror(self.dc), np.array([-a[0], a[1], -a[2]]),
+                       -self.hand)
 
     def elements(self) -> list[tuple[str, np.ndarray, np.ndarray, float]]:
         """(name, a, b, radius): the parts that take space, with estimated radii."""
@@ -600,6 +828,54 @@ class Linkage:
                 ("rocker", self.rd - bolt, self.rd + bolt, rr_),
                 ("coil-over", c0, c1, E["coilover_od_mm"] / 2.0),
                 ("eyes", self.rd, self.rd, 0.0), ("eyes", self.dc, self.dc, 0.0)]
+
+    def own_parts(self) -> list[tuple[str, np.ndarray, np.ndarray, float]]:
+        """What the rod must clear on its own linkage: both rocker arms (the one to its
+        pickup cut back by the rod end), the pivot and damper pickup bolts, the coil-over
+        body and its eyes (radius 0: the caller uses the eye radius). Not the web between
+        the pickups, which a rocker's shape can leave out."""
+        E = ESTIMATES
+        rr_ = E["rocker_half_mm"]
+        bolt = E["pickup_bolt_half_mm"] * self.axis
+        arm0, arm1 = trim(self.pivot, self.rr, 0.0, E["rod_end_trim_mm"])
+        c0, c1 = trim(self.rd, self.dc, E["coilover_body_from_eye_mm"],
+                      E["coilover_body_from_eye_mm"])
+        return [("rocker arm to the rod pickup", arm0, arm1, rr_),
+                ("rocker arm to the damper pickup", self.pivot, self.rd, rr_),
+                ("rocker pivot bolt", self.pivot - bolt, self.pivot + bolt, rr_),
+                ("damper pickup bolt", self.rd - bolt, self.rd + bolt, rr_),
+                ("coil-over body", c0, c1, E["coilover_od_mm"] / 2.0),
+                ("coil-over eye at the rocker", self.rd, self.rd, 0.0),
+                ("coil-over chassis eye", self.dc, self.dc, 0.0)]
+
+    def reservoir(self, damper, side: float, at_rocker: bool = False, clock_deg: float = 0.0
+                  ) -> tuple[np.ndarray, np.ndarray, float]:
+        """The piggyback canister beside the damper body, perpendicular to the eye bolts (the
+        rocker axis). ``side`` +1 / -1 and ``at_rocker`` (body at the rocker end instead of the
+        chassis end): the four ways the damper can be mounted. ``clock_deg`` turns the body
+        (and its chassis bolt) about the damper axis: see ``RESERVOIR_CLOCKS_DEG``."""
+        base, other = (self.rd, self.dc) if at_rocker else (self.dc, self.rd)
+        u = _unit(other - base)
+        w = _clocked(u, _unit(np.cross(u, self.axis)), self.hand * clock_deg) \
+            * side * float(damper.reservoir_offset_mm)
+        r = 0.5 * float(damper.reservoir_od_mm)
+        # a capsule whose core stops r/2 short of each flat end
+        return (base + (float(damper.reservoir_from_eye_mm) + 0.5 * r) * u + w,
+                base + (float(damper.reservoir_to_eye_mm) - 0.5 * r) * u + w, r)
+
+    def hub(self) -> tuple[np.ndarray, np.ndarray, float]:
+        E = ESTIMATES
+        r = 0.5 * E["hub_od_mm"]
+        h = (0.5 * E["hub_len_mm"] - 0.5 * r) * self.axis    # capsule core, ends r/2 short
+        return self.pivot - h, self.pivot + h, r
+
+    def rod_self_gap(self, eye_r: float) -> tuple[float, str]:
+        """Air gap of the rod (its mount bracket and rod end left out) to ``own_parts``."""
+        E = ESTIMATES
+        r0, r1 = trim(self.mount, self.rr, 30.0, E["rod_end_trim_mm"])
+        return min((seg_seg(r0, r1, p, q) - E["rod_od_mm"] / 2.0
+                    - (eye_r if "eye" in name else rad), name)
+                   for name, p, q, rad in self.own_parts())
 
 
 def _eye_r(ctx: Ctx) -> float:
@@ -622,8 +898,15 @@ def end_stops(corner, lay, project: Project) -> tuple[float, float]:
     return z_ext, z_comp
 
 
-def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
-    """Packaging, end stops and loads on top of the engine's axle report."""
+def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
+                  travel_limit_mm: float | None = None,
+                  driver_floor_z_mm: float | None = None) -> dict:
+    """Packaging, end stops and loads on top of the engine's axle report.
+
+    Packaging, transmission angles and rocker rotation are measured over the wheel travel
+    to the damper's end stops, or to ``travel_limit_mm`` (± about ride: a bump stop and a
+    droop limiter the concept adds) when that is narrower.
+    """
     E = ESTIMATES
     spec, sw0 = a.spec, a.sweep
     if not a.ok or sw0 is None:
@@ -638,12 +921,15 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
     eye_r, tube_r = _eye_r(ctx), E["frame_tube_od_mm"] / 2.0
 
     z_ext, z_comp = end_stops(corner, lay, ctx.project)
-    zs = np.linspace(z_ext, z_comp, 15)
+    z_lo, z_hi = z_ext, z_comp
+    if travel_limit_mm is not None:
+        z_lo, z_hi = max(z_ext, -float(travel_limit_mm)), min(z_comp, float(travel_limit_mm))
+    zs = np.linspace(z_lo, z_hi, 15)
     sw = rocker_sweep(corner, lay, zs)
     left = [Linkage(float(z), st.rod_mount, st.rocker_rod, st.rocker_damper, pivot, dc, axis)
             for z, st in zip(zs, sw.states, strict=True)]
     right = [s.mirrored() for s in left]
-    out: dict = {"end_stops_mm": (z_ext, z_comp)}
+    out: dict = {"end_stops_mm": (z_ext, z_comp), "packaging_range_mm": (z_lo, z_hi)}
 
     # ---- frame (both corners, the CAD as built) and solid bodies without centreline
     worst: dict[str, tuple[float, str]] = {}
@@ -675,13 +961,67 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                         key_e = "gap_chain" if h.name.startswith("chain") else "gap_engine"
                         keep(key_e, h.gap(p, q) - rad, f"{name} vs {h.name}, {side} at "
                                                          f"{st.z:+.0f} mm")
+    # ---- the rod against its own rocker and coil-over (one corner: the other is its mirror)
+    for st in left:
+        g, name = st.rod_self_gap(eye_r)
+        keep("gap_rod_linkage", g, f"{name} at {st.z:+.0f} mm")
+    # ---- driver space (front) or drivetrain keep-out (rear): both are symmetric
+    dmp = ctx.project.damper
+    MOUNTS = ((1.0, False, 0.0), (-1.0, False, 0.0), (1.0, True, 0.0), (-1.0, True, 0.0)) \
+        + tuple((s, False, c) for c in RESERVOIR_CLOCKS_DEG for s in (1.0, -1.0))
+    res_worst: dict = {m: (math.inf, "") for m in MOUNTS}
+
+    def res_keep(sgn: float, gap: float, where: str) -> None:
+        if gap < res_worst[sgn][0]:
+            res_worst[sgn] = (gap, where)
+
+    for st in left:
+        parts = [(n, p_, q_, eye_r if n == "eyes" else r_) for n, p_, q_, r_ in st.elements()]
+        parts += [("reservoir", *st.reservoir(dmp, *mt)) for mt in MOUNTS]
+        for i, (name, p_, q_, rad) in enumerate(parts):
+            sgn = MOUNTS[i - len(parts) + len(MOUNTS)] if name == "reservoir" else None
+            if axle == "front":
+                g, what = driver_gap(p_, q_, driver_floor_z_mm)
+                g, where = g - rad, f"{name} vs {what} at {st.z:+.0f} mm"
+                key = "gap_driver"
+            else:
+                g, where = drivetrain_gap(p_, q_) - rad, f"{name} at {st.z:+.0f} mm"
+                key = "gap_drivetrain"
+            if sgn is None:
+                keep(key, g, where)
+            else:
+                res_keep(sgn, g, f"{key[4:]}: {where}")
+        r0, r1 = trim(st.mount, st.rr, 30.0, E["rod_end_trim_mm"])
+        for sgn in MOUNTS:
+            rp, rq, rr_ = st.reservoir(dmp, *sgn)
+            res_keep(sgn, seg_seg(rp, rq, r0, r1) - rr_ - E["rod_od_mm"] / 2.0,
+                     f"rod at {st.z:+.0f} mm")
+    # ---- the reservoir and the rocker hub against the frame (both corners)
+    for side, states in (("L", left), ("R", right)):
+        for st in states:
+            hp, hq, hr = st.hub()
+            for m in ctx.members:
+                if m.reference:
+                    continue
+                keep("gap_hub", seg_seg(hp, hq, m.a, m.b) - hr - tube_r,
+                     f"{m.name} {_pt(m.a, '.0f')}->{_pt(m.b, '.0f')} ({side})")
+                for sgn in MOUNTS:
+                    rp, rq, rr_ = st.reservoir(dmp, *sgn)
+                    res_keep(sgn, seg_seg(rp, rq, m.a, m.b) - rr_ - tube_r,
+                             f"{m.name} {_pt(m.a, '.0f')}->{_pt(m.b, '.0f')}, {side} at "
+                             f"{st.z:+.0f} mm")
+            if axle == "rear":
+                for h in ctx.engine:
+                    for sgn in MOUNTS:
+                        rp, rq, rr_ = st.reservoir(dmp, *sgn)
+                        res_keep(sgn, h.gap(rp, rq) - rr_, f"{h.name}, {side} at {st.z:+.0f} mm")
     # ---- left vs right, heave and roll pairs
     for sl in left:
         for sr in right:
             for n1, p1, q1, r1 in sl.elements():
                 for n2, p2, q2, r2 in sr.elements():
-                    if "eyes" in (n1, n2):
-                        continue
+                    r1 = eye_r if n1 == "eyes" else r1
+                    r2 = eye_r if n2 == "eyes" else r2
                     keep("gap_left_right", seg_seg(p1, q1, p2, q2) - r1 - r2,
                          f"{n1} L {sl.z + 0.0:+.0f} / {n2} R {sr.z + 0.0:+.0f} mm")
     # ---- members, rim (steered), rack, column, drive shaft
@@ -742,6 +1082,14 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                 for mname, ma, mb, mr in moving:
                     keep("gap_linkage_members", seg_seg(p, q, ma, mb) - rad - mr,
                          f"{name} vs {mname} at {z:+.0f} mm, rack {rack:+.0f}")
+            hp, hq, hr = lk_s.hub()
+            for mname, ma, mb, mr in moving:
+                keep("gap_hub", seg_seg(hp, hq, ma, mb) - hr - mr,
+                     f"vs {mname} at {z:+.0f} mm, rack {rack:+.0f}")
+                for sgn in MOUNTS:
+                    rp, rq, rr_ = lk_s.reservoir(dmp, *sgn)
+                    res_keep(sgn, seg_seg(rp, rq, ma, mb) - rr_ - mr,
+                             f"{mname} at {z:+.0f} mm, rack {rack:+.0f}")
             # rim: rod points inside the wheel's width must stay inside the rim
             ubj = np.array([res.ubj.x_mm, res.ubj.y_mm, res.ubj.z_mm])
             lbj = np.array([res.lbj.x_mm, res.lbj.y_mm, res.lbj.z_mm])
@@ -762,12 +1110,20 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
             x_r = -float(stg.rack_x_mm)            # rack_x_mm is rearward-positive
             ra = np.array([x_r, -stg.rack_half_length_mm, stg.rack_z_mm])
             rb = np.array([x_r, stg.rack_half_length_mm, stg.rack_z_mm])
+            y0 = stg.rack_half_length_mm - E["rack_boot_inboard_mm"]
+            y1 = (stg.rack_half_length_mm + float(stg.max_rack_travel_mm)
+                  + E["rack_boot_past_joint_mm"])
+            boots = [(np.array([x_r, sg * y0, stg.rack_z_mm]),
+                      np.array([x_r, sg * y1, stg.rack_z_mm])) for sg in (1.0, -1.0)]
             ca, cb = (np.array(v) for v in E["column_mm"])
             for st in (lk, lk.mirrored()):
                 for name, p, q, rad in st.elements():
                     rad = eye_r if name == "eyes" else rad
                     keep("gap_rack", seg_seg(p, q, ra, rb) - rad - E["rack_housing_od_mm"] / 2,
-                         f"{name} at {z:+.0f} mm")
+                         f"{name} vs housing at {z:+.0f} mm")
+                    for ba, bb in boots:
+                        keep("gap_rack", seg_seg(p, q, ba, bb) - rad - E["rack_boot_od_mm"] / 2,
+                             f"{name} vs inner tie-rod joint / boot envelope at {z:+.0f} mm")
                     keep("gap_column", seg_seg(p, q, ca, cb) - rad - E["column_od_mm"] / 2,
                          f"{name} at {z:+.0f} mm")
         else:
@@ -780,6 +1136,38 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                 rad = eye_r if name == "eyes" else rad
                 keep("gap_driveshaft", seg_seg(p, q, wc, inner) - rad
                      - E["driveshaft_od_mm"] / 2.0, f"{name} at {z:+.0f} mm")
+    # the reservoir: the best unclocked mounting; a clocked one only if none clears, and then
+    # the least clock that does (or the best gap if none does)
+    lim_res = next(t[3] for t in THRESHOLDS if t[0] == "gap_reservoir")
+    plain = [m for m in MOUNTS if not m[2]]
+    best = max(plain, key=lambda k: res_worst[k][0])
+    if res_worst[best][0] < lim_res:
+        ok = [m for m in MOUNTS if m[2] and res_worst[m][0] >= lim_res]
+        best = (min(ok, key=lambda k: (k[2], -res_worst[k][0])) if ok
+                else max(MOUNTS, key=lambda k: res_worst[k][0]))
+
+    def label(mt) -> str:
+        return (f"body at the {'rocker' if mt[1] else 'chassis'} end, "
+                f"side {'+' if mt[0] > 0 else '-'}"
+                + (f", clocked {mt[2]:.0f} deg" if mt[2] else ""))
+    others = ", ".join(f"{label(mt)} {res_worst[mt][0]:.1f}" for mt in plain if mt != best)
+    worst["gap_reservoir"] = (res_worst[best][0],
+                              f"{label(best)}: {res_worst[best][1]} (unclocked: {others} mm)")
+    out["reservoir_mount"] = label(best)
+    out["reservoir_clock_deg"] = float(best[2])
+    # chassis eye: the damper's rotation over the range that is not about its bolt (the rocker
+    # axis, turned with a clocked body)
+    u0 = _unit(min(left, key=lambda st: abs(st.z)).rd - dc)
+    bolt = _clocked(u0, _unit(axis - (axis @ u0) * u0), best[2])
+    mis = 0.0
+    for st in left:
+        wv = np.cross(u0, _unit(st.rd - dc))
+        sn = float(np.linalg.norm(wv))
+        if sn > 1e-12:
+            wh = wv / sn
+            mis = max(mis, math.degrees(math.asin(min(sn, 1.0)))
+                      * float(np.linalg.norm(wh - (wh @ bolt) * bolt)))
+    out["damper_eye_misalign_deg"] = mis
     for k, (g, w) in worst.items():
         out[k], out[k + "_where"] = g, w
     out["damper_steer_change_mm"] = steer_dl
@@ -793,6 +1181,12 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension) -> dict:
                                f"from its nearer end"
                                + (f"; {b['closer_sketch_only']}" if "closer_sketch_only" in b
                                   else ""))
+    for key, p in (("pivot_node", pivot), ("damper_node", dc)):
+        (dl, nl), (dr, nr) = nearest_node(ctx, p), nearest_node(ctx, mirror(p))
+        d, n, side = (dl, nl, "L") if dl >= dr else (dr, nr, "R")
+        out[key + "_mm"] = d
+        out[key + "_where"] = (f"node {_pt(n.p, '.0f')} ({side}), {n.valence} tube ends: "
+                               f"{', '.join(n.tubes)}")
 
     # ---- angles over the physical range
     out["rod_angle_max_deg"] = float(sw.rod_angle_deg.max())
@@ -862,20 +1256,46 @@ def axle_summary(a: S.AxleSuspension) -> dict:
         bump_margin_mm=a.bump_margin_mm, stroke_used_mm=a.stroke_used_mm,
         rod_length_mm=a.rod_length_mm, rod_per_wheel=a.rod_per_wheel,
         rod_force_ride_N=a.rod_force_ride_N, spring_force_ride_N=a.spring_force_ride_N,
-        wheel_rate_fitted_n_mm=fitted.wheel_rate_n_mm, freq_fitted_hz=fitted.frequency_hz,
-        spring_roll_nm_deg=fitted.roll_rate_nm_deg,
+        spring_lb_in=fitted.lb_in, wheel_rate_fitted_n_mm=fitted.wheel_rate_n_mm,
+        freq_fitted_hz=fitted.frequency_hz, spring_roll_nm_deg=fitted.roll_rate_nm_deg,
     )
 
 
-def evaluate(ctx: Ctx, specs: dict[str, RockerSpec], ref_z: dict[str, float] | None = None
-             ) -> dict:
-    p = replace(ctx.project, rocker_front=specs["front"], rocker_rear=specs["rear"])
+def concept_options(concept: dict) -> dict:
+    """A concept's own springs (lb/in per axle) and travel limit (± mm), when it sets them."""
+    out: dict = {}
+    if concept.get("springs_lb_in"):
+        out["springs_lb_in"] = {ax: float(v) for ax, v in concept["springs_lb_in"].items()}
+    if concept.get("travel_limit_mm") is not None:
+        out["travel_limit_mm"] = float(concept["travel_limit_mm"])
+    if concept.get("driver_floor_z_mm") is not None:
+        out["driver_floor_z_mm"] = float(concept["driver_floor_z_mm"])
+    return out
+
+
+def with_springs(project: Project, springs_lb_in: dict[str, float] | None) -> Project:
+    if not springs_lb_in:
+        return project
+    sp = project.springs
+    return replace(project, springs=replace(
+        sp, front_lb_in=float(springs_lb_in.get("front", sp.front_lb_in)),
+        rear_lb_in=float(springs_lb_in.get("rear", sp.rear_lb_in))))
+
+
+def evaluate(ctx: Ctx, specs: dict[str, RockerSpec], ref_z: dict[str, float] | None = None,
+             springs_lb_in: dict[str, float] | None = None,
+             travel_limit_mm: float | None = None,
+             driver_floor_z_mm: float | None = None) -> dict:
+    """``springs_lb_in`` replaces the fitted springs (per axle); ``travel_limit_mm`` caps the
+    packaging range at ± that wheel travel (see ``evaluate_axle``)."""
+    p = replace(with_springs(ctx.project, springs_lb_in), rocker_front=specs["front"],
+                rocker_rear=specs["rear"])
     rep = S.suspension_report(ctx.geo, p, ctx.rc)
     out: dict = {"front": {}, "rear": {}}
     for ax, a in (("front", rep.front), ("rear", rep.rear)):
         out[ax].update(axle_summary(a))
         try:
-            out[ax].update(evaluate_axle(ctx, ax, a))
+            out[ax].update(evaluate_axle(ctx, ax, a, travel_limit_mm, driver_floor_z_mm))
         except (RockerSolveError, ValueError) as exc:
             out[ax]["error"] = f"packaging sweep failed: {exc}"
         out[ax]["fails"] = [f"{lab}: {v:.1f} (limit {op} {lim:g})"
@@ -917,10 +1337,12 @@ def specs_for(ctx: Ctx, concept: dict) -> dict[str, RockerSpec]:
         if "spec" in c:                       # a fully specified rocker
             out[ax] = RockerSpec(**{**c["spec"], "enabled": True})
             continue
+        end = c.get("damper_end")
         ac = AxleConcept(c["rod_type"], c["mount_body"], tuple(c["rod_mount"]),
-                         tuple(c["pivot"]), tuple(c["damper_toward"]),
+                         tuple(c["pivot"]), tuple(c.get("damper_toward", end)),
                          float(c["rod_arm_mm"]), float(c.get("target_mr", 0.80)),
-                         float(c.get("damper_clock_deg", 0.0)))
+                         float(c.get("damper_clock_deg", 0.0)),
+                         None if end is None else tuple(end))
         out[ax] = make_spec(ctx.geo, ctx.project, ax, ac)
     return out
 
@@ -1037,10 +1459,14 @@ ROWS = (  # (label, key, format)
     ("MR droop / ride / bump (±25 mm)", ("mr_droop", "mr_ride", "mr_bump"), ".3f"),
     ("MR progression, droop to bump [%]", "progression_pct", "+.1f"),
     ("Damper stroke used in ±25 mm [mm] (of 57, estimate)", "stroke_used_mm", ".1f"),
+    ("Spring [lb/in] / wheel rate at ride [N/mm] / ride frequency [Hz]",
+     ("spring_lb_in", "wheel_rate_fitted_n_mm", "freq_fitted_hz"), ".1f"),
     ("Damper end stops, wheel travel [mm]", "end_stops_mm", "+.1f"),
-    ("Spring unseats at wheel travel [mm] (220 lb/in, no preload)", "spring_unseats_at_mm",
+    ("Packaging range, wheel travel [mm] (end stops, or the concept's travel limit)",
+     "packaging_range_mm", "+.1f"),
+    ("Spring unseats at wheel travel [mm] (fitted spring, no preload)", "spring_unseats_at_mm",
      "+.1f"),
-    ("Rocker rotation to the end stops [deg]", "psi_range_deg", "+.1f"),
+    ("Rocker rotation over the packaging range [deg]", "psi_range_deg", "+.1f"),
     ("Rocker arms rod / damper [mm]", ("rocker_arm_rod_mm", "rocker_arm_damper_mm"), ".0f"),
     ("Transmission angle max, rod / damper [deg]",
      ("rod_angle_max_deg", "damper_angle_max_deg"), ".1f"),
@@ -1060,15 +1486,29 @@ ROWS = (  # (label, key, format)
     ("Gap: rod vs wishbones / tie rod / toe link, with steer [mm]", "gap_rod_members", ".1f"),
     ("Gap: rod vs rim, with steer [mm] (to the 13\" bead-seat radius)", "gap_rod_rim", ".1f"),
     ("Gap: left vs right, heave and roll [mm]", "gap_left_right", ".1f"),
-    ("Gap: linkage vs rack [mm]", "gap_rack", ".1f"),
+    ("Gap: linkage vs rack, inner tie-rod joint and boot [mm]", "gap_rack", ".1f"),
     ("Gap: linkage vs steering column [mm] (estimate)", "gap_column", ".1f"),
     ("Gap: linkage vs drive shaft [mm] (estimate)", "gap_driveshaft", ".1f"),
     ("Gap: linkage vs engine (MOTOR_FIXADO features, on its mounts) [mm]", "gap_engine", ".1f"),
     ("Gap: linkage vs solid bodies' bounding boxes [mm]", "gap_solid_bodies", ".1f"),
     ("Rocker pivot to nearest bodied tube [mm]", "pivot_bracket_mm", ".1f"),
     ("Coil-over chassis end to nearest bodied tube [mm]", "damper_bracket_mm", ".1f"),
+    ("Rocker pivot to the nearest frame node (3+ tubes) [mm]", "pivot_node_mm", ".1f"),
+    ("Coil-over chassis end to the nearest frame node (3+ tubes) [mm]", "damper_node_mm",
+     ".1f"),
     ("Gap: rocker / coil-over vs wishbones, tie rod / toe link, with steer [mm]",
      "gap_linkage_members", ".1f"),
+    ("Gap: rod vs its own rocker (away from its pickup) and coil-over [mm]",
+     "gap_rod_linkage", ".1f"),
+    ("Gap: linkage and reservoir vs driver space (leg / cockpit templates) [mm]", "gap_driver",
+     ".1f"),
+    ("Gap: linkage and reservoir vs drivetrain keep-out [mm] (estimate)", "gap_drivetrain", ".1f"),
+    ("Gap: damper reservoir, the best mounting [mm]", "gap_reservoir", ".1f"),
+    ("Reservoir clock about the damper axis at the chassis end [deg]", "reservoir_clock_deg",
+     ".0f"),
+    ("Chassis eye misalignment over the packaging range [deg]", "damper_eye_misalign_deg",
+     ".1f"),
+    ("Gap: rocker hub vs frame and wishbones [mm]", "gap_hub", ".1f"),
     ("Gap: linkage vs chain and sprockets [mm] (estimate)", "gap_chain", ".1f"),
     ("Damper length change over the rack travel at fixed wheel-centre height [mm] "
      "(steering jacking + any mount coupling; information)", "damper_steer_change_mm", ".2f"),
@@ -1111,8 +1551,20 @@ def _pt(p, fmt: str = ".1f") -> str:
     return "(" + ", ".join(format(float(v), fmt) for v in p) + ")"
 
 
-def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
+def report(ctx: Ctx, cols, texts_for: list[str] | None = None,
+           seed_view: str = "seed_views.svg") -> str:
     E = ESTIMATES
+    mrs = sorted({round(float(c[ax].get("target_mr", 0.80)), 3) for *_x, c in cols[1:]
+                  for ax in ("front", "rear") if isinstance(c.get(ax), dict)
+                  and "spec" not in c[ax]})
+    mr_txt = " / ".join(f"{m:g}" for m in mrs) if mrs else "0.8"
+    sets: dict[str, list[str]] = {}
+    for cid, _n, res, _s, _c in cols:
+        k = (f"{res['front'].get('spring_lb_in', math.nan):g} / "
+             f"{res['rear'].get('spring_lb_in', math.nan):g}")
+        sets.setdefault(k, []).append("seed" if cid == "seed" else cid)
+    spring_txt = "; ".join(f"{k} ({', '.join(v)})" if len(sets) > 1 else k
+                           for k, v in sets.items())
     n_sk = sum(not m.bodied and not m.reference for m in ctx.members)
     n_ref = sum(m.reference for m in ctx.members)
     L = ["# Rocker and push/pull rod concepts (FSAE 2027)", "",
@@ -1126,14 +1578,20 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
          "",
          "- Frame: ISO 8855 (X forward, Y LEFT, Z up), mm, chassis-fixed; LEFT corner points "
          "(the right is the Y-mirror). Kinematics: `DWSolver` + `vdcore.analysis.rocker`.",
-         "- Motion ratio 0.80 at ride on every axle is a **query argument** so the concepts "
-         "compare like for like (the MR target is still an open decision). The coil-over is "
-         "placed for equal droop/bump margins at ±25 mm; the rocker arms are tangential at "
-         "ride unless the concept clocks them.",
+         (f"- Motion ratio {mr_txt} at ride on every concept axle is a **query argument** so "
+          "the concepts compare like for like" if len(mrs) <= 1 else
+          f"- Motion ratio at ride is a **query argument** per concept ({mr_txt}; each "
+          "concept's MR row), the same on both axles of a concept")
+         + " (the MR target is still an open decision; the Seed column keeps its own "
+         "layout). The coil-over is placed for equal "
+         "droop/bump margins at ±25 mm; the rocker arms are tangential at ride unless the "
+         "concept clocks them.",
+         f"- Springs fitted (front / rear, lb/in): {spring_txt}. Wheel rate = k·MR² at ride.",
          "- MR and damper usage are over the ±25 mm design travel. Packaging, transmission "
          "angles and rocker rotation are over the **physical** range, to the damper's end "
-         "stops (no bump rubber in the project), and for the front over the full rack travel "
-         f"(±{ctx.project.steering.max_rack_travel_mm:g} mm).",
+         "stops (no bump rubber in the project) or to the concept's travel limit (a bump "
+         "stop and droop limiter the concept adds) when it sets one, and for the front over "
+         f"the full rack travel (±{ctx.project.steering.max_rack_travel_mm:g} mm).",
          "- **Gaps are air gaps**: centreline distance minus both estimated radii. Both "
          "corners are checked against the CAD as built (the frame is not symmetric at the "
          "engine mounts).",
@@ -1154,7 +1612,10 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
          f"{E['rod_od_mm']:.0f}×{E['rod_wall_mm']:.0f} mm steel; rocker envelope "
          f"±{E['rocker_half_mm']:.0f} mm, pickup bolts ±{E['pickup_bolt_half_mm']:.0f} mm; "
          f"wishbone OD {E['wishbone_od_mm']:.0f}, tie rod OD {E['tie_rod_od_mm']:.0f}, rack "
-         f"housing OD {E['rack_housing_od_mm']:.0f} mm; steering column "
+         f"housing OD {E['rack_housing_od_mm']:.0f} mm, inner tie-rod joint and boot "
+         f"{E['rack_boot_od_mm']:.0f} mm OD from {E['rack_boot_inboard_mm']:.0f} mm inboard of "
+         f"the joint to {E['rack_boot_past_joint_mm']:.0f} mm past it at full rack travel; "
+         f"steering column "
          f"{_pt(E['column_mm'][0], '.0f')} → {_pt(E['column_mm'][1], '.0f')}, OD "
          f"{E['column_od_mm']:.0f}; damper stroke {ctx.project.damper.stroke_mm:g} mm "
          f"({ctx.project.damper.stroke_source}); drive shaft from the wheel centre to a joint "
@@ -1176,6 +1637,10 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
         for label, key, fmt in ROWS:
             if axle == "front" and key in ("gap_driveshaft", "gap_engine", "gap_chain"):
                 continue
+            if axle == "front" and key == "gap_drivetrain":
+                continue
+            if axle == "rear" and key == "gap_driver":
+                continue
             if axle == "rear" and key in ("gap_rack", "gap_column", "damper_steer_change_mm"):
                 continue
             cells = []
@@ -1187,7 +1652,7 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
     L += ["", "## Car level", "",
           "| | " + " | ".join("Seed" if cid == "seed" else cid for cid, *_ in cols) + " |",
           "|---|" + "---|" * len(cols)]
-    for label, f in (("Springs-only roll gradient [deg/g] (220 lb/in both)",
+    for label, f in (("Springs-only roll gradient [deg/g] (each column's springs)",
                       lambda r: f"{r['roll']['gradient_springs_only']:.2f}"),
                      ("ARB needed for 1.0 deg/g at 50/50, F / R [N·m/deg]",
                       lambda r: f"{r['roll']['arb_needed_nm_deg']['front']:.0f} / "
@@ -1204,14 +1669,14 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
             except (KeyError, TypeError):
                 cells.append("—")
         L.append(f"| {label} | " + " | ".join(cells) + " |")
-    L += ["", "The MR is the same at ride on every axle, so wheel rates, frequencies and the "
-          "roll budget only move with the MR progression; they are listed to show that, not "
-          "as a difference between the layouts. The spring unseating row is the same story: "
-          "with 220 lb/in and no preload the spring comes off its seat before the damper "
-          "tops out, whatever the layout."]
+    L += ["", "Wheel rates, frequencies and the roll budget follow from each column's springs "
+          "and ride MR; where those match, they only move with the MR progression and are "
+          "listed to show that, not as a difference between the layouts. The spring "
+          "unseating row is the same story: with no preload the spring comes off its seat at "
+          "its static compression divided by the MR, whatever the layout."]
     for cid, name, res, specs, c in cols:
         L += ["", f"## {'Seed' if cid == 'seed' else 'Concept ' + cid}: {name}", "",
-              f"![views]({'seed' if cid == 'seed' else 'concept_' + cid}_views.svg)", ""]
+              f"![views]({seed_view if cid == 'seed' else f'concept_{cid}_views.svg'})", ""]
         if c.get("summary") and (texts_for is None or cid in texts_for):
             L += [c["summary"], ""]
         L += ["| point (LEFT corner) | front | rear |", "|---|---|---|"]
@@ -1230,8 +1695,10 @@ def report(ctx: Ctx, cols, texts_for: list[str] | None = None) -> str:
         for ax in ("front", "rear"):
             m = res[ax]
             for key in ("gap_rod_frame", "gap_rocker_frame", "gap_coilover_frame",
-                        "gap_rod_members", "gap_rod_rim", "gap_engine", "gap_solid_bodies",
-                        "pivot_bracket", "damper_bracket"):
+                        "gap_rod_members", "gap_rod_linkage", "gap_rod_rim", "gap_engine",
+                        "gap_solid_bodies", "gap_driver", "gap_drivetrain", "gap_reservoir",
+                        "gap_hub",
+                        "pivot_bracket", "damper_bracket", "pivot_node", "damper_node"):
                 w = m.get(key + "_where")
                 if w:
                     v = m.get(key, m.get(key + "_mm"))
@@ -1268,15 +1735,16 @@ def cmd_eval(path: Path) -> None:
     ctx = load_ctx()
     concept = json.loads(Path(path).read_text(encoding="utf-8"))
     specs = specs_for(ctx, concept)
-    res = evaluate(ctx, specs, reference_z(ctx))
+    res = evaluate(ctx, specs, reference_z(ctx), **concept_options(concept))
     res["specs"] = {ax: asdict(s) for ax, s in specs.items()}
     print(json.dumps(_jsonable(res), indent=1))
 
 
-def cmd_seed() -> None:
+def cmd_seed(travel_limit_mm: float | None = None) -> None:
     ctx = load_ctx()
     specs = {"front": ctx.project.rocker_front, "rear": ctx.project.rocker_rear}
-    print(json.dumps(_jsonable(evaluate(ctx, specs, reference_z(ctx))), indent=1))
+    print(json.dumps(_jsonable(evaluate(ctx, specs, reference_z(ctx),
+                                        travel_limit_mm=travel_limit_mm)), indent=1))
 
 
 def cmd_frame() -> None:
@@ -1289,7 +1757,8 @@ def cmd_frame() -> None:
 
 def cmd_build(only: list[str] | None = None, report_name: str = "README.md",
               seed_project: Path | None = None, variants: bool = True,
-              title: str | None = None, texts_for: list[str] | None = None) -> None:
+              title: str | None = None, texts_for: list[str] | None = None,
+              seed_travel_limit_mm: float | None = None) -> None:
     """Variants, views and a side-by-side report.
 
     ``only``: concept ids to include (default: every ``concept_*.json``). ``seed_project``:
@@ -1309,28 +1778,43 @@ def cmd_build(only: list[str] | None = None, report_name: str = "README.md",
         raise SystemExit(f"no concept_*.json in {OUT_DIR}")
     seed_name = "the current team project" if seed_project is None else \
         f"the rockers of {seed_project.name}"
+    # the seed's own springs; a travel limit (bump stop / droop limiter) when it has one
+    seed_eval = evaluate(ctx, seed_specs, ref,
+                         springs_lb_in={"front": seed_p.springs.front_lb_in,
+                                        "rear": seed_p.springs.rear_lb_in},
+                         travel_limit_mm=seed_travel_limit_mm)
     cols: list[tuple[str, str, dict, dict, dict]] = [
-        ("seed", seed_name, evaluate(ctx, seed_specs, ref), seed_specs, {})]
+        ("seed", seed_name, seed_eval, seed_specs, {})]
     for f in files:
         c = json.loads(f.read_text(encoding="utf-8"))
         cid = str(c.get("concept_id", f.stem.split("_")[-1]))
         specs = specs_for(ctx, c)
-        cols.append((cid, str(c.get("name", cid)), evaluate(ctx, specs, ref), specs, c))
+        opts = concept_options(c)
+        cols.append((cid, str(c.get("name", cid)), evaluate(ctx, specs, ref, **opts), specs, c))
         if variants:
+            mr = sorted({float(c[ax].get("target_mr", 0.80)) for ax in ("front", "rear")
+                         if "spec" not in c[ax]})
             variant = replace(
-                ctx.project, rocker_front=specs["front"], rocker_rear=specs["rear"],
+                with_springs(ctx.project, opts.get("springs_lb_in")),
+                rocker_front=specs["front"], rocker_rear=specs["rear"],
                 name=f"{ctx.project.name} -- rocker concept {cid}",
                 notes=(f"Rocker/rod concept {cid}: {c.get('name', '')}. Built by "
                        "scripts/rocker_concepts.py from projects/rocker_concepts/"
-                       f"{f.name} (MR 0.80 is a comparison query, not a choice). See "
-                       f"projects/rocker_concepts/{report_name}."))
+                       f"{f.name} (MR {' / '.join(f'{m:g}' for m in mr) or 'as drawn'} is a "
+                       "comparison query, not a choice"
+                       + (f"; packaging checked to ±{opts['travel_limit_mm']:g} mm of wheel "
+                          "travel, which needs a bump stop and a droop limiter"
+                          if "travel_limit_mm" in opts else "")
+                       + f"). See projects/rocker_concepts/{report_name}."))
             save_project(variant,
                          REPO / "projects" / f"FSAE_2027_rocker_concept_{cid}.vdproj.json")
         (OUT_DIR / f"concept_{cid}_views.svg").write_text(
             views_svg(ctx, specs, f"Concept {cid}: {c.get('name', '')}"), encoding="utf-8")
-    (OUT_DIR / "seed_views.svg").write_text(
+    # each report its own seed view: an older report's seed stays as it was
+    seed_view = f"{Path(report_name).stem}_seed_views.svg"
+    (OUT_DIR / seed_view).write_text(
         views_svg(ctx, seed_specs, f"Seed ({seed_name})"), encoding="utf-8")
-    text = report(ctx, cols, texts_for)
+    text = report(ctx, cols, texts_for, seed_view)
     if title:
         text = text.replace("# Rocker and push/pull rod concepts (FSAE 2027)", f"# {title}", 1)
     (OUT_DIR / report_name).write_text(text, encoding="utf-8")
@@ -1342,7 +1826,9 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("eval", help="metrics of one concept JSON")
     e.add_argument("concept", type=Path)
-    sub.add_parser("seed", help="metrics of the project's current layout")
+    sd = sub.add_parser("seed", help="metrics of the project's current layout")
+    sd.add_argument("--travel-limit", type=float, default=None,
+                    help="cap the packaging range at +- this wheel travel [mm]")
     sub.add_parser("frame", help="the CAD frame model (bodied / sketch-only members, boxes)")
     b = sub.add_parser("build", help="variants, report and views for every concept")
     b.add_argument("--only", nargs="+", default=None, help="concept ids (default: all)")
@@ -1353,10 +1839,15 @@ def main() -> None:
     b.add_argument("--title", default=None, help="report title")
     b.add_argument("--texts-for", nargs="+", default=None,
                    help="print summary / pros / cons only for these concept ids")
+    b.add_argument("--seed-travel-limit", type=float, default=None,
+                   help="cap the Seed column's packaging range at +- this wheel travel [mm]")
     args = ap.parse_args()
     if args.cmd == "build":
         cmd_build(args.only, args.report, args.seed_project, not args.no_variants, args.title,
-                  args.texts_for)
+                  args.texts_for, args.seed_travel_limit)
+        return
+    if args.cmd == "seed":
+        cmd_seed(args.travel_limit)
         return
     {"eval": lambda: cmd_eval(args.concept), "seed": cmd_seed, "frame": cmd_frame}[args.cmd]()
 
