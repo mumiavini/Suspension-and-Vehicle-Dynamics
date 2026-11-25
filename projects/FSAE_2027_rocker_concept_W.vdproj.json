@@ -2,7 +2,7 @@
   "name": "FSAE 2027 -- PUCPR Racing -- rocker concept W",
   "team": "PUCPR Racing #27",
   "author": "Vinicius Trento",
-  "notes": "Rocker/rod concept W: front W (pushrod to rockers on top of the front box, coil-overs on top converging on the X-brace node, like the Schanzer SR 26); rear R1 (as concept X). Built by scripts/rocker_concepts.py from projects/rocker_concepts/concept_W.json (MR 0.506 is a comparison query, not a choice; packaging checked to ±36 mm of wheel travel, which needs a bump stop and a droop limiter). See projects/rocker_concepts/concept_w.md.",
+  "notes": "Rocker/rod concept W: front W (pushrod to rockers at the top of the box sides, coil-overs straight across the car on top, eyes facing each other at the centre, like the Schanzer SR 26); rear R1 (as concept X). Built by scripts/rocker_concepts.py from projects/rocker_concepts/concept_W.json (MR 0.506 is a comparison query, not a choice; packaging checked to ±36 mm of wheel travel, which needs a bump stop and a droop limiter). See projects/rocker_concepts/concept_w.md.",
   "created": "2026-10-13",
   "vehicle": {
     "name": "FSAE 2027 -- PUCPR Racing",
@@ -301,34 +301,34 @@
     "rod_type": "pushrod",
     "mount_body": "lca",
     "rod_mount": [
-      -31.61,
-      535.34,
-      146.08
+      -4.75,
+      535.83,
+      157.11
     ],
     "rocker_pivot": [
-      43.84,
-      114.86,
-      596.34
+      -27.72,
+      210.55,
+      539.58
     ],
     "rocker_axis": [
-      -0.4345,
-      -0.6934,
-      -0.5748
+      -0.9986,
+      0.0491,
+      -0.0182
     ],
     "rocker_rod": [
-      -42.0975,
-      147.9311,
-      621.3985
+      -23.5379,
+      315.3089,
+      592.7851
     ],
     "rocker_damper": [
-      40.7589,
-      71.9029,
-      650.4958
+      -28.6449,
+      218.8411,
+      612.6785
     ],
     "damper_chassis": [
-      211.4946,
-      27.6687,
-      574.8087
+      -38.0605,
+      27.338,
+      612.5349
     ],
     "source": "design_intent"
   },

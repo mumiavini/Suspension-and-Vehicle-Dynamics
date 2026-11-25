@@ -1,7 +1,7 @@
 {
  "concept_id": "W",
- "name": "front W (pushrod to rockers on top of the front box, coil-overs on top converging on the X-brace node, like the Schanzer SR 26); rear R1 (as concept X)",
- "summary": "Front W: the layout of the photo the team sent (Schanzer Racing SR 26), on this frame. A steep pushrod (51 deg from horizontal, 613 mm) from a clevis on the LCA rear leg up to a rocker on top of the front box, above the front axle, on a bracket on the top X-brace tube 50.7 mm from it; each coil-over runs forward and slightly inboard on top of the box, outside the bodywork, to an eye 50.2 mm from the X-brace's crossing node (217, 0, 533). The two coil-overs form a narrow V with its apex forward. No physical interference; the evaluator's only flag at the front is the rocker pivot's distance to a node (143.3 mm: the top of the box has no node above the axle). Rear R1, as concept X.",
+ "name": "front W (pushrod to rockers at the top of the box sides, coil-overs straight across the car on top, eyes facing each other at the centre, like the Schanzer SR 26); rear R1 (as concept X)",
+ "summary": "Front W, as sketched by the team: each pushrod and its coil-over lie in one plane across the car (pushrod 4.9 deg off it in plan view, coil-over 3 deg), just ahead of the front hoop. A steep pushrod (63 deg from horizontal, 489 mm) from a clevis on the LCA rear leg up to a rocker at the top of the box side, on a bracket on the tube from the UCA front node to the hoop's upper corner (47.1 mm from it, 84.1 mm from that corner node); the coil-over runs straight across the top, outside the bodywork, to an eye on a bracket off the hoop's top bar (47.8 mm from it), 27 mm from the centreline: the two eyes face each other 55 mm apart. It is the team's revised concept X front (2026-11-04) refined so both brackets are within 60 mm of a tube (X's eye was 65.8 mm). No physical interference; the evaluator's only flags at the front are the node distances (84.1 / 148.1 mm, limit 60). Rear R1, as concept X.",
  "springs_lb_in": {
   "front": 550,
   "rear": 550
@@ -11,22 +11,22 @@
   "rod_type": "pushrod",
   "mount_body": "lca",
   "rod_mount": [
-   -31.61,
-   535.34,
-   146.08
+   -4.75,
+   535.83,
+   157.11
   ],
   "pivot": [
-   43.84,
-   114.86,
-   596.34
+   -27.72,
+   210.55,
+   539.58
   ],
   "damper_end": [
-   210.95,
-   27.81,
-   575.05
+   -37.67,
+   35.28,
+   612.54
   ],
-  "rod_arm_mm": 95.43,
-  "damper_clock_deg": 11.84,
+  "rod_arm_mm": 117.57,
+  "damper_clock_deg": 6.47,
   "target_mr": 0.506
  },
  "rear": {
@@ -52,16 +52,15 @@
   "target_mr": 0.506
  },
  "pros": [
-  "Front W: no physical interference, and the coil-over eye is at a node (50.2 mm from the X-brace crossing). Low front loads: rod 820 N at ride (1.40x the wheel load), pivot reaction 1530 N. MR 0.474 / 0.506 / 0.543 over +-25 mm (+13.5 %, rising in bump).",
-  "Front W: far from the driver space (54.8 mm), the rack (106.5 mm) and the column (240.2 mm). 5 mm moves: pivot 2 of 6 directions broke a threshold (rocker or rod vs frame), damper end 1 (left vs right), rod mount 0 (node distances left out).",
-  "Front W: the coil-overs and rockers are on top of the box, reachable for adjustment without removing bodywork, as in the photo.",
-  "Rear R1: far from the chain estimate (35.4 mm) and the drivetrain keep-out (111.5 mm); engine features 25.9 mm, drive shaft 30.8 mm. MR flat: 0.504 / 0.506 / 0.505 (+0.1 %). Rod 1390 N, pivot 1870 N at ride.",
+  "Front W: the lowest front loads so far: rod 719 N at ride (1.23x the wheel load), pivot reaction 1050 N, bracket couples up to 49 / 55 N·m. MR 0.487 / 0.506 / 0.524 over +-25 mm (+7.3 %, rising in bump). The pushrod buckles at 9.2 kN of wheel load.",
+  "Front W: robust to 5 mm moves: pivot 1 of 6 directions broke a threshold (left vs right), damper end 1 (coil-over vs the hoop's top bar), rod mount 0 (node distances left out). Far from the driver space, the rack and the column.",
+  "Front W: rockers and coil-overs on top of the box, reachable without removing bodywork; the reservoir sits with the body at the chassis end (42.0 mm clear).",
+  "Rear R1: the furthest of the set from the chain estimate (35.4 mm) and the drivetrain keep-out (111.5 mm); engine features 25.9 mm, drive shaft 30.8 mm. MR flat: 0.504 / 0.506 / 0.505 (+0.1 %). Rod 1390 N, pivot 1870 N at ride.",
   "Rear R1: rocker and coil-over between z 367 and 447 mm and outboard of |y| = 217 mm: above the chain estimate and outboard of the engine."
  ],
  "cons": [
-  "Front W: the rocker pivot is on a bracket at mid-span of the X-brace tube (133 mm from its end, 143.3 mm from the nearest node; flagged, limit 60 mm), with a bracket couple up to 78 N·m into that tube. The box's top side rail (hoop corner to the bulkhead's top corner) is a sketch line in the CAD, not a tube; built as a tube, it could carry the rockers further outboard (a refinement with the rockers there also met every gap; not taken further).",
-  "Front W: mounted high: pickups, pivot and eye between z 575 and 653 mm (moving mass at z 610 mm), close to the old X. A long pushrod (613 mm; it buckles at 5.1 kN of wheel load). The two coil-overs come within 9.3 mm of each other near the centre (limit 5).",
-  "Front W: the reservoir fits with the body at the chassis end on side - (11.2 mm) or at the rocker end on side + (11.3 mm); on side + at the chassis end the two reservoirs meet at the centre (the evaluator now checks each reservoir against the other corner). Tightest gaps: rocker vs the top X-brace 8.8 mm, coil-over vs it 9.1 mm, left vs right 9.3 mm, rocker hub 10.1 mm.",
+  "Front W: neither bracket is at a node: the rocker pivot is 84.1 mm and the coil-over eye 148.1 mm from the hoop's upper corner node (flagged, limit 60 mm); the eye bracket comes off the hoop's top bar 58 mm from its bend, so the coil-over force goes into the front hoop in bending (up to 55 N·m). The front hoop is primary structure: a bracket there is the chassis team's and the rules' call.",
+  "Front W: mounted high: rockers and coil-overs between z 540 and 617 mm (moving mass at z 599 mm), just ahead of the hoop (x -23 to -38 mm), where the steering wheel, dash and the driver's sight line are (not modelled). Tightest gaps: coil-over vs the hoop's top bar 8.5 mm, rod vs UCA rear leg 13.2 mm, rocker hub 14.4 mm, eyes left vs right 14.7 mm.",
   "Rear R1: rocker and coil-over eye both on brackets at mid-span of the upper side rail, 118 and 150 mm from nodes (flagged, limit 60 mm), with bracket couples up to 84 / 64 N·m into that rail. The LCA rear leg carries the clevis 58.8 mm from the ball joint: about 46 N·m of bending at ride (87 MPa, hand estimate). Tightest gaps: rocker hub 4.2 mm (limit 2), coil-over vs the rail 7.0 mm, rod vs UCA front leg 7.0 mm. 5 mm moves: pivot 3 of 6 directions broke a threshold, damper end 1, rod mount 0 (node distances left out)."
  ],
  "not_checked": [
