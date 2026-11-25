@@ -40,6 +40,19 @@ Regenerate with, for example,
 and `scripts/export_suspension_assembly.py` with the same `--project` and
 `--reservoir`, plus `--name suspension_Y_assembly --asm-name SUSP_Y`.
 
+## Concept W (front on top of the box, like the Schanzer SR 26)
+
+`suspension_W_assembly_Xasis_33.3.bas` (top assembly and default folder
+`SUSP_W`) and `suspension_W_solids_*.bas`, from
+`projects/FSAE_2027_rocker_concept_W.vdproj.json` (report:
+`projects/rocker_concepts/concept_w.md`). Front W: steep pushrod from the LCA
+to rockers on top of the front box, coil-overs on top converging on the X-brace
+crossing node; rear R1 as concept X. The front reservoir is drawn with the body
+at the chassis end on side -1 (on side +1 the two reservoirs meet at the
+centre). Run and open it like the X, Y, Z macros above. Regenerate with
+`--project projects/FSAE_2027_rocker_concept_W.vdproj.json --reservoir front=-1,0 rear=1,0`
+and `--name suspension_W_solids`, or `--name suspension_W_assembly --asm-name SUSP_W`.
+
 ## Suspension solids for SolidWorks (concept GH: front of G, rear of H)
 
 The team project's rocker layout (`projects/rocker_concepts/`; earlier

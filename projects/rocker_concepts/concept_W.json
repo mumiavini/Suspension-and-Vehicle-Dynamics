@@ -1,0 +1,75 @@
+{
+ "concept_id": "W",
+ "name": "front W (pushrod to rockers on top of the front box, coil-overs on top converging on the X-brace node, like the Schanzer SR 26); rear R1 (as concept X)",
+ "summary": "Front W: the layout of the photo the team sent (Schanzer Racing SR 26), on this frame. A steep pushrod (51 deg from horizontal, 613 mm) from a clevis on the LCA rear leg up to a rocker on top of the front box, above the front axle, on a bracket on the top X-brace tube 50.7 mm from it; each coil-over runs forward and slightly inboard on top of the box, outside the bodywork, to an eye 50.2 mm from the X-brace's crossing node (217, 0, 533). The two coil-overs form a narrow V with its apex forward. No physical interference; the evaluator's only flag at the front is the rocker pivot's distance to a node (143.3 mm: the top of the box has no node above the axle). Rear R1, as concept X.",
+ "springs_lb_in": {
+  "front": 550,
+  "rear": 550
+ },
+ "travel_limit_mm": 36.0,
+ "front": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -31.61,
+   535.34,
+   146.08
+  ],
+  "pivot": [
+   43.84,
+   114.86,
+   596.34
+  ],
+  "damper_end": [
+   210.95,
+   27.81,
+   575.05
+  ],
+  "rod_arm_mm": 95.43,
+  "damper_clock_deg": 11.84,
+  "target_mr": 0.506
+ },
+ "rear": {
+  "rod_type": "pushrod",
+  "mount_body": "lca",
+  "rod_mount": [
+   -1532.38,
+   504.83,
+   152.52
+  ],
+  "pivot": [
+   -1232.34,
+   289.38,
+   382.95
+  ],
+  "damper_end": [
+   -1080.58,
+   302.04,
+   399.22
+  ],
+  "rod_arm_mm": 72.21,
+  "damper_clock_deg": -4.5,
+  "target_mr": 0.506
+ },
+ "pros": [
+  "Front W: no physical interference, and the coil-over eye is at a node (50.2 mm from the X-brace crossing). Low front loads: rod 820 N at ride (1.40x the wheel load), pivot reaction 1530 N. MR 0.474 / 0.506 / 0.543 over +-25 mm (+13.5 %, rising in bump).",
+  "Front W: far from the driver space (54.8 mm), the rack (106.5 mm) and the column (240.2 mm). 5 mm moves: pivot 2 of 6 directions broke a threshold (rocker or rod vs frame), damper end 1 (left vs right), rod mount 0 (node distances left out).",
+  "Front W: the coil-overs and rockers are on top of the box, reachable for adjustment without removing bodywork, as in the photo.",
+  "Rear R1: far from the chain estimate (35.4 mm) and the drivetrain keep-out (111.5 mm); engine features 25.9 mm, drive shaft 30.8 mm. MR flat: 0.504 / 0.506 / 0.505 (+0.1 %). Rod 1390 N, pivot 1870 N at ride.",
+  "Rear R1: rocker and coil-over between z 367 and 447 mm and outboard of |y| = 217 mm: above the chain estimate and outboard of the engine."
+ ],
+ "cons": [
+  "Front W: the rocker pivot is on a bracket at mid-span of the X-brace tube (133 mm from its end, 143.3 mm from the nearest node; flagged, limit 60 mm), with a bracket couple up to 78 N·m into that tube. The box's top side rail (hoop corner to the bulkhead's top corner) is a sketch line in the CAD, not a tube; built as a tube, it could carry the rockers further outboard (a refinement with the rockers there also met every gap; not taken further).",
+  "Front W: mounted high: pickups, pivot and eye between z 575 and 653 mm (moving mass at z 610 mm), close to the old X. A long pushrod (613 mm; it buckles at 5.1 kN of wheel load). The two coil-overs come within 9.3 mm of each other near the centre (limit 5).",
+  "Front W: the reservoir fits with the body at the chassis end on side - (11.2 mm) or at the rocker end on side + (11.3 mm); on side + at the chassis end the two reservoirs meet at the centre (the evaluator now checks each reservoir against the other corner). Tightest gaps: rocker vs the top X-brace 8.8 mm, coil-over vs it 9.1 mm, left vs right 9.3 mm, rocker hub 10.1 mm.",
+  "Rear R1: rocker and coil-over eye both on brackets at mid-span of the upper side rail, 118 and 150 mm from nodes (flagged, limit 60 mm), with bracket couples up to 84 / 64 N·m into that rail. The LCA rear leg carries the clevis 58.8 mm from the ball joint: about 46 N·m of bending at ride (87 MPa, hand estimate). Tightest gaps: rocker hub 4.2 mm (limit 2), coil-over vs the rail 7.0 mm, rod vs UCA front leg 7.0 mm. 5 mm moves: pivot 3 of 6 directions broke a threshold, damper end 1, rod mount 0 (node distances left out)."
+ ],
+ "not_checked": [
+  "The +-36 mm travel limit is a design input (design_intent): a bump stop and a droop limiter that are not in the project. With them each damper keeps about 10 mm at each end (it uses about 36.5 of its 57 mm stroke, an estimate).",
+  "Damping: the damper moves 0.506 mm per mm of wheel instead of 0.80, so the same valving gives (0.506/0.80)^2 = 40 % of today's damping at the wheel. Damping is outside this tool.",
+  "Structure: no load cases, stress, fatigue or sizing of rockers, brackets, clevises, rods or wishbones. Leg-bending figures are hand estimates (simply supported leg, rod force at ride, 25.4x1.2 tube); bracket couples are upper bounds.",
+  "With no preload the springs come off their seats at -23.7 mm (front) and -30.0 mm (rear) of wheel travel, inside the +-36 mm range.",
+  "Envelopes: spring OD 55 mm, 220 mm eye to eye and 260 mm overall are from the coil-over drawing; the piggyback reservoir (OD 38 mm, 50 mm off the axis) is scaled from that drawing (estimate). Rod, rocker plates and bolts, rocker hub, wishbone and frame tube sizes are estimates. Bodywork, the steering wheel and dash, and the driver beyond the template sketches are not modelled.",
+  "Drivetrain: the chain, sprockets, differential and drive shafts are estimates (no CAD). The chain estimate itself passes through four rear-box tubes (front post -27.3 mm, top rail -25.0 mm, diagonal -14.2 mm, rear post -10.3 mm), so the real chain path differs from it; each rear here needs a check against the real drivetrain."
+ ]
+}

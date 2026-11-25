@@ -186,7 +186,7 @@ THRESHOLDS = (
     ("gap_drivetrain", "rear", "min", 10.0,
      "linkage and reservoir vs drivetrain keep-out (estimate)"),
     ("gap_reservoir", None, "min", 5.0,
-     "damper reservoir (the better of its two sides) vs frame, wishbones, rod"),
+     "damper reservoir (the best mounting) vs frame, wishbones, rod, the other corner"),
     ("gap_hub", None, "min", 2.0, "rocker hub vs frame and moving wishbones"),
     ("damper_eye_misalign_deg", None, "max", 5.0,
      "chassis eye misalignment over the packaging range (spherical bearing, estimate)"),
@@ -1024,6 +1024,19 @@ def evaluate_axle(ctx: Ctx, axle: str, a: S.AxleSuspension,
                     r2 = eye_r if n2 == "eyes" else r2
                     keep("gap_left_right", seg_seg(p1, q1, p2, q2) - r1 - r2,
                          f"{n1} L {sl.z + 0.0:+.0f} / {n2} R {sr.z + 0.0:+.0f} mm")
+            # each reservoir mounting against the other corner's linkage and reservoir
+            # (both corners mount their damper the same way, mirrored)
+            for sgn in MOUNTS:
+                pl, ql, rl = sl.reservoir(dmp, *sgn)
+                pr, qr, rr_ = sr.reservoir(dmp, *sgn)
+                res_keep(sgn, seg_seg(pl, ql, pr, qr) - rl - rr_,
+                         f"the other corner's reservoir, L {sl.z + 0.0:+.0f} / "
+                         f"R {sr.z + 0.0:+.0f} mm")
+                for n2, p2, q2, r2 in sr.elements():
+                    r2 = eye_r if n2 == "eyes" else r2
+                    res_keep(sgn, seg_seg(pl, ql, p2, q2) - rl - r2,
+                             f"the other corner's {n2}, L {sl.z + 0.0:+.0f} / "
+                             f"R {sr.z + 0.0:+.0f} mm")
     # ---- members, rim (steered), rack, column, drive shaft
     rack_max = float(ctx.project.steering.max_rack_travel_mm) if axle == "front" else 0.0
     racks = np.linspace(-rack_max, rack_max, 5) if rack_max > 0 else np.array([0.0])
